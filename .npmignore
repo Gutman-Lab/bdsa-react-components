@@ -1,0 +1,39 @@
+# Source files
+src/
+.storybook/
+
+# Config files
+*.config.ts
+*.config.js
+tsconfig.json
+tsconfig.node.json
+.eslintrc.cjs
+
+# Development files
+*.test.tsx
+*.test.ts
+*.stories.tsx
+*.stories.ts
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Testing
+coverage/
+
+# Storybook
+storybook-static/
+
+# Other
+node_modules/
+.DS_Store
+*.anot
+

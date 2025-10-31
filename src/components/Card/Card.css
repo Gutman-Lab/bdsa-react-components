@@ -1,0 +1,76 @@
+.bdsa-card {
+    background-color: white;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+/* Borders */
+.bdsa-card--bordered {
+    border: 1px solid #e0e0e0;
+}
+
+/* Shadows */
+.bdsa-card--shadow-none {
+    box-shadow: none;
+}
+
+.bdsa-card--shadow-small {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.bdsa-card--shadow-medium {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.bdsa-card--shadow-large {
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Hoverable */
+.bdsa-card--hoverable {
+    cursor: pointer;
+}
+
+.bdsa-card--hoverable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Header */
+.bdsa-card__header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
+    font-weight: 600;
+    font-size: 1.125rem;
+}
+
+/* Content */
+.bdsa-card__content {
+    color: #333;
+}
+
+.bdsa-card__content--padding-none {
+    padding: 0;
+}
+
+.bdsa-card__content--padding-small {
+    padding: 0.75rem;
+}
+
+.bdsa-card__content--padding-medium {
+    padding: 1.5rem;
+}
+
+.bdsa-card__content--padding-large {
+    padding: 2rem;
+}
+
+/* Footer */
+.bdsa-card__footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e0e0e0;
+    background-color: #f8f9fa;
+    color: #666;
+    font-size: 0.875rem;
+}

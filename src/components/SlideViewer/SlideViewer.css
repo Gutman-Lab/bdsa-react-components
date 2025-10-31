@@ -1,0 +1,77 @@
+.bdsa-slide-viewer {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    /* Ensure minimum height for OpenSeadragon */
+    position: relative;
+    background-color: #000;
+}
+
+.bdsa-slide-viewer__container {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    /* Ensure minimum height for OpenSeadragon */
+}
+
+/* OpenSeadragon overrides for better integration */
+.bdsa-slide-viewer .openseadragon-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Annotation info panel */
+.bdsa-slide-viewer__annotation-info {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 12px;
+  max-width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+.bdsa-slide-viewer__annotation-info-header {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ddd;
+  font-size: 14px;
+}
+
+.bdsa-slide-viewer__annotation-info-section {
+  margin-bottom: 12px;
+}
+
+.bdsa-slide-viewer__annotation-info-section:last-child {
+  margin-bottom: 0;
+}
+
+.bdsa-slide-viewer__annotation-info-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #333;
+}
+
+.bdsa-slide-viewer__annotation-info-item {
+  margin-left: 8px;
+  margin-bottom: 6px;
+  padding: 4px;
+  background: #f8f9fa;
+  border-radius: 2px;
+  font-size: 11px;
+  color: #666;
+}
+
+.bdsa-slide-viewer__annotation-info-item:last-child {
+  margin-bottom: 0;
+}
+
+.bdsa-slide-viewer__annotation-info-item > div {
+  margin: 2px 0;
+}

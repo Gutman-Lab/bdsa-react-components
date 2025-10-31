@@ -1,0 +1,83 @@
+{
+    "name": "bdsa-react-components",
+    "version": "0.1.0",
+    "description": "Reusable React components for the Digital Slide Archive project",
+    "type": "module",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs",
+            "types": "./dist/index.d.ts"
+        },
+        "./styles.css": "./dist/style.css"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "CHANGELOG.md",
+        "INTEGRATION.md"
+    ],
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "preview": "vite preview",
+        "test": "vitest",
+        "test:ui": "vitest --ui",
+        "test:coverage": "vitest --coverage",
+        "storybook": "storybook dev -p 6006",
+        "build-storybook": "storybook build",
+        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    },
+    "peerDependencies": {
+        "react": "^18.0.0",
+        "react-dom": "^18.0.0"
+    },
+    "dependencies": {
+        "openseadragon": "^5.0.1",
+        "osd-paperjs-annotation": "github:pearcetm/osd-paperjs-annotation",
+        "paper": "^0.12.18"
+    },
+    "devDependencies": {
+        "@types/geojson": "^7946.0.13",
+        "@storybook/addon-essentials": "^7.6.0",
+        "@storybook/addon-interactions": "^7.6.0",
+        "@storybook/addon-links": "^7.6.0",
+        "@storybook/blocks": "^7.6.0",
+        "@storybook/react": "^7.6.0",
+        "@storybook/react-vite": "^7.6.0",
+        "@storybook/testing-library": "^0.2.2",
+        "@testing-library/react": "^14.1.2",
+        "@testing-library/jest-dom": "^6.1.5",
+        "@testing-library/user-event": "^14.5.1",
+        "@types/react": "^18.2.43",
+        "@types/react-dom": "^18.2.17",
+        "@typescript-eslint/eslint-plugin": "^6.14.0",
+        "@typescript-eslint/parser": "^6.14.0",
+        "@vitejs/plugin-react": "^4.2.1",
+        "@vitest/ui": "^1.0.4",
+        "eslint": "^8.55.0",
+        "eslint-plugin-react-hooks": "^4.6.0",
+        "eslint-plugin-react-refresh": "^0.4.5",
+        "eslint-plugin-storybook": "^0.6.15",
+        "jsdom": "^23.0.1",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "storybook": "^7.6.0",
+        "typescript": "^5.3.3",
+        "vite": "^5.0.8",
+        "vite-plugin-dts": "^3.7.0",
+        "vitest": "^1.0.4"
+    },
+    "keywords": [
+        "react",
+        "components",
+        "digital-slide-archive",
+        "bdsa",
+        "ui-library"
+    ],
+    "author": "",
+    "license": "Apache-2.0"
+}
