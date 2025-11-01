@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import OpenSeadragon from 'openseadragon'
 import { PaperOverlay, AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { FeatureCollection, Feature } from 'geojson'
@@ -123,35 +123,60 @@ export interface SlideViewerProps {
     showAnnotationControls?: boolean
     /** Default opacity for all annotations (0-1, default: 1) */
     defaultAnnotationOpacity?: number
+    /** Map of annotation IDs to their individual opacity values (0-1). Overrides defaultAnnotationOpacity for specific annotations. */
+    annotationOpacities?: Map<string | number, number> | Record<string, number>
+    /** Map of annotation IDs to their visibility state. If provided, only visible annotations will be rendered/updated. */
+    visibleAnnotations?: Map<string | number, boolean> | Record<string, boolean>
+    /** Callback when annotation has finished loading and rendering. Called with the annotation ID. */
+    onAnnotationReady?: (annotationId: string | number) => void
 }
 
 /**
  * Helper function to apply opacity to a color string
+ * Always returns rgba format for consistency, even at 100% opacity
  */
 function applyOpacity(color: string, opacity: number): string {
-    // If color is already rgba/rgb, extract RGB and apply opacity
-    // Otherwise, convert hex to rgba
-    if (opacity >= 1) return color
+    // Clamp opacity to valid range
+    const clampedOpacity = Math.max(0, Math.min(1, opacity))
     
-    if (color.startsWith('rgba(') || color.startsWith('rgb(')) {
-        // Extract RGB values
+    // Always convert to rgba for consistent rendering, even at 100%
+    if (color.startsWith('rgba(')) {
+        // Extract RGB values, ignore existing alpha
         const match = color.match(/(\d+(?:\.\d+)?)/g)
         if (match && match.length >= 3) {
             const r = match[0]
             const g = match[1]
             const b = match[2]
-            return `rgba(${r}, ${g}, ${b}, ${opacity})`
+            return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`
+        }
+    } else if (color.startsWith('rgb(')) {
+        // Extract RGB values from rgb() format
+        const match = color.match(/(\d+(?:\.\d+)?)/g)
+        if (match && match.length >= 3) {
+            const r = match[0]
+            const g = match[1]
+            const b = match[2]
+            return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`
         }
     } else if (color.startsWith('#')) {
         // Convert hex to rgba
         const hex = color.replace('#', '')
-        const r = parseInt(hex.substring(0, 2), 16)
-        const g = parseInt(hex.substring(2, 4), 16)
-        const b = parseInt(hex.substring(4, 6), 16)
-        return `rgba(${r}, ${g}, ${b}, ${opacity})`
+        // Handle both 3-digit and 6-digit hex
+        let r: number, g: number, b: number
+        if (hex.length === 3) {
+            r = parseInt(hex[0] + hex[0], 16)
+            g = parseInt(hex[1] + hex[1], 16)
+            b = parseInt(hex[2] + hex[2], 16)
+        } else {
+            r = parseInt(hex.substring(0, 2), 16)
+            g = parseInt(hex.substring(2, 4), 16)
+            b = parseInt(hex.substring(4, 6), 16)
+        }
+        return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`
     }
-    
-    // Fallback: try to wrap in rgba or return as-is
+
+    // Fallback: return as-is if we can't parse it
+    // This should rarely happen, but preserves original behavior for edge cases
     return color
 }
 
@@ -172,7 +197,7 @@ const DEFAULT_ANNOTATION_INFO_CONFIG: AnnotationInfoConfig = {
         {
             key: 'filteredCount',
             label: 'Filtered',
-            formatter: (value, doc) => {
+            formatter: (_value, doc) => {
                 if (doc.filteredCount !== undefined && doc.filteredCount > 0) {
                     return `${doc.filteredCount} element(s) (${doc.filteredPoints || 0} points) skipped`
                 }
@@ -214,6 +239,9 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             apiHeaders,
             showAnnotationControls = false,
             defaultAnnotationOpacity = 1,
+            annotationOpacities,
+            visibleAnnotations,
+            onAnnotationReady,
         },
         ref
     ) => {
@@ -227,6 +255,112 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         const lastRenderedAnnotationsRef = useRef<string>('')
         const [annotationOpacity, setAnnotationOpacity] = useState<number>(defaultAnnotationOpacity)
 
+        // Track if component is mounted to prevent operations after unmount
+        const isMountedRef = useRef(true)
+        useEffect(() => {
+            isMountedRef.current = true
+            return () => {
+                isMountedRef.current = false
+            }
+        }, [])
+
+        // Track component visibility to prevent initialization when hidden
+        const [isVisible, setIsVisible] = useState(true)
+        useEffect(() => {
+            if (!containerRef.current) return
+
+            const observer = new IntersectionObserver(
+                (entries) => {
+                    entries.forEach((entry) => {
+                        if (entry.isIntersecting && entry.intersectionRatio > 0.1) {
+                            setIsVisible(true)
+                        } else {
+                            setIsVisible(false)
+                        }
+                    })
+                },
+                { threshold: 0.1, rootMargin: '50px' }
+            )
+
+            observer.observe(containerRef.current)
+
+            return () => {
+                if (containerRef.current) {
+                    observer.unobserve(containerRef.current)
+                }
+            }
+        }, [])
+
+        // Global error handler to catch _transformBounds errors from library's mouse handlers
+        useEffect(() => {
+            // Global error handler for _transformBounds errors
+            const errorHandler = (event: ErrorEvent | Event) => {
+                const message = event instanceof ErrorEvent ? event.message : String(event)
+                if (message && typeof message === 'string' && message.includes('_transformBounds')) {
+                    console.warn('Suppressed _transformBounds error from library')
+                    if (event instanceof ErrorEvent) {
+                        event.preventDefault() // Suppress the error
+                    }
+                    return true
+                }
+                return false
+            }
+
+            // Unhandled rejection handler
+            const rejectionHandler = (event: PromiseRejectionEvent) => {
+                const reason = event.reason
+                const reasonStr = reason?.message || String(reason || '')
+                if (reasonStr.includes('_transformBounds')) {
+                    console.warn('Suppressed _transformBounds promise rejection')
+                    event.preventDefault() // Suppress the error
+                }
+            }
+
+            // Add event listeners
+            window.addEventListener('error', errorHandler as EventListener, true)
+            window.addEventListener('unhandledrejection', rejectionHandler)
+
+            // Cleanup
+            return () => {
+                window.removeEventListener('error', errorHandler as EventListener, true)
+                window.removeEventListener('unhandledrejection', rejectionHandler)
+            }
+        }, [])
+
+        // Helper function to check if Paper.js is fully initialized and ready
+        const isPaperJsReady = useCallback((paperScope: PaperOverlay['paperScope']): boolean => {
+            if (!paperScope) return false
+            if (!paperScope.view) return false
+            // Check if _transformBounds exists (Paper.js internal property indicating initialization)
+            const view = paperScope.view as any
+            if (view._transformBounds === null || view._transformBounds === undefined) {
+                return false
+            }
+            if (typeof paperScope.view.draw !== 'function') return false
+            return true
+        }, [])
+
+        // Safe wrapper for Paper.js view.draw() that checks initialization
+        const safeDrawPaperView = useCallback((paperScope: PaperOverlay['paperScope']): void => {
+            if (!isMountedRef.current) return
+            if (!isPaperJsReady(paperScope)) {
+                console.warn('Paper.js not fully initialized, skipping draw operation')
+                return
+            }
+            try {
+                if (paperScope.view && typeof paperScope.view.draw === 'function') {
+                    paperScope.view.draw()
+                }
+            } catch (error) {
+                // Silently catch _transformBounds errors - component might be unmounting or hidden
+                if (error instanceof Error && error.message.includes('_transformBounds')) {
+                    console.warn('Paper.js draw operation skipped (component likely unmounting or hidden)')
+                } else {
+                    console.error('Error drawing Paper.js view:', error)
+                }
+            }
+        }, [isPaperJsReady])
+
         // Create stable key for fetched annotations
         const fetchedAnnotationsKey = useMemo(() => {
             return fetchedAnnotations.map(a => `${a.id}:${a.left}:${a.top}:${a.width}:${a.height}`).join('|')
@@ -237,6 +371,9 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
         // Track if viewer is already initialized to prevent multiple creations
         const isInitializedRef = useRef(false)
+        
+        // Track last imageKey to detect when it actually changes
+        const lastImageKeyRef = useRef<string>('')
 
         // Store callbacks in refs to avoid dependency issues
         const onViewerReadyRef = useRef(onViewerReady)
@@ -303,143 +440,247 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         // Initialize OpenSeadragon viewer
         useEffect(() => {
             if (!containerRef.current) return
+            // Only check visibility for initial mount, don't re-initialize if visibility changes
+            if (!isVisible && !isInitializedRef.current) {
+                // Component not visible and not yet initialized, don't initialize yet
+                return
+            }
             if (isInitializedRef.current) {
                 // Already initialized, don't re-initialize unless imageKey changed
                 return
             }
 
-            isInitializedRef.current = true
+            // Store references for cleanup
+            let osdViewer: OpenSeadragonViewer | null = null
+            let paperOverlay: PaperOverlay | null = null
+            let annotationToolkit: AnnotationToolkit | null = null
 
-            // Set the ID on the container element (OpenSeadragon needs an element with an ID)
-            containerRef.current.id = viewerIdRef.current
-
-            const defaultOsdOptions: OpenSeadragonOptions = {
-                id: viewerIdRef.current, // Use ID like the working example
-                prefixUrl: 'https://openseadragon.github.io/openseadragon/images/',
-                maxImageCacheCount: 1000,
-                crossOriginPolicy: 'Anonymous',
-                autoHideControls: false,
-                debugMode: false,
-                // Enable navigation controls by default
-                showNavigator: true,
-                showZoomControl: true,
-                showHomeControl: true,
-                showFullPageControl: true,
-                // User-provided options override defaults
-                ...osdOptions,
-            }
-
-            // Create viewer first (empty, like the working example)
-            const osdViewer = OpenSeadragon(defaultOsdOptions)
-
-            // Create Paper overlay from the viewer (before adding images, like working example)
-            const paperOverlay = osdViewer.createPaperOverlay()
-            setOverlay(paperOverlay)
-
-            // Create annotation toolkit immediately (like working example - before loading image)
-            const annotationToolkit = new AnnotationToolkit(osdViewer, {
-                overlay: paperOverlay,
-            })
-            setToolkit(annotationToolkit)
-
-            // Add event handlers (like the working example)
-            osdViewer.addHandler('open-failed', (e: unknown) => {
-                console.warn('OpenSeadragon: Open failed', e)
-            })
-
-            osdViewer.addHandler('open', (e: unknown) => {
-                console.log('OpenSeadragon: Image opened', e)
-                setViewer(osdViewer)
-                // Use ref to avoid dependency issues
-                if (onViewerReadyRef.current) {
-                    onViewerReadyRef.current(osdViewer)
-                }
-            })
-
-            // Wait for tiled image to be added (like the working example)
-            osdViewer.world.addHandler('add-item', (event: { item: { addPaperItem: (item: unknown) => void } }) => {
-                console.log('Tiled image added:', event.item)
-                tiledImageRef.current = event.item as { addPaperItem: (item: unknown) => void; paperItems?: unknown[] }
-            })
-
-            // Load the image immediately - use viewer.open() for DZI URLs, or addTiledImage for manual tile sources
-            if (imageInfo.dziUrl) {
-                // Use viewer.open() for DZI descriptor URL - call this immediately, don't wait
-                osdViewer.open(imageInfo.dziUrl)
-            } else {
-                // Manual tile source construction (requires all fields)
-                if (
-                    !imageInfo.imageId ||
-                    !imageInfo.width ||
-                    !imageInfo.height ||
-                    !imageInfo.tileWidth ||
-                    !imageInfo.levels ||
-                    !imageInfo.baseUrl
-                ) {
-                    console.error(
-                        'SlideViewer: If dziUrl is not provided, all manual fields (imageId, width, height, tileWidth, levels, baseUrl) are required'
-                    )
+            // Add small delay to ensure DOM is ready
+            const initTimer = setTimeout(() => {
+                if (!isMountedRef.current || !containerRef.current) return
+                // Double-check visibility before initializing (user might have scrolled away)
+                if (!isVisible) {
                     return
                 }
 
-                const tileSource = {
-                    width: imageInfo.width,
-                    height: imageInfo.height,
-                    tileSize: imageInfo.tileWidth,
-                    minLevel: 0,
-                    maxLevel: imageInfo.levels - 1,
-                    getTileUrl: (level: number, x: number, y: number) => {
-                        return `${imageInfo.baseUrl}/wsi/files/tile/${imageInfo.imageId}/${level}/${x}/${y}`
-                    },
-                }
+                try {
+                    isInitializedRef.current = true
+                    lastImageKeyRef.current = imageKey
 
-                // Add the tile source to the viewer
-                osdViewer.addTiledImage({
-                    tileSource,
-                    success: () => {
+
+                    // Set the ID on the container element (OpenSeadragon needs an element with an ID)
+                    containerRef.current.id = viewerIdRef.current
+
+                    const defaultOsdOptions: OpenSeadragonOptions = {
+                        id: viewerIdRef.current, // Use ID like the working example
+                        prefixUrl: 'https://openseadragon.github.io/openseadragon/images/',
+                        maxImageCacheCount: 1000,
+                        crossOriginPolicy: 'Anonymous',
+                        autoHideControls: false,
+                        debugMode: false,
+                        // Enable navigation controls by default
+                        showNavigator: true,
+                        showZoomControl: true,
+                        showHomeControl: true,
+                        showFullPageControl: true,
+                        // User-provided options override defaults
+                        ...osdOptions,
+                    }
+
+                    // Create viewer first (empty, like the working example)
+                    osdViewer = OpenSeadragon(defaultOsdOptions)
+
+                    // Create Paper overlay from the viewer (before adding images, like working example)
+                    paperOverlay = osdViewer.createPaperOverlay() as PaperOverlay
+                    if (isMountedRef.current) {
+                        setOverlay(paperOverlay)
+                    }
+
+                    // Create annotation toolkit immediately (like working example - before loading image)
+                    annotationToolkit = new AnnotationToolkit(osdViewer, {
+                        overlay: paperOverlay,
+                    })
+                    
+                    // Add error handling for library's mouse event handlers
+                    // The library's internal mouse handlers can throw _transformBounds errors
+                    // if Paper.js isn't fully initialized when mouse events fire
+                    if (annotationToolkit && typeof (annotationToolkit as any).overlay?.paperScope?.view !== 'undefined') {
+                        const paperScope = (annotationToolkit as any).overlay.paperScope
+                        if (paperScope && paperScope.view) {
+                            // Wrap view methods that might access _transformBounds
+                            const originalView = paperScope.view
+                            const viewProxy = new Proxy(originalView, {
+                                get: (target, prop) => {
+                                    if (prop === 'getBounds' || prop === '_transformBounds') {
+                                        return function(...args: unknown[]) {
+                                            try {
+                                                // Check if _transformBounds exists before accessing
+                                                if ((target as any)._transformBounds === null || (target as any)._transformBounds === undefined) {
+                                                    console.warn('Paper.js view not fully initialized, skipping bounds operation')
+                                                    return null
+                                                }
+                                                if (prop === 'getBounds') {
+                                                    return (originalView.getBounds as any)?.apply(target, args)
+                                                }
+                                                return (target as any)[prop]
+                                            } catch (error) {
+                                                if (error instanceof Error && error.message.includes('_transformBounds')) {
+                                                    // Silently suppress _transformBounds errors from library
+                                                    return null
+                                                }
+                                                throw error
+                                            }
+                                        }
+                                    }
+                                    return (target as any)[prop]
+                                }
+                            })
+                            // Try to replace the view (may not work if library has locked reference)
+                            try {
+                                (paperScope as any).view = viewProxy
+                            } catch (e) {
+                                // If we can't replace, that's okay - we'll handle errors globally
+                            }
+                        }
+                    }
+                    
+                    if (isMountedRef.current) {
+                        setToolkit(annotationToolkit)
+                    }
+
+                    // Add event handlers (like the working example)
+                    if (!osdViewer) return
+                    
+                    osdViewer.addHandler('open-failed', (e: unknown) => {
+                        console.warn('OpenSeadragon: Open failed', e)
+                    })
+
+                    osdViewer.addHandler('open', (e: unknown) => {
+                        if (!isMountedRef.current || !osdViewer) return
+                        console.log('OpenSeadragon: Image opened', e)
                         setViewer(osdViewer)
                         // Use ref to avoid dependency issues
                         if (onViewerReadyRef.current) {
                             onViewerReadyRef.current(osdViewer)
                         }
-                    },
-                })
-            }
+                    })
 
-            // Cleanup function
+                    // Wait for tiled image to be added (like the working example)
+                    osdViewer.world.addHandler('add-item', (event: unknown) => {
+                        if (!isMountedRef.current) return
+                        const typedEvent = event as { item: { addPaperItem: (item: unknown) => void } }
+                        console.log('Tiled image added:', typedEvent.item)
+                        tiledImageRef.current = typedEvent.item as { addPaperItem: (item: unknown) => void; paperItems?: unknown[] }
+                    })
+
+                    // Load the image immediately - use viewer.open() for DZI URLs, or addTiledImage for manual tile sources
+                    if (imageInfo.dziUrl) {
+                        // Use viewer.open() for DZI descriptor URL - call this immediately, don't wait
+                        osdViewer.open(imageInfo.dziUrl)
+                    } else {
+                        // Manual tile source construction (requires all fields)
+                        if (
+                            !imageInfo.imageId ||
+                            !imageInfo.width ||
+                            !imageInfo.height ||
+                            !imageInfo.tileWidth ||
+                            !imageInfo.levels ||
+                            !imageInfo.baseUrl
+                        ) {
+                            console.error(
+                                'SlideViewer: If dziUrl is not provided, all manual fields (imageId, width, height, tileWidth, levels, baseUrl) are required'
+                            )
+                            return
+                        }
+
+                        const tileSource = {
+                            width: imageInfo.width,
+                            height: imageInfo.height,
+                            tileSize: imageInfo.tileWidth,
+                            minLevel: 0,
+                            maxLevel: imageInfo.levels - 1,
+                            getTileUrl: (level: number, x: number, y: number) => {
+                                return `${imageInfo.baseUrl}/wsi/files/tile/${imageInfo.imageId}/${level}/${x}/${y}`
+                            },
+                        }
+
+                        // Add the tile source to the viewer
+                        if (osdViewer) {
+                            osdViewer.addTiledImage({
+                                tileSource,
+                                success: () => {
+                                    if (!isMountedRef.current || !osdViewer) return
+                                    setViewer(osdViewer)
+                                    // Use ref to avoid dependency issues
+                                    if (onViewerReadyRef.current) {
+                                        onViewerReadyRef.current(osdViewer)
+                                    }
+                                },
+                            })
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error initializing SlideViewer:', error)
+                    // Reset initialization flag on error so it can retry
+                    isInitializedRef.current = false
+                }
+            }, 100)
+
             return () => {
-                isInitializedRef.current = false
+                clearTimeout(initTimer)
+                
+                // Only cleanup if imageKey actually changed (which means we're re-initializing) or component is unmounting
+                // Don't cleanup on every dependency update
+                const imageKeyChanged = imageKey !== lastImageKeyRef.current
+                const shouldCleanup = !isMountedRef.current || imageKeyChanged
+                
+                if (shouldCleanup) {
+                    // Update the tracked imageKey
+                    if (imageKeyChanged) {
+                        lastImageKeyRef.current = imageKey
+                    }
+                    // Cleanup in reverse order with error handling
+                    // Use local variables captured from the effect closure
+                    if (annotationToolkit) {
+                        try {
+                            annotationToolkit.destroy()
+                        } catch (e) {
+                            console.warn('Error destroying annotation toolkit:', e)
+                        }
+                    }
+                    if (paperOverlay) {
+                        try {
+                            paperOverlay.destroy()
+                        } catch (e) {
+                            console.warn('Error destroying paper overlay:', e)
+                        }
+                    }
+                    if (osdViewer) {
+                        try {
+                            // Check if viewer has isDestroyed property before destroying
+                            if (typeof (osdViewer as any).isDestroyed === 'boolean' && (osdViewer as any).isDestroyed) {
+                                return
+                            }
+                            osdViewer.destroy()
+                        } catch (e) {
+                            console.warn('Error destroying OpenSeadragon viewer:', e)
+                        }
+                    }
 
-                // Cleanup in reverse order
-                if (annotationToolkit) {
-                    try {
-                        annotationToolkit.destroy()
-                    } catch (e) {
-                        console.warn('Error destroying annotation toolkit:', e)
-                    }
-                }
-                if (paperOverlay) {
-                    try {
-                        paperOverlay.destroy()
-                    } catch (e) {
-                        console.warn('Error destroying paper overlay:', e)
-                    }
-                }
-                if (osdViewer) {
-                    try {
-                        osdViewer.destroy()
-                    } catch (e) {
-                        console.warn('Error destroying OpenSeadragon viewer:', e)
+                    // Only reset initialization flag if actually unmounting or image changed
+                    if (!isMountedRef.current) {
+                        isInitializedRef.current = false
                     }
                 }
 
                 // Don't clear state here - let React handle it on unmount
                 // Clearing state here can cause infinite loops if the effect runs again
             }
-        }, [imageKey]) // Only depend on imageKey - osdOptions is spread inline so doesn't need to be in deps
+        }, [imageKey, osdOptions]) // Only depend on imageKey and osdOptions - not visibility
 
         // Fetch annotations from DSA API if annotationIds are provided
         useEffect(() => {
+            if (!isMountedRef.current) return
             // Early return if no annotationIds - don't set state unnecessarily
             if (!annotationIds || annotationIds.length === 0 || !apiBaseUrl) {
                 // Only clear if we had annotations before (avoid creating new empty array reference)
@@ -463,18 +704,18 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     console.log(`Fetching ${annotationIds.length} annotation(s) from DSA API...`)
                     // Use custom fetch function if provided, otherwise use default fetch
                     const customFetch = fetchFn || fetch
-                    
+
                     // Fetch annotations from /annotation/{id} endpoint (not geojson)
                     const annotationPromises = annotationIds.map(async (id) => {
                         const url = `${apiBaseUrl}/annotation/${id}`
                         console.log(`Fetching annotation ${id} from: ${url}`)
-                        
+
                         // Build request options with custom headers if provided
                         const fetchOptions: RequestInit = {}
                         if (apiHeaders) {
                             fetchOptions.headers = apiHeaders
                         }
-                        
+
                         const response = await customFetch(url, fetchOptions)
                         if (!response.ok) {
                             console.warn(`Failed to fetch annotation ${id}:`, response.statusText, response.status)
@@ -486,6 +727,12 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     })
 
                     const annotationData = await Promise.all(annotationPromises)
+
+                    // Check if component is still mounted before setting state
+                    if (!isMountedRef.current) {
+                        console.log('Component unmounted during annotation fetch, skipping state update')
+                        return
+                    }
 
                     // Track annotation document info
                     const docInfo: Array<{
@@ -504,7 +751,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     const validAnnotations = annotationData
                         .filter((ann): ann is unknown => ann !== null && ann !== undefined)
                         .map((annotationDoc, index) => {
-                            const annotationId = annotationIds[index]
+                            // Normalize annotationId to string for consistency
+                            const annotationId = String(annotationIds[index])
                             const types = new Set<string>()
                             const parsed: AnnotationFeature[] = []
                             let totalPoints = 0
@@ -586,6 +834,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                                                 label: el.label,
                                                 annotationType: 'rectangle',
                                                 element: el, // Store full element for rendering
+                                                documentId: annotationId, // Store document ID for opacity lookup
                                             })
                                         }
                                     } else if (el.type === 'polyline' && el.points && el.points.length >= 2) {
@@ -626,6 +875,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                                                 closed: el.closed,
                                                 fillColor: el.fillColor,
                                                 element: el, // Store full element for rendering
+                                                documentId: annotationId, // Store document ID for opacity lookup
                                             })
                                         }
                                     }
@@ -705,11 +955,20 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     }
 
                     console.log(`Parsed ${finalAnnotations.length} annotation feature(s) from ${annotationIds.length} annotation document(s)`)
+                    // Check if component is still mounted before setting state
+                    if (!isMountedRef.current) {
+                        console.log('Component unmounted after annotation parsing, skipping state update')
+                        return
+                    }
+                    
                     setFetchedAnnotations(finalAnnotations)
                     setAnnotationDocuments(docInfo)
                 } catch (error) {
                     console.error('Error fetching annotations:', error)
-                    setFetchedAnnotations([])
+                    // Only set state if component is still mounted
+                    if (isMountedRef.current) {
+                        setFetchedAnnotations([])
+                    }
                 }
             }
 
@@ -829,9 +1088,46 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                 console.warn('Error clearing existing annotations:', e)
             }
 
+            // Convert annotationOpacities to Map if needed (do this once before the loop)
+            // Convert all keys to strings for consistent Map matching
+            const opacityMap = annotationOpacities instanceof Map
+                ? new Map(Array.from(annotationOpacities.entries()).map(([k, v]) => [String(k), v]))
+                : annotationOpacities
+                    ? new Map(Object.entries(annotationOpacities).map(([k, v]) => [String(k), v]))
+                    : null
+
+            // Track which document IDs have been rendered (to call onAnnotationReady)
+            // Use string Set for consistency with AnnotationManager
+            const renderedDocumentIds = new Set<string>()
+
             // Render each annotation
             for (const annotation of annotationFeatures) {
                 try {
+                    // Use documentId (annotation document ID) for lookup - convert to string for consistent matching
+                    const documentId = (annotation as { documentId?: string | number }).documentId
+                    const lookupId = documentId !== undefined ? String(documentId) : undefined
+                    
+                    console.log(`SlideViewer: Processing annotation feature id=${annotation.id}, documentId=${documentId}, lookupId=${lookupId}`)
+                    
+                    // Get per-annotation opacity if available, otherwise use global opacity
+                    // Use documentId (annotation document ID) for opacity lookup, not the individual feature ID
+                    let annotationSpecificOpacity = annotationOpacity
+                    if (opacityMap && lookupId !== undefined) {
+                        const specificOpacity = opacityMap.get(lookupId)
+                        if (specificOpacity !== undefined) {
+                            annotationSpecificOpacity = specificOpacity
+                        }
+                    }
+                    
+                    console.log(`SlideViewer: Annotation opacity=${annotationSpecificOpacity}, will ${annotationSpecificOpacity <= 0 ? 'skip' : 'render'}`)
+                    
+                    // Check visibility based on opacity (opacity-based visibility)
+                    // Skip rendering if opacity is 0 (hidden)
+                    if (annotationSpecificOpacity <= 0) {
+                        console.log(`SlideViewer: Skipping annotation with opacity 0 (hidden)`)
+                        continue
+                    }
+                    
                     let paperItem: {
                         data?: { annotation?: AnnotationFeature }
                         onClick?: (event?: unknown) => void
@@ -843,12 +1139,12 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     // Check if this is a polyline (like the working example)
                     if (annotation.annotationType === 'polyline' && annotation.points && Array.isArray(annotation.points)) {
                         // Create path from points (like the working example)
-                        const path = new paperScope.Path()
+                        const path = new paperScope.Path() as any
                         const strokeColor = annotation.color || defaultAnnotationColor
-                        path.strokeColor = applyOpacity(strokeColor, annotationOpacity)
+                        path.strokeColor = applyOpacity(strokeColor, annotationSpecificOpacity)
                         path.strokeWidth = strokeWidth
                         const fillColor = (annotation.fillColor as string) || 'rgba(0, 0, 0, 0)'
-                        path.fillColor = applyOpacity(fillColor, annotationOpacity)
+                        path.fillColor = applyOpacity(fillColor, annotationSpecificOpacity)
 
                         // Add points to path (like the working example)
                         annotation.points.forEach((point: [number, number], pointIndex: number) => {
@@ -873,15 +1169,15 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                             annotation.width,
                             annotation.height
                         )
-                        const rectPath = new paperScope.Path.Rectangle(rect)
+                        const rectPath = new paperScope.Path.Rectangle(rect) as any
 
                         // Set style properties
                         const strokeColor = annotation.color || defaultAnnotationColor
-                        rectPath.strokeColor = applyOpacity(strokeColor, annotationOpacity)
+                        rectPath.strokeColor = applyOpacity(strokeColor, annotationSpecificOpacity)
                         rectPath.strokeWidth = strokeWidth
-                        rectPath.fillColor = applyOpacity('rgba(0, 0, 0, 0)', annotationOpacity) // Transparent fill by default
+                        rectPath.fillColor = applyOpacity('rgba(0, 0, 0, 0)', annotationSpecificOpacity) // Transparent fill by default
 
-                        paperItem = rectPath
+                        paperItem = rectPath as any
                     }
 
                     // Store annotation data on the paper item (like the working example)
@@ -892,7 +1188,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
                     // Handle click events
                     if (onAnnotationClickRef.current) {
-                        paperItem.onClick = (event?: unknown) => {
+                        paperItem.onClick = (_event?: unknown) => {
                             onAnnotationClickRef.current?.(annotation)
                         }
                     }
@@ -914,18 +1210,44 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                             console.warn('Failed to register feature with toolkit:', e)
                         }
                     }
+
+                    // Track this document ID as rendered
+                    // Always use the normalized string version for consistency with AnnotationManager
+                    if (lookupId !== undefined) {
+                        renderedDocumentIds.add(lookupId)
+                        console.log(`SlideViewer: Added documentId '${lookupId}' to renderedDocumentIds. Set now has:`, Array.from(renderedDocumentIds))
+                    } else {
+                        console.warn(`SlideViewer: Cannot track document ID - lookupId is undefined for annotation id=${annotation.id}`)
+                    }
                 } catch (e) {
                     console.error(`Error rendering annotation ${annotation.id}:`, e, annotation)
                 }
             }
 
-            // Draw the view (like the working example)
-            if (paperScope.view && paperScope.view.draw) {
-                paperScope.view.draw()
-            }
+            // Draw the view safely (like the working example)
+            safeDrawPaperView(paperScope)
 
             console.log(`Finished rendering ${annotationFeatures.length} annotations`)
-            // eslint-disable-next-line react-hooks/exhaustive-deps
+            console.log(`SlideViewer: onAnnotationReady is ${onAnnotationReady ? 'defined' : 'undefined'}, renderedDocumentIds has ${renderedDocumentIds.size} items:`, Array.from(renderedDocumentIds))
+            
+            // Call onAnnotationReady for each unique document ID that was rendered
+            if (onAnnotationReady && renderedDocumentIds.size > 0) {
+                // Use setTimeout to ensure rendering is complete before notifying
+                setTimeout(() => {
+                    console.log(`SlideViewer: setTimeout fired, calling onAnnotationReady for ${renderedDocumentIds.size} document(s)`)
+                    renderedDocumentIds.forEach((documentId) => {
+                        try {
+                            // documentId is already a normalized string from the Set
+                            console.log(`SlideViewer: Calling onAnnotationReady('${documentId}')`)
+                            onAnnotationReady(documentId)
+                        } catch (e) {
+                            console.error(`Error calling onAnnotationReady for ${documentId}:`, e)
+                        }
+                    })
+                }, 100)
+            } else {
+                console.warn(`SlideViewer: Not calling onAnnotationReady - callback is ${onAnnotationReady ? '' : 'not '}defined, renderedDocumentIds has ${renderedDocumentIds.size} items`)
+            }
         }, [
             viewer,
             overlay,
@@ -934,6 +1256,9 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             fetchedAnnotationsKey, // Stable key for fetched annotations
             strokeWidth,
             annotationOpacity, // Re-render when opacity changes
+            annotationOpacities, // Re-render when per-annotation opacities change
+            visibleAnnotations, // Re-render when visibility changes
+            onAnnotationReady, // Include callback in dependencies
             // parsedManualAnnotations and fetchedAnnotations are captured from closure
             // onAnnotationClick removed - using ref instead
         ])
@@ -941,53 +1266,124 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         // Update opacity on existing annotations when opacity changes
         useEffect(() => {
             if (!viewer || !overlay || !toolkit) return
-            
+
             const paperScope = overlay.paperScope
             if (!paperScope || !paperScope.project) return
 
             try {
                 const existingFeatures = toolkit.getFeatures()
                 if (existingFeatures && Array.isArray(existingFeatures)) {
+                    // Convert maps if needed
+                    const opacityMap = annotationOpacities instanceof Map 
+                        ? annotationOpacities 
+                        : annotationOpacities 
+                            ? new Map(Object.entries(annotationOpacities).map(([k, v]) => [String(k), v]))
+                            : null
+                    
+                    let hasUpdates = false
+                    
                     for (const feature of existingFeatures) {
                         try {
                             if (feature && typeof feature === 'object') {
                                 const paperItem = feature as {
+                                    annotationId?: string | number
                                     strokeColor?: string | { r: number; g: number; b: number; alpha: number }
                                     fillColor?: string | { r: number; g: number; b: number; alpha: number }
                                     data?: { annotation?: AnnotationFeature }
+                                    remove?: () => void
                                 }
-                                
+
                                 // Get original color from annotation data
                                 const annotation = paperItem.data?.annotation
-                                if (annotation) {
-                                    const strokeColor = annotation.color || defaultAnnotationColor
-                                    const fillColor = annotation.fillColor || 'rgba(0, 0, 0, 0)'
-                                    
-                                    // Update stroke color opacity
-                                    if (paperItem.strokeColor) {
-                                        paperItem.strokeColor = applyOpacity(strokeColor, annotationOpacity) as any
+                                if (!annotation) continue
+
+                                // Use documentId (annotation document ID) for lookup - this is the key in the maps
+                                const documentId = (annotation as { documentId?: string | number }).documentId
+                                // Convert to string for consistent Map key matching
+                                const lookupId = documentId !== undefined ? String(documentId) : undefined
+                                
+                                if (lookupId === undefined) {
+                                    // No documentId - skip this feature (shouldn't happen, but be safe)
+                                    continue
+                                }
+                                
+                                // Check visibility based on opacity (opacity-based visibility)
+                                // If opacity is 0, the annotation should be hidden
+                                let featureOpacity = annotationOpacity
+                                if (opacityMap && lookupId !== undefined) {
+                                    const specificOpacity = opacityMap.get(lookupId)
+                                    if (specificOpacity !== undefined) {
+                                        featureOpacity = specificOpacity
                                     }
-                                    
-                                    // Update fill color opacity
-                                    if (paperItem.fillColor) {
-                                        paperItem.fillColor = applyOpacity(fillColor, annotationOpacity) as any
+                                }
+                                
+                                if (featureOpacity <= 0) {
+                                    // Annotation should be hidden (opacity 0) - set opacity to 0 or remove
+                                    try {
+                                        // Try to set opacity to 0 first (less destructive than removing)
+                                        const strokeColor = annotation.color || defaultAnnotationColor
+                                        const fillColor = annotation.fillColor || 'rgba(0, 0, 0, 0)'
+                                        if (paperItem.strokeColor) {
+                                            paperItem.strokeColor = applyOpacity(strokeColor, 0) as any
+                                            hasUpdates = true
+                                        }
+                                        if (paperItem.fillColor) {
+                                            paperItem.fillColor = applyOpacity(fillColor, 0) as any
+                                            hasUpdates = true
+                                        }
+                                    } catch (e) {
+                                        // If opacity update fails, try removal as fallback
+                                        try {
+                                            if (paperItem.remove) {
+                                                paperItem.remove()
+                                                hasUpdates = true
+                                            }
+                                        } catch (removeError) {
+                                            console.warn('Could not hide annotation:', removeError)
+                                        }
                                     }
+                                    continue // Skip further opacity update for hidden annotations
+                                }
+
+                                // Get the target opacity for this feature
+                                let targetOpacity = annotationOpacity
+                                if (opacityMap && lookupId !== undefined && opacityMap.has(lookupId)) {
+                                    // Use per-annotation opacity if available
+                                    const specificOpacity = opacityMap.get(lookupId)
+                                    if (specificOpacity !== undefined) {
+                                        targetOpacity = specificOpacity
+                                    }
+                                }
+
+                                const strokeColor = annotation.color || defaultAnnotationColor
+                                const fillColor = annotation.fillColor || 'rgba(0, 0, 0, 0)'
+
+                                // Update stroke color opacity
+                                if (paperItem.strokeColor) {
+                                    paperItem.strokeColor = applyOpacity(strokeColor, targetOpacity) as any
+                                    hasUpdates = true
+                                }
+
+                                // Update fill color opacity
+                                if (paperItem.fillColor) {
+                                    paperItem.fillColor = applyOpacity(fillColor, targetOpacity) as any
+                                    hasUpdates = true
                                 }
                             }
                         } catch (e) {
                             console.warn('Error updating annotation opacity:', e)
                         }
                     }
-                    
-                    // Redraw the view
-                    if (paperScope.view && paperScope.view.draw) {
-                        paperScope.view.draw()
+
+                    // Only redraw if we actually made updates
+                    if (hasUpdates) {
+                        safeDrawPaperView(paperScope)
                     }
                 }
             } catch (e) {
                 console.warn('Could not update annotation opacity:', e)
             }
-        }, [annotationOpacity, viewer, overlay, toolkit, defaultAnnotationColor])
+        }, [annotationOpacity, annotationOpacities, visibleAnnotations, viewer, overlay, toolkit, defaultAnnotationOpacity, defaultAnnotationColor, safeDrawPaperView])
 
         // Merge user config with defaults
         const infoConfig = useMemo(() => {
@@ -1035,7 +1431,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                                 </div>
                             </div>
                         )}
-                        {showAnnotationInfo && (annotations.length > 0 || annotationDocuments.length > 0 || fetchedAnnotations.length > 0) && (
+                        {showAnnotationInfo && ((Array.isArray(annotations) && annotations.length > 0) || (!Array.isArray(annotations) && annotations && 'type' in annotations && annotations.type === 'FeatureCollection' && annotations.features?.length > 0) || annotationDocuments.length > 0 || fetchedAnnotations.length > 0) && (
                             <div className="bdsa-slide-viewer__annotation-info">
                                 <div className="bdsa-slide-viewer__annotation-info-header">
                                     <strong>{infoConfig.headerText}</strong>
@@ -1050,7 +1446,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                                                     .map((prop) => {
                                                         const value = doc[prop.key as keyof typeof doc]
                                                         const displayValue = prop.formatter
-                                                            ? prop.formatter(value, doc)
+                                                            ? prop.formatter(value, { ...doc, totalPoints: (doc as any).totalPoints ?? 0 })
                                                             : String(value ?? 'N/A')
                                                         return (
                                                             <div key={prop.key}>

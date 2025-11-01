@@ -1,6 +1,6 @@
 {
     "name": "bdsa-react-components",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Reusable React components for the Digital Slide Archive project",
     "type": "module",
     "main": "./dist/index.cjs",
@@ -18,18 +18,23 @@
         "dist",
         "README.md",
         "CHANGELOG.md",
-        "INTEGRATION.md"
+        "INTEGRATION.md",
+        "CURSOR_INTEGRATION.md"
     ],
     "scripts": {
         "dev": "vite",
-        "build": "tsc && vite build",
+        "build": "npm run generate:cursor-doc && tsc && vite build",
+        "prepublishOnly": "npm run build",
         "preview": "vite preview",
         "test": "vitest",
         "test:ui": "vitest --ui",
         "test:coverage": "vitest --coverage",
         "storybook": "storybook dev -p 6006",
         "build-storybook": "storybook build",
-        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "generate:cursor-doc": "node scripts/generate-cursor-doc.js",
+        "version": "npm run build && git add dist",
+        "postversion": "git push && git push --tags"
     },
     "peerDependencies": {
         "react": "^18.0.0",
@@ -79,5 +84,12 @@
         "ui-library"
     ],
     "author": "",
-    "license": "Apache-2.0"
+    "license": "Apache-2.0",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Gutman-Lab/bdsa-react-components.git"
+    },
+    "publishConfig": {
+        "access": "public"
+    }
 }

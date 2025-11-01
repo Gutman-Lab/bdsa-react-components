@@ -20,3 +20,11 @@ export type {
     AnnotationSearchResult,
 } from './components/AnnotationManager/AnnotationManager'
 
+export { FolderBrowser } from './components/FolderBrowser/FolderBrowser'
+export type {
+    FolderBrowserProps,
+    Collection,
+    Folder,
+    Resource,
+} from './components/FolderBrowser/FolderBrowser'
+

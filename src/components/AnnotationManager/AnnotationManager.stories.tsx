@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { AnnotationManager, type AnnotationSearchResult } from './AnnotationManager'
 import { SlideViewer, SlideImageInfo } from '../SlideViewer/SlideViewer'
 
@@ -141,107 +141,117 @@ export const Default: Story = {
 }
 
 // Wrapper component for the integrated view
-const AnnotationManagerWithViewer = ({ annotations, loading, error }: { annotations: AnnotationSearchResult[], loading: boolean, error: Error | null }) => {
+const AnnotationManagerWithViewer = () => {
     const [loadedAnnotationIds, setLoadedAnnotationIds] = useState<Set<string>>(new Set())
+    const [visibleAnnotations, setVisibleAnnotations] = useState<Map<string, boolean>>(new Map())
+    const [annotationOpacities, setAnnotationOpacities] = useState<Map<string, number>>(new Map())
     const dziUrl = `${exampleApiBaseUrl}/item/${exampleImageInfo.imageId}/tiles/dzi.dzi`
     
-    const toggleAnnotation = (annotationId: string) => {
-        setLoadedAnnotationIds(prev => {
-            const next = new Set(prev)
-            if (next.has(annotationId)) {
+    const handleLoadChange = (annotationId: string, loaded: boolean) => {
+        if (loaded) {
+            setLoadedAnnotationIds(prev => new Set(prev).add(annotationId))
+            setVisibleAnnotations(prev => new Map(prev).set(annotationId, true))
+            setAnnotationOpacities(prev => new Map(prev).set(annotationId, 1))
+        } else {
+            setLoadedAnnotationIds(prev => {
+                const next = new Set(prev)
                 next.delete(annotationId)
-            } else {
-                next.add(annotationId)
-            }
-            return next
-        })
+                return next
+            })
+            setVisibleAnnotations(prev => {
+                const next = new Map(prev)
+                next.delete(annotationId)
+                return next
+            })
+            setAnnotationOpacities(prev => {
+                const next = new Map(prev)
+                next.delete(annotationId)
+                return next
+            })
+        }
     }
     
-    // Convert Set to array for SlideViewer
-    const activeAnnotationIds = Array.from(loadedAnnotationIds)
-            
-    if (loading) {
-        return (
-            <div style={{ width: '100%', height: '600px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div>Loading annotations...</div>
-            </div>
-        )
+    const handleVisibilityChange = (annotationId: string, visible: boolean) => {
+        setVisibleAnnotations(prev => new Map(prev).set(annotationId, visible))
     }
     
-    if (error) {
-        return (
-            <div style={{ width: '100%', height: '600px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ color: '#dc3545' }}>Error: {error.message}</div>
-            </div>
-        )
+    const handleOpacityChange = (annotationId: string, opacity: number) => {
+        setAnnotationOpacities(prev => new Map(prev).set(annotationId, opacity))
     }
+    
+    // This callback is passed to AnnotationManager's onAnnotationReady prop for logging
+    const handleAnnotationReady = useCallback((annotationId: string | number) => {
+        console.log(`Annotation ${annotationId} is ready`)
+    }, [])
+    
+    // Store reference to AnnotationManager's internal onAnnotationReady callback
+    const annotationManagerReadyRef = React.useRef<((id: string | number) => void) | null>(null)
+    
+    // Filter loaded annotations to only include visible ones for the viewer
+    // Visibility is now opacity-based, so check opacity > 0
+    const visibleLoadedAnnotations = Array.from(loadedAnnotationIds).filter(id => {
+        const opacity = annotationOpacities.get(id) ?? 1
+        return opacity > 0
+    })
     
     return (
-        <div style={{ width: '100%', height: '800px', display: 'flex', flexDirection: 'column' }}>
-            {/* Annotation List Sidebar */}
-            <div style={{ width: '100%', maxHeight: '200px', overflowY: 'auto', borderBottom: '2px solid #ddd', backgroundColor: '#f8f9fa', flexShrink: 0 }}>
-                <div className="bdsa-annotation-manager__list" style={{ padding: '12px' }}>
-                    <div className="bdsa-annotation-manager__list-header" style={{ marginBottom: '8px' }}>
-                        <h3 style={{ fontSize: '14px', margin: 0 }}>Annotations ({annotations.length} total)</h3>
-                        <p style={{ fontSize: '12px', margin: '4px 0 0 0', color: '#666' }}>
-                            {activeAnnotationIds.length} loaded in viewer
-                        </p>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {annotations.map((ann) => {
-                            const isLoaded = loadedAnnotationIds.has(ann._id)
-                            return (
-                                <div
-                                    key={ann._id}
-                                    className={`bdsa-annotation-manager__annotation-card ${isLoaded ? 'bdsa-annotation-manager__annotation-card--selected' : ''}`}
-                                    style={{ 
-                                        minWidth: '200px', 
-                                        flex: '1 1 auto',
-                                        marginBottom: '8px'
-                                    }}
-                                    onClick={() => toggleAnnotation(ann._id)}
-                                >
-                                    <div className="bdsa-annotation-manager__annotation-card-header">
-                                        <h4 className="bdsa-annotation-manager__annotation-card-title" style={{ fontSize: '13px' }}>
-                                            {ann.annotation?.name || ann._id}
-                                        </h4>
-                                        {ann.public === false && (
-                                            <span className="bdsa-annotation-manager__annotation-card-badge bdsa-annotation-manager__annotation-card-badge--private">
-                                                Private
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="bdsa-annotation-manager__annotation-card-details" style={{ fontSize: '11px' }}>
-                                        {ann._elementCount !== undefined && (
-                                            <div className="bdsa-annotation-manager__annotation-card-detail">
-                                                <strong>Elements:</strong> {ann._elementCount}
-                                            </div>
-                                        )}
-                                        {ann._detailsCount !== undefined && (
-                                            <div className="bdsa-annotation-manager__annotation-card-detail">
-                                                <strong>Points:</strong> {ann._detailsCount.toLocaleString()}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div style={{ marginTop: '8px', fontSize: '11px', color: isLoaded ? '#28a745' : '#666' }}>
-                                        {isLoaded ? '✓ Loaded' : 'Click to load'}
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-                </div>
+        <div style={{ width: '100%', height: '800px', display: 'flex', flexDirection: 'row' }}>
+            {/* Annotation Manager - Vertical Sidebar */}
+            <div style={{ 
+                width: '350px', 
+                minWidth: '350px',
+                maxHeight: '800px', 
+                overflowY: 'auto', 
+                borderRight: '2px solid #ddd', 
+                backgroundColor: '#fff',
+                flexShrink: 0 
+            }}>
+                <AnnotationManager
+                    imageId={exampleImageInfo.imageId}
+                    apiBaseUrl={exampleApiBaseUrl}
+                    loadedAnnotations={loadedAnnotationIds}
+                    visibleAnnotations={visibleAnnotations}
+                    annotationOpacities={annotationOpacities}
+                    onAnnotationLoadChange={handleLoadChange}
+                    onAnnotationVisibilityChange={handleVisibilityChange}
+                    onAnnotationOpacityChange={handleOpacityChange}
+                    onAnnotationReady={handleAnnotationReady}
+                    showDefaultUI={true}
+                >
+                    {({ onAnnotationReady: managerReadyCallback }) => {
+                        // Capture AnnotationManager's internal callback via render prop
+                        // Store it directly (not in useEffect - render props are called during render)
+                        if (managerReadyCallback) {
+                            annotationManagerReadyRef.current = managerReadyCallback
+                        }
+                        return null // Use default UI
+                    }}
+                </AnnotationManager>
             </div>
             
             {/* SlideViewer */}
-            <div style={{ flex: 1, minHeight: 0, height: '600px' }}>
+            <div style={{ flex: 1, minWidth: 0, height: '800px' }}>
                 <SlideViewer
                     imageInfo={{ dziUrl }}
-                    annotationIds={activeAnnotationIds.length > 0 ? activeAnnotationIds : []}
+                    annotationIds={loadedAnnotationIds.size > 0 ? Array.from(loadedAnnotationIds) : []}
                     apiBaseUrl={exampleApiBaseUrl}
                     showAnnotationInfo={true}
-                    showAnnotationControls={true}
-                    height="600px"
+                    showAnnotationControls={false}
+                    annotationOpacities={annotationOpacities}
+                    visibleAnnotations={visibleAnnotations}
+                    onAnnotationReady={(id) => {
+                        // This is called by SlideViewer when annotation is ready
+                        // Call AnnotationManager's internal callback which clears loading state
+                        console.log(`Story: SlideViewer notified that annotation ${id} is ready`)
+                        if (annotationManagerReadyRef.current) {
+                            annotationManagerReadyRef.current(id)
+                        } else {
+                            console.warn(`Story: AnnotationManager's onAnnotationReady callback not yet available`)
+                        }
+                        // Also call the external handler for logging
+                        handleAnnotationReady(id)
+                    }}
+                    height="800px"
                 />
             </div>
         </div>
@@ -249,18 +259,12 @@ const AnnotationManagerWithViewer = ({ annotations, loading, error }: { annotati
 }
 
 export const WithSlideViewer: Story = {
-    args: {
-        imageId: '6903df8dd26a6d93de19a9b2',
-        apiBaseUrl: exampleApiBaseUrl,
-        children: ({ annotations, loading, error }) => (
-            <AnnotationManagerWithViewer annotations={annotations} loading={loading} error={error} />
-        ),
-    },
+    render: () => <AnnotationManagerWithViewer />,
     parameters: {
         layout: 'fullscreen',
         docs: {
             description: {
-                story: 'AnnotationManager with SlideViewer integration. Click annotation cards to selectively load them into the viewer. This prevents loading all annotations at once, which can be slow with large annotation sets.',
+                story: 'AnnotationManager with SlideViewer integration. Use the vertical annotation list on the left to load/unload annotations, toggle their visibility, and adjust opacity individually. Only visible loaded annotations are displayed in the viewer.',
             },
         },
     },

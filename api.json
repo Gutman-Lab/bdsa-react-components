@@ -1,0 +1,746 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BDSA React Components API Specification",
+  "version": "0.1.0",
+  "description": "Machine-readable API specification for bdsa-react-components library",
+  "package": {
+    "name": "bdsa-react-components",
+    "exports": {
+      "main": "./dist/index.cjs",
+      "module": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "styles": "./dist/style.css"
+    },
+    "peerDependencies": {
+      "react": "^18.0.0",
+      "react-dom": "^18.0.0"
+    },
+    "dependencies": {
+      "openseadragon": "^5.0.1",
+      "osd-paperjs-annotation": "github:pearcetm/osd-paperjs-annotation",
+      "paper": "^0.12.18"
+    }
+  },
+  "components": [
+    {
+      "name": "Button",
+      "export": "Button",
+      "description": "A versatile button component with multiple variants and states",
+      "type": "ButtonProps",
+      "props": [
+        {
+          "name": "variant",
+          "type": "'primary' | 'secondary' | 'danger' | 'success'",
+          "default": "primary",
+          "required": false,
+          "description": "Button style variant"
+        },
+        {
+          "name": "size",
+          "type": "'small' | 'medium' | 'large'",
+          "default": "medium",
+          "required": false,
+          "description": "Button size"
+        },
+        {
+          "name": "fullWidth",
+          "type": "boolean",
+          "default": false,
+          "required": false,
+          "description": "Whether button takes full width of its container"
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "default": false,
+          "required": false,
+          "description": "Whether button is in loading state"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "default": "",
+          "required": false,
+          "description": "Custom CSS class"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether button is disabled"
+        },
+        {
+          "name": "onClick",
+          "type": "(event: React.MouseEvent<HTMLButtonElement>) => void",
+          "required": false,
+          "description": "Click handler"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Button content"
+        }
+      ],
+      "extends": "React.ButtonHTMLAttributes<HTMLButtonElement>",
+      "example": "<Button variant=\"primary\" size=\"large\" onClick={() => {}}>Click Me</Button>"
+    },
+    {
+      "name": "Card",
+      "export": "Card",
+      "description": "A flexible card component for displaying content in a contained format",
+      "type": "CardProps",
+      "props": [
+        {
+          "name": "header",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Header content"
+        },
+        {
+          "name": "footer",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Footer content"
+        },
+        {
+          "name": "shadow",
+          "type": "'none' | 'small' | 'medium' | 'large'",
+          "default": "small",
+          "required": false,
+          "description": "Shadow size"
+        },
+        {
+          "name": "bordered",
+          "type": "boolean",
+          "default": true,
+          "required": false,
+          "description": "Whether card has border"
+        },
+        {
+          "name": "hoverable",
+          "type": "boolean",
+          "default": false,
+          "required": false,
+          "description": "Whether card shows hover effect"
+        },
+        {
+          "name": "padding",
+          "type": "'none' | 'small' | 'medium' | 'large'",
+          "default": "medium",
+          "required": false,
+          "description": "Content padding size"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "default": "",
+          "required": false,
+          "description": "Custom CSS class"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Card content"
+        }
+      ],
+      "extends": "React.HTMLAttributes<HTMLDivElement>",
+      "example": "<Card header=\"Title\" footer=\"Footer\" shadow=\"medium\">Content</Card>"
+    },
+    {
+      "name": "SlideViewer",
+      "export": "SlideViewer",
+      "description": "A powerful slide viewer component that integrates OpenSeadragon with Paper.js annotations for viewing Digital Slide Archive images with annotation overlays",
+      "type": "SlideViewerProps",
+      "props": [
+        {
+          "name": "imageInfo",
+          "type": "SlideImageInfo",
+          "required": true,
+          "description": "Image information for the slide"
+        },
+        {
+          "name": "annotations",
+          "type": "AnnotationFeature[] | FeatureCollection",
+          "default": "[]",
+          "required": false,
+          "description": "Annotations to render on the slide"
+        },
+        {
+          "name": "annotationIds",
+          "type": "(string | number)[]",
+          "default": "[]",
+          "required": false,
+          "description": "Annotation IDs to fetch from DSA API"
+        },
+        {
+          "name": "apiBaseUrl",
+          "type": "string",
+          "required": false,
+          "description": "Base URL for DSA API (e.g., 'http://bdsa.pathology.emory.edu:8080/api/v1')"
+        },
+        {
+          "name": "onViewerReady",
+          "type": "(viewer: OpenSeadragonViewer) => void",
+          "required": false,
+          "description": "Callback when OpenSeadragon viewer is ready"
+        },
+        {
+          "name": "onAnnotationClick",
+          "type": "(annotation: AnnotationFeature) => void",
+          "required": false,
+          "description": "Callback when annotation is clicked"
+        },
+        {
+          "name": "defaultAnnotationColor",
+          "type": "string",
+          "default": "#ff0000",
+          "required": false,
+          "description": "Default stroke color for annotations"
+        },
+        {
+          "name": "strokeWidth",
+          "type": "number",
+          "default": 2,
+          "required": false,
+          "description": "Stroke width for annotations"
+        },
+        {
+          "name": "osdOptions",
+          "type": "OpenSeadragonOptions",
+          "default": "{}",
+          "required": false,
+          "description": "Additional OpenSeadragon configuration options"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "default": "",
+          "required": false,
+          "description": "Custom CSS class name"
+        },
+        {
+          "name": "height",
+          "type": "string | number",
+          "default": "600px",
+          "required": false,
+          "description": "Height for viewer container (required for OpenSeadragon)"
+        },
+        {
+          "name": "width",
+          "type": "string | number",
+          "default": "100%",
+          "required": false,
+          "description": "Width for viewer container"
+        },
+        {
+          "name": "showAnnotationInfo",
+          "type": "boolean",
+          "default": false,
+          "required": false,
+          "description": "Display information about loaded annotation documents"
+        },
+        {
+          "name": "annotationInfoConfig",
+          "type": "AnnotationInfoConfig",
+          "required": false,
+          "description": "Configuration for customizing annotation info panel display"
+        },
+        {
+          "name": "maxPointsPerAnnotation",
+          "type": "number",
+          "default": 10000,
+          "required": false,
+          "description": "Maximum number of points allowed per annotation element"
+        },
+        {
+          "name": "maxTotalPoints",
+          "type": "number",
+          "default": 100000,
+          "required": false,
+          "description": "Maximum total number of points allowed across all annotations"
+        },
+        {
+          "name": "fetchFn",
+          "type": "(url: string, options?: RequestInit) => Promise<Response>",
+          "required": false,
+          "description": "Custom fetch function for API requests. Useful for adding authentication headers."
+        },
+        {
+          "name": "apiHeaders",
+          "type": "HeadersInit",
+          "required": false,
+          "description": "Custom headers to add to all API requests. Merged with fetchFn headers if both are provided."
+        },
+        {
+          "name": "showAnnotationControls",
+          "type": "boolean",
+          "default": false,
+          "required": false,
+          "description": "Show annotation controls panel in the sidebar"
+        },
+        {
+          "name": "defaultAnnotationOpacity",
+          "type": "number",
+          "default": 1,
+          "required": false,
+          "description": "Default opacity for all annotations (0-1)"
+        }
+      ],
+      "example": "<SlideViewer imageInfo={{dziUrl: '...'}} height=\"800px\" />",
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "path": "/annotation/{id}",
+          "description": "Fetch annotation document by ID"
+        }
+      ]
+    },
+    {
+      "name": "AnnotationManager",
+      "export": "AnnotationManager",
+      "description": "Component for managing annotation loading, visibility, and state. Handles fetching annotations by itemId using the DSA API search endpoint.",
+      "type": "AnnotationManagerProps",
+      "props": [
+        {
+          "name": "imageId",
+          "type": "string",
+          "required": false,
+          "description": "Image/Item ID to search annotations for"
+        },
+        {
+          "name": "apiBaseUrl",
+          "type": "string",
+          "required": false,
+          "description": "Base URL for DSA API"
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "default": 50,
+          "required": false,
+          "description": "Maximum number of annotations to fetch per request"
+        },
+        {
+          "name": "fetchFn",
+          "type": "(url: string, options?: RequestInit) => Promise<Response>",
+          "required": false,
+          "description": "Custom fetch function for API requests"
+        },
+        {
+          "name": "apiHeaders",
+          "type": "HeadersInit",
+          "required": false,
+          "description": "Custom headers to add to all API requests"
+        },
+        {
+          "name": "onAnnotationsLoaded",
+          "type": "(annotations: AnnotationSearchResult[]) => void",
+          "required": false,
+          "description": "Callback when annotations are loaded"
+        },
+        {
+          "name": "onError",
+          "type": "(error: Error) => void",
+          "required": false,
+          "description": "Callback when annotation loading fails"
+        },
+        {
+          "name": "showDebugPanel",
+          "type": "boolean",
+          "default": false,
+          "required": false,
+          "description": "Show debug panel with raw API response"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "default": "",
+          "required": false,
+          "description": "Custom CSS class"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Child components"
+        }
+      ],
+      "example": "<AnnotationManager imageId=\"6903df8dd26a6d93de19a9b2\" apiBaseUrl=\"...\" />",
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "path": "/annotation",
+          "queryParams": {
+            "itemId": "string (required)",
+            "limit": "number",
+            "offset": "number",
+            "sort": "string",
+            "sortdir": "number"
+          },
+          "description": "Search annotations by itemId"
+        }
+      ]
+    },
+    {
+      "name": "FolderBrowser",
+      "export": "FolderBrowser",
+      "description": "Component for browsing DSA collections and folders. Provides a tree view with support for expanding collections and folders recursively.",
+      "type": "FolderBrowserProps",
+      "props": [
+        {
+          "name": "apiBaseUrl",
+          "type": "string",
+          "required": false,
+          "description": "Base URL for DSA API"
+        },
+        {
+          "name": "fetchFn",
+          "type": "(url: string, options?: RequestInit) => Promise<Response>",
+          "required": false,
+          "description": "Custom fetch function for API requests"
+        },
+        {
+          "name": "apiHeaders",
+          "type": "HeadersInit",
+          "required": false,
+          "description": "Custom headers to add to all API requests"
+        },
+        {
+          "name": "onResourceSelect",
+          "type": "(resource: Resource) => void",
+          "required": false,
+          "description": "Callback when a resource (collection or folder) is selected"
+        },
+        {
+          "name": "onSelectionChange",
+          "type": "(resource: Resource | null) => void",
+          "required": false,
+          "description": "Callback when resource selection changes"
+        },
+        {
+          "name": "showCollections",
+          "type": "boolean",
+          "default": true,
+          "required": false,
+          "description": "Show collections at root level (ignored if rootId provided)"
+        },
+        {
+          "name": "rootId",
+          "type": "string",
+          "required": false,
+          "description": "Root directory ID to start from"
+        },
+        {
+          "name": "rootType",
+          "type": "'collection' | 'folder'",
+          "required": false,
+          "description": "Type of root directory (required if rootId provided)"
+        },
+        {
+          "name": "foldersPerPage",
+          "type": "number",
+          "default": 50,
+          "required": false,
+          "description": "Number of folders to load per page (0 = load all)"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "default": "",
+          "required": false,
+          "description": "Custom CSS class"
+        },
+        {
+          "name": "renderCollection",
+          "type": "(collection: Collection, isExpanded: boolean, onToggle: () => void) => React.ReactNode",
+          "required": false,
+          "description": "Custom render function for collections"
+        },
+        {
+          "name": "renderFolder",
+          "type": "(folder: Folder, depth: number, isExpanded: boolean, onToggle: () => void) => React.ReactNode",
+          "required": false,
+          "description": "Custom render function for folders"
+        }
+      ],
+      "example": "<FolderBrowser apiBaseUrl=\"...\" showCollections={true} />",
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "path": "/collection",
+          "description": "List all collections"
+        },
+        {
+          "method": "GET",
+          "path": "/folder",
+          "queryParams": {
+            "parentType": "string ('collection' | 'folder')",
+            "parentId": "string"
+          },
+          "description": "List folders in a collection or subfolders in a folder"
+        }
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "SlideImageInfo",
+      "description": "Image information for the slide",
+      "properties": [
+        {
+          "name": "imageId",
+          "type": "string | number",
+          "required": false,
+          "description": "Image ID from DSA (used if dziUrl is not provided)"
+        },
+        {
+          "name": "width",
+          "type": "number",
+          "required": false,
+          "description": "Image width in pixels (used if dziUrl is not provided)"
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": false,
+          "description": "Image height in pixels (used if dziUrl is not provided)"
+        },
+        {
+          "name": "tileWidth",
+          "type": "number",
+          "required": false,
+          "description": "Tile width (used if dziUrl is not provided)"
+        },
+        {
+          "name": "levels",
+          "type": "number",
+          "required": false,
+          "description": "Number of zoom levels (used if dziUrl is not provided)"
+        },
+        {
+          "name": "baseUrl",
+          "type": "string",
+          "required": false,
+          "description": "Base URL for DSA tile server (used if dziUrl is not provided)"
+        },
+        {
+          "name": "dziUrl",
+          "type": "string",
+          "required": false,
+          "description": "DZI descriptor URL (e.g., 'http://bdsa.pathology.emory.edu:8080/api/v1/item/{itemId}/tiles/dzi.dzi')"
+        }
+      ]
+    },
+    {
+      "name": "AnnotationFeature",
+      "description": "Annotation feature data structure",
+      "properties": [
+        {
+          "name": "id",
+          "type": "string | number",
+          "required": false,
+          "description": "Unique identifier for the annotation"
+        },
+        {
+          "name": "left",
+          "type": "number",
+          "required": true,
+          "description": "Left coordinate in pixels"
+        },
+        {
+          "name": "top",
+          "type": "number",
+          "required": true,
+          "description": "Top coordinate in pixels"
+        },
+        {
+          "name": "width",
+          "type": "number",
+          "required": true,
+          "description": "Width in pixels"
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": true,
+          "description": "Height in pixels"
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "required": false,
+          "description": "Optional color for the annotation stroke"
+        },
+        {
+          "name": "group",
+          "type": "string | number",
+          "required": false,
+          "description": "Optional group identifier"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "description": "Optional label"
+        },
+        {
+          "name": "annotationType",
+          "type": "'rectangle' | 'polyline'",
+          "required": false,
+          "description": "Type of annotation"
+        },
+        {
+          "name": "points",
+          "type": "Array<[number, number]>",
+          "required": false,
+          "description": "Points array for polyline annotations"
+        },
+        {
+          "name": "closed",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether polyline is closed"
+        },
+        {
+          "name": "fillColor",
+          "type": "string",
+          "required": false,
+          "description": "Fill color for polyline"
+        }
+      ]
+    },
+    {
+      "name": "AnnotationSearchResult",
+      "description": "Result from annotation search API",
+      "properties": [
+        {
+          "name": "_id",
+          "type": "string",
+          "required": true,
+          "description": "Annotation document ID"
+        },
+        {
+          "name": "_modelType",
+          "type": "string",
+          "required": true,
+          "description": "Model type"
+        },
+        {
+          "name": "itemId",
+          "type": "string",
+          "required": false,
+          "description": "Associated item/image ID"
+        },
+        {
+          "name": "annotation",
+          "type": "object",
+          "required": false,
+          "description": "Annotation metadata",
+          "properties": {
+            "name": "string",
+            "description": "string",
+            "attributes": "Record<string, unknown>",
+            "display": "Record<string, unknown>"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Collection",
+      "description": "DSA collection object",
+      "properties": [
+        {
+          "name": "_id",
+          "type": "string",
+          "required": true,
+          "description": "Collection ID"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Collection name"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Collection description"
+        },
+        {
+          "name": "public",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether collection is public"
+        }
+      ]
+    },
+    {
+      "name": "Folder",
+      "description": "DSA folder object",
+      "properties": [
+        {
+          "name": "_id",
+          "type": "string",
+          "required": true,
+          "description": "Folder ID"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Folder name"
+        },
+        {
+          "name": "parentId",
+          "type": "string",
+          "required": false,
+          "description": "Parent collection or folder ID"
+        },
+        {
+          "name": "parentType",
+          "type": "'collection' | 'folder'",
+          "required": false,
+          "description": "Type of parent (collection or folder)"
+        }
+      ]
+    },
+    {
+      "name": "Resource",
+      "description": "Union type for Collection or Folder with type discriminator",
+      "type": "(Collection | Folder) & { type: 'collection' | 'folder' }"
+    }
+  ],
+  "authentication": {
+    "description": "Components that make API requests support authentication via fetchFn or apiHeaders props",
+    "methods": [
+      {
+        "name": "fetchFn",
+        "type": "(url: string, options?: RequestInit) => Promise<Response>",
+        "description": "Custom fetch function - useful for adding authentication headers or interceptors"
+      },
+      {
+        "name": "apiHeaders",
+        "type": "HeadersInit",
+        "description": "Custom headers object - direct way to add headers to requests"
+      }
+    ],
+    "example": {
+      "fetchFn": "async (url, options) => fetch(url, { ...options, headers: { ...options?.headers, 'Authorization': 'Bearer token' } })",
+      "apiHeaders": "{ 'Authorization': 'Bearer token' }"
+    }
+  },
+  "imports": {
+    "components": "import { Button, Card, SlideViewer, AnnotationManager, FolderBrowser } from 'bdsa-react-components'",
+    "types": "import type { ButtonProps, CardProps, SlideViewerProps, ... } from 'bdsa-react-components'",
+    "styles": "import 'bdsa-react-components/styles.css'"
+  },
+  "usage": {
+    "installation": "npm install bdsa-react-components",
+    "minimalExample": "import { Button } from 'bdsa-react-components'\nimport 'bdsa-react-components/styles.css'\n\n<Button variant=\"primary\">Click Me</Button>"
+  }
+}
+
+
