@@ -216,7 +216,8 @@ describe('SlideViewer', () => {
             await waitFor(
                 () => {
                     expect(global.fetch).toHaveBeenCalledWith(
-                        `${EXAMPLE_API_BASE_URL}/annotation/${EXAMPLE_ANNOTATION_ID}`
+                        `${EXAMPLE_API_BASE_URL}/annotation/${EXAMPLE_ANNOTATION_ID}`,
+                        expect.any(Object) // Options object (may be empty)
                     )
                 },
                 { timeout: 2000 }

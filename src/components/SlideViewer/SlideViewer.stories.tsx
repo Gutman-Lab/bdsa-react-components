@@ -48,6 +48,14 @@ const meta = {
             control: 'boolean',
             description: 'Display information panel about loaded annotation documents',
         },
+        showAnnotationControls: {
+            control: 'boolean',
+            description: 'Show annotation controls panel (opacity slider) in sidebar',
+        },
+        defaultAnnotationOpacity: {
+            control: { type: 'range', min: 0, max: 1, step: 0.01 },
+            description: 'Default opacity for all annotations (0-1)',
+        },
         annotationInfoConfig: {
             description: 'Configuration for customizing the annotation info panel display',
         },
@@ -333,6 +341,56 @@ export const MinimalControls: Story = {
         docs: {
             description: {
                 story: 'Minimal UI with all navigation controls hidden. Users can still interact via mouse/touch gestures.',
+            },
+        },
+    },
+}
+
+export const WithCustomFetch: Story = {
+    args: {
+        imageInfo: exampleImageInfo,
+        annotationIds: ['6903df8ed26a6d93de19a9b4'],
+        apiBaseUrl: exampleApiBaseUrl,
+        // Example: Custom fetch function for authentication
+        fetchFn: async (url: string, options?: RequestInit) => {
+            // In a real app, you would add auth headers here
+            const headers = new Headers(options?.headers)
+            // headers.set('Authorization', 'Bearer YOUR_TOKEN_HERE')
+            // headers.set('X-API-Key', 'YOUR_API_KEY')
+            
+            return fetch(url, {
+                ...options,
+                headers,
+            })
+        },
+        // Alternative: Just pass headers directly
+        // apiHeaders: {
+        //     'Authorization': 'Bearer YOUR_TOKEN_HERE',
+        //     'X-API-Key': 'YOUR_API_KEY',
+        // },
+    },
+    parameters: {
+        docs: {
+            description: {
+                story: 'Example of using custom fetch function or headers for authentication. Use `fetchFn` for a custom fetch implementation, or `apiHeaders` for simple header injection.',
+            },
+        },
+    },
+}
+
+export const WithAnnotationControls: Story = {
+    args: {
+        imageInfo: exampleImageInfo,
+        annotationIds: ['6903df8ed26a6d93de19a9b4'],
+        apiBaseUrl: exampleApiBaseUrl,
+        showAnnotationControls: true,
+        showAnnotationInfo: true,
+        defaultAnnotationOpacity: 0.7,
+    },
+    parameters: {
+        docs: {
+            description: {
+                story: 'Shows both annotation controls (opacity slider) and annotation info panel in the sidebar. Use the opacity slider to adjust visibility of all annotations.',
             },
         },
     },

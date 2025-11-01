@@ -114,6 +114,45 @@ export interface SlideViewerProps {
     /** Maximum total number of points allowed across all annotations (default: 100000).
      *  If exceeded, annotations will be filtered starting from the largest ones. */
     maxTotalPoints?: number
+    /** Custom fetch function for API requests. Useful for adding authentication headers.
+     *  If not provided, uses the default `fetch`. The function should match the Fetch API signature. */
+    fetchFn?: (url: string, options?: RequestInit) => Promise<Response>
+    /** Custom headers to add to all API requests. Merged with fetchFn headers if both are provided. */
+    apiHeaders?: HeadersInit
+    /** Show annotation controls panel in the sidebar (default: false) */
+    showAnnotationControls?: boolean
+    /** Default opacity for all annotations (0-1, default: 1) */
+    defaultAnnotationOpacity?: number
+}
+
+/**
+ * Helper function to apply opacity to a color string
+ */
+function applyOpacity(color: string, opacity: number): string {
+    // If color is already rgba/rgb, extract RGB and apply opacity
+    // Otherwise, convert hex to rgba
+    if (opacity >= 1) return color
+    
+    if (color.startsWith('rgba(') || color.startsWith('rgb(')) {
+        // Extract RGB values
+        const match = color.match(/(\d+(?:\.\d+)?)/g)
+        if (match && match.length >= 3) {
+            const r = match[0]
+            const g = match[1]
+            const b = match[2]
+            return `rgba(${r}, ${g}, ${b}, ${opacity})`
+        }
+    } else if (color.startsWith('#')) {
+        // Convert hex to rgba
+        const hex = color.replace('#', '')
+        const r = parseInt(hex.substring(0, 2), 16)
+        const g = parseInt(hex.substring(2, 4), 16)
+        const b = parseInt(hex.substring(4, 6), 16)
+        return `rgba(${r}, ${g}, ${b}, ${opacity})`
+    }
+    
+    // Fallback: try to wrap in rgba or return as-is
+    return color
 }
 
 /**
@@ -171,6 +210,10 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             annotationInfoConfig,
             maxPointsPerAnnotation = 10000,
             maxTotalPoints = 100000,
+            fetchFn,
+            apiHeaders,
+            showAnnotationControls = false,
+            defaultAnnotationOpacity = 1,
         },
         ref
     ) => {
@@ -182,6 +225,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         const [annotationDocuments, setAnnotationDocuments] = useState<Array<{ id: string | number; elementCount: number; types: string[] }>>([])
         const tiledImageRef = useRef<{ addPaperItem: (item: unknown) => void; paperItems?: unknown[] } | null>(null)
         const lastRenderedAnnotationsRef = useRef<string>('')
+        const [annotationOpacity, setAnnotationOpacity] = useState<number>(defaultAnnotationOpacity)
 
         // Create stable key for fetched annotations
         const fetchedAnnotationsKey = useMemo(() => {
@@ -417,11 +461,21 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             const fetchAnnotations = async () => {
                 try {
                     console.log(`Fetching ${annotationIds.length} annotation(s) from DSA API...`)
+                    // Use custom fetch function if provided, otherwise use default fetch
+                    const customFetch = fetchFn || fetch
+                    
                     // Fetch annotations from /annotation/{id} endpoint (not geojson)
                     const annotationPromises = annotationIds.map(async (id) => {
                         const url = `${apiBaseUrl}/annotation/${id}`
                         console.log(`Fetching annotation ${id} from: ${url}`)
-                        const response = await fetch(url)
+                        
+                        // Build request options with custom headers if provided
+                        const fetchOptions: RequestInit = {}
+                        if (apiHeaders) {
+                            fetchOptions.headers = apiHeaders
+                        }
+                        
+                        const response = await customFetch(url, fetchOptions)
                         if (!response.ok) {
                             console.warn(`Failed to fetch annotation ${id}:`, response.statusText, response.status)
                             return null
@@ -667,6 +721,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             defaultAnnotationColor,
             maxPointsPerAnnotation,
             maxTotalPoints,
+            // Note: fetchFn and apiHeaders are intentionally not in deps - they're used in the closure
+            // If they change, the effect should re-run, but we'll handle that via refs or user responsibility
         ])
 
         // Render annotations when they change
@@ -788,9 +844,11 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     if (annotation.annotationType === 'polyline' && annotation.points && Array.isArray(annotation.points)) {
                         // Create path from points (like the working example)
                         const path = new paperScope.Path()
-                        path.strokeColor = annotation.color || defaultAnnotationColor
+                        const strokeColor = annotation.color || defaultAnnotationColor
+                        path.strokeColor = applyOpacity(strokeColor, annotationOpacity)
                         path.strokeWidth = strokeWidth
-                        path.fillColor = (annotation.fillColor as string) || 'rgba(0, 0, 0, 0)'
+                        const fillColor = (annotation.fillColor as string) || 'rgba(0, 0, 0, 0)'
+                        path.fillColor = applyOpacity(fillColor, annotationOpacity)
 
                         // Add points to path (like the working example)
                         annotation.points.forEach((point: [number, number], pointIndex: number) => {
@@ -818,9 +876,10 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                         const rectPath = new paperScope.Path.Rectangle(rect)
 
                         // Set style properties
-                        rectPath.strokeColor = annotation.color || defaultAnnotationColor
+                        const strokeColor = annotation.color || defaultAnnotationColor
+                        rectPath.strokeColor = applyOpacity(strokeColor, annotationOpacity)
                         rectPath.strokeWidth = strokeWidth
-                        rectPath.fillColor = 'rgba(0, 0, 0, 0)' // Transparent fill by default
+                        rectPath.fillColor = applyOpacity('rgba(0, 0, 0, 0)', annotationOpacity) // Transparent fill by default
 
                         paperItem = rectPath
                     }
@@ -874,9 +933,61 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             annotationsKey, // Stable key for manual annotations
             fetchedAnnotationsKey, // Stable key for fetched annotations
             strokeWidth,
+            annotationOpacity, // Re-render when opacity changes
             // parsedManualAnnotations and fetchedAnnotations are captured from closure
             // onAnnotationClick removed - using ref instead
         ])
+
+        // Update opacity on existing annotations when opacity changes
+        useEffect(() => {
+            if (!viewer || !overlay || !toolkit) return
+            
+            const paperScope = overlay.paperScope
+            if (!paperScope || !paperScope.project) return
+
+            try {
+                const existingFeatures = toolkit.getFeatures()
+                if (existingFeatures && Array.isArray(existingFeatures)) {
+                    for (const feature of existingFeatures) {
+                        try {
+                            if (feature && typeof feature === 'object') {
+                                const paperItem = feature as {
+                                    strokeColor?: string | { r: number; g: number; b: number; alpha: number }
+                                    fillColor?: string | { r: number; g: number; b: number; alpha: number }
+                                    data?: { annotation?: AnnotationFeature }
+                                }
+                                
+                                // Get original color from annotation data
+                                const annotation = paperItem.data?.annotation
+                                if (annotation) {
+                                    const strokeColor = annotation.color || defaultAnnotationColor
+                                    const fillColor = annotation.fillColor || 'rgba(0, 0, 0, 0)'
+                                    
+                                    // Update stroke color opacity
+                                    if (paperItem.strokeColor) {
+                                        paperItem.strokeColor = applyOpacity(strokeColor, annotationOpacity) as any
+                                    }
+                                    
+                                    // Update fill color opacity
+                                    if (paperItem.fillColor) {
+                                        paperItem.fillColor = applyOpacity(fillColor, annotationOpacity) as any
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Error updating annotation opacity:', e)
+                        }
+                    }
+                    
+                    // Redraw the view
+                    if (paperScope.view && paperScope.view.draw) {
+                        paperScope.view.draw()
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not update annotation opacity:', e)
+            }
+        }, [annotationOpacity, viewer, overlay, toolkit, defaultAnnotationColor])
 
         // Merge user config with defaults
         const infoConfig = useMemo(() => {
@@ -901,53 +1012,78 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                 style={containerStyle}
             >
                 <div ref={containerRef} className="bdsa-slide-viewer__container" />
-                {showAnnotationInfo && (annotations.length > 0 || annotationDocuments.length > 0 || fetchedAnnotations.length > 0) && (
-                    <div className="bdsa-slide-viewer__annotation-info">
-                        <div className="bdsa-slide-viewer__annotation-info-header">
-                            <strong>{infoConfig.headerText}</strong>
-                        </div>
-                        {infoConfig.showFetchedSection && annotationDocuments.length > 0 && (
-                            <div className="bdsa-slide-viewer__annotation-info-section">
-                                <div className="bdsa-slide-viewer__annotation-info-title">Fetched from DSA API:</div>
-                                {annotationDocuments.map((doc) => (
-                                    <div key={doc.id} className="bdsa-slide-viewer__annotation-info-item">
-                                        {infoConfig.documentProperties
-                                            .filter((prop) => prop.show !== false)
-                                            .map((prop) => {
-                                                const value = doc[prop.key as keyof typeof doc]
-                                                const displayValue = prop.formatter
-                                                    ? prop.formatter(value, doc)
-                                                    : String(value ?? 'N/A')
-                                                return (
-                                                    <div key={prop.key}>
-                                                        {prop.label}: {displayValue}
-                                                    </div>
-                                                )
-                                            })}
+                {(showAnnotationInfo || showAnnotationControls) && (
+                    <div className="bdsa-slide-viewer__sidebar">
+                        {showAnnotationControls && (
+                            <div className="bdsa-slide-viewer__controls">
+                                <div className="bdsa-slide-viewer__controls-header">
+                                    <strong>Annotation Controls</strong>
+                                </div>
+                                <div className="bdsa-slide-viewer__controls-section">
+                                    <div className="bdsa-slide-viewer__controls-label">
+                                        Opacity: {Math.round(annotationOpacity * 100)}%
                                     </div>
-                                ))}
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
+                                        value={annotationOpacity}
+                                        onChange={(e) => setAnnotationOpacity(parseFloat(e.target.value))}
+                                        className="bdsa-slide-viewer__opacity-slider"
+                                    />
+                                </div>
                             </div>
                         )}
-                        {infoConfig.showProvidedSection &&
-                            ((Array.isArray(annotations) && annotations.length > 0) ||
-                                (!Array.isArray(annotations) && annotations && annotations.type === 'FeatureCollection')) && (
-                                <div className="bdsa-slide-viewer__annotation-info-section">
-                                    <div className="bdsa-slide-viewer__annotation-info-title">Provided Annotations:</div>
-                                    <div className="bdsa-slide-viewer__annotation-info-item">
-                                        {Array.isArray(annotations) ? (
-                                            <div>Count: {annotations.length}</div>
-                                        ) : (
-                                            <div>GeoJSON FeatureCollection with {annotations.features?.length || 0} features</div>
-                                        )}
+                        {showAnnotationInfo && (annotations.length > 0 || annotationDocuments.length > 0 || fetchedAnnotations.length > 0) && (
+                            <div className="bdsa-slide-viewer__annotation-info">
+                                <div className="bdsa-slide-viewer__annotation-info-header">
+                                    <strong>{infoConfig.headerText}</strong>
+                                </div>
+                                {infoConfig.showFetchedSection && annotationDocuments.length > 0 && (
+                                    <div className="bdsa-slide-viewer__annotation-info-section">
+                                        <div className="bdsa-slide-viewer__annotation-info-title">Fetched from DSA API:</div>
+                                        {annotationDocuments.map((doc) => (
+                                            <div key={doc.id} className="bdsa-slide-viewer__annotation-info-item">
+                                                {infoConfig.documentProperties
+                                                    .filter((prop) => prop.show !== false)
+                                                    .map((prop) => {
+                                                        const value = doc[prop.key as keyof typeof doc]
+                                                        const displayValue = prop.formatter
+                                                            ? prop.formatter(value, doc)
+                                                            : String(value ?? 'N/A')
+                                                        return (
+                                                            <div key={prop.key}>
+                                                                {prop.label}: {displayValue}
+                                                            </div>
+                                                        )
+                                                    })}
+                                            </div>
+                                        ))}
                                     </div>
-                                </div>
-                            )}
-                        {infoConfig.showTotalSection && (
-                            <div className="bdsa-slide-viewer__annotation-info-section">
-                                <div className="bdsa-slide-viewer__annotation-info-title">Total Rendered:</div>
-                                <div className="bdsa-slide-viewer__annotation-info-item">
-                                    {fetchedAnnotations.length + (Array.isArray(annotations) ? annotations.length : 0)} annotation(s)
-                                </div>
+                                )}
+                                {infoConfig.showProvidedSection &&
+                                    ((Array.isArray(annotations) && annotations.length > 0) ||
+                                        (!Array.isArray(annotations) && annotations && annotations.type === 'FeatureCollection')) && (
+                                        <div className="bdsa-slide-viewer__annotation-info-section">
+                                            <div className="bdsa-slide-viewer__annotation-info-title">Provided Annotations:</div>
+                                            <div className="bdsa-slide-viewer__annotation-info-item">
+                                                {Array.isArray(annotations) ? (
+                                                    <div>Count: {annotations.length}</div>
+                                                ) : (
+                                                    <div>GeoJSON FeatureCollection with {annotations.features?.length || 0} features</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                {infoConfig.showTotalSection && (
+                                    <div className="bdsa-slide-viewer__annotation-info-section">
+                                        <div className="bdsa-slide-viewer__annotation-info-title">Total Rendered:</div>
+                                        <div className="bdsa-slide-viewer__annotation-info-item">
+                                            {fetchedAnnotations.length + (Array.isArray(annotations) ? annotations.length : 0)} annotation(s)
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

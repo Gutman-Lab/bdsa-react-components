@@ -14,3 +14,9 @@ export type {
     AnnotationInfoProperty,
 } from './components/SlideViewer/SlideViewer'
 
+export { AnnotationManager } from './components/AnnotationManager/AnnotationManager'
+export type {
+    AnnotationManagerProps,
+    AnnotationSearchResult,
+} from './components/AnnotationManager/AnnotationManager'
+
