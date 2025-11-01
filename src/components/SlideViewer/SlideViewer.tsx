@@ -3,6 +3,36 @@ import OpenSeadragon from 'openseadragon'
 import { PaperOverlay, AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { FeatureCollection, Feature } from 'geojson'
 import type { Viewer as OpenSeadragonViewer, Options as OpenSeadragonOptions } from 'openseadragon'
+import { IndexedDBAnnotationCache } from '../../cache'
+/**
+ * Compute version hash from annotation header for cache invalidation
+ * Extracts version-relevant fields and computes a hash
+ */
+function computeVersionHash(header: Record<string, unknown>): string {
+    // Extract fields that indicate changes
+    const versionFields: Record<string, unknown> = {}
+    if (header._id !== undefined) versionFields._id = header._id
+    if (header._version !== undefined) versionFields._version = header._version
+    if (header._modelType !== undefined) versionFields._modelType = header._modelType
+    if (header.updated !== undefined) versionFields.updated = header.updated
+    if (header.modified !== undefined) versionFields.modified = header.modified
+    if (header._accessLevel !== undefined) versionFields._accessLevel = header._accessLevel
+    
+    // Include annotation metadata if present
+    if (header.annotation && typeof header.annotation === 'object') {
+        const ann = header.annotation as Record<string, unknown>
+        if (ann.name !== undefined) versionFields.name = ann.name
+    }
+    
+    // Simple hash function (djb2 variant)
+    const jsonString = JSON.stringify(versionFields, Object.keys(versionFields).sort())
+    let hash = 5381
+    for (let i = 0; i < jsonString.length; i++) {
+        hash = ((hash << 5) + hash) + jsonString.charCodeAt(i)
+        hash = hash & hash // Convert to 32-bit integer
+    }
+    return (hash >>> 0).toString(16)
+}
 import './SlideViewer.css'
 
 export interface SlideImageInfo {
@@ -129,6 +159,25 @@ export interface SlideViewerProps {
     visibleAnnotations?: Map<string | number, boolean> | Record<string, boolean>
     /** Callback when annotation has finished loading and rendering. Called with the annotation ID. */
     onAnnotationReady?: (annotationId: string | number) => void
+    /** Optional pull-through cache for annotation documents. Acts as a cache-aside proxy:
+     *  1. Checks cache first on fetch requests
+     *  2. On cache miss, fetches from API and stores in cache
+     *  3. On cache hit, returns cached data immediately (no API call)
+     *  If not provided, automatically creates an IndexedDBAnnotationCache. Set to `null` to disable caching. */
+    annotationCache?: {
+        get(annotationId: string | number, versionHash?: string): Promise<unknown | null>
+        set(annotationId: string | number, data: unknown, options?: { ttl?: number; versionHash?: string }): Promise<void>
+        has(annotationId: string | number, versionHash?: string): Promise<boolean>
+        delete(annotationId: string | number): Promise<void>
+        clear(): Promise<void>
+        getStats?(): Promise<{ size: number; hits?: number; misses?: number; hitRate?: number }>
+    } | null
+    /** Optional map of annotation headers (from /annotation?itemId=... endpoint) keyed by annotation ID.
+     *  If provided, used to compute version hashes for cache invalidation when annotations change on the server.
+     *  Should contain the metadata objects returned from AnnotationManager's annotation search endpoint.
+     *  Typically obtained from AnnotationManager: `annotations.map(ann => [ann._id, ann])` or similar.
+     *  If not provided, cache will work but version-based invalidation will be disabled. */
+    annotationHeaders?: Map<string | number, unknown> | Record<string, unknown>
 }
 
 /**
@@ -242,6 +291,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             annotationOpacities,
             visibleAnnotations,
             onAnnotationReady,
+            annotationCache,
+            annotationHeaders,
         },
         ref
     ) => {
@@ -254,6 +305,20 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         const tiledImageRef = useRef<{ addPaperItem: (item: unknown) => void; paperItems?: unknown[] } | null>(null)
         const lastRenderedAnnotationsRef = useRef<string>('')
         const [annotationOpacity, setAnnotationOpacity] = useState<number>(defaultAnnotationOpacity)
+
+        // Auto-create IndexedDB cache if not provided and not explicitly disabled
+        const cache = useMemo(() => {
+            if (annotationCache === null) {
+                // Explicitly disabled
+                return null
+            }
+            if (annotationCache) {
+                // Provided by user
+                return annotationCache
+            }
+            // Auto-create IndexedDB cache
+            return new IndexedDBAnnotationCache()
+        }, [annotationCache])
 
         // Track if component is mounted to prevent operations after unmount
         const isMountedRef = useRef(true)
@@ -707,6 +772,62 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
                     // Fetch annotations from /annotation/{id} endpoint (not geojson)
                     const annotationPromises = annotationIds.map(async (id) => {
+                        // Get annotation header for version hash computation (if available)
+                        const header = annotationHeaders 
+                            ? (annotationHeaders instanceof Map 
+                                ? annotationHeaders.get(id) 
+                                : annotationHeaders[String(id)])
+                            : undefined
+                        
+                        // Compute version hash from header if available
+                        const versionHash = header ? computeVersionHash(header as Record<string, unknown>) : undefined
+
+                        // Check cache first if available
+                        if (cache) {
+                            try {
+                                const cached = await cache.get(id, versionHash)
+                                if (cached !== null && cached !== undefined) {
+                                    // Validate cached data structure - must be an object with elements
+                                    const isValid = cached && typeof cached === 'object' && (
+                                        (cached as any).elements || 
+                                        (cached as any).annotation?.elements ||
+                                        (cached as any).annotation?.elements === null || // Allow empty arrays
+                                        Array.isArray((cached as any).annotation?.elements)
+                                    )
+                                    
+                                    if (isValid) {
+                                        console.log(`Cache hit for annotation ${id}${versionHash ? ` (version hash: ${versionHash})` : ''}`, {
+                                            hasElements: !!(cached as any)?.elements || !!(cached as any)?.annotation?.elements,
+                                            elementCount: Array.isArray((cached as any)?.elements) 
+                                                ? (cached as any).elements.length 
+                                                : Array.isArray((cached as any)?.annotation?.elements)
+                                                ? (cached as any).annotation.elements.length
+                                                : 0
+                                        })
+                                        return cached
+                                    } else {
+                                        // Invalid cached data - clear it and fetch fresh
+                                        console.warn(`Invalid cached data format for annotation ${id}, clearing cache and fetching fresh...`, {
+                                            type: typeof cached,
+                                            keys: cached && typeof cached === 'object' ? Object.keys(cached as any) : 'N/A',
+                                            hasElements: !!(cached as any)?.elements || !!(cached as any)?.annotation?.elements
+                                        })
+                                        await cache.delete(id).catch(err => console.warn('Failed to delete invalid cache entry:', err))
+                                        // Fall through to fetch from API
+                                    }
+                                }
+                            } catch (cacheError) {
+                                console.warn(`Error reading from cache for annotation ${id}, fetching from API:`, cacheError)
+                                // Fall through to fetch from API
+                            }
+                            
+                            if (versionHash) {
+                                console.log(`Cache miss or version mismatch for annotation ${id} (current version hash: ${versionHash}), fetching from API...`)
+                            } else {
+                                console.log(`Cache miss for annotation ${id}, fetching from API...`)
+                            }
+                        }
+
                         const url = `${apiBaseUrl}/annotation/${id}`
                         console.log(`Fetching annotation ${id} from: ${url}`)
 
@@ -723,6 +844,12 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                         }
                         const data = await response.json()
                         console.log(`Successfully fetched annotation ${id}:`, data)
+                        
+                        // Store in cache if available (with version hash if we have header)
+                        if (cache && data) {
+                            await cache.set(id, data, { versionHash })
+                        }
+                        
                         return data
                     })
 
@@ -749,8 +876,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
                     // Parse annotation documents (like the working example)
                     const validAnnotations = annotationData
-                        .filter((ann): ann is unknown => ann !== null && ann !== undefined)
-                        .map((annotationDoc, index) => {
+                        .filter((ann: unknown): ann is unknown => ann !== null && ann !== undefined)
+                        .map((annotationDoc: unknown, index: number) => {
                             // Normalize annotationId to string for consistency
                             const annotationId = String(annotationIds[index])
                             const types = new Set<string>()
@@ -902,7 +1029,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
                     // Post-process to enforce maxTotalPoints limit
                     let finalAnnotations = validAnnotations
-                    const totalPointsAcrossAll = validAnnotations.reduce((sum, ann) => {
+                    const totalPointsAcrossAll = validAnnotations.reduce((sum: number, ann: AnnotationFeature) => {
                         if (ann.annotationType === 'polyline' && ann.points) {
                             return sum + ann.points.length
                         } else {
@@ -917,14 +1044,14 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                         )
 
                         // Sort annotations by point count (largest first) and filter
-                        const annotationsWithPointCounts = validAnnotations.map((ann) => ({
+                        const annotationsWithPointCounts = validAnnotations.map((ann: AnnotationFeature) => ({
                             annotation: ann,
                             pointCount: ann.annotationType === 'polyline' && ann.points
                                 ? ann.points.length
                                 : 4,
                         }))
 
-                        annotationsWithPointCounts.sort((a, b) => b.pointCount - a.pointCount)
+                        annotationsWithPointCounts.sort((a: { annotation: AnnotationFeature; pointCount: number }, b: { annotation: AnnotationFeature; pointCount: number }) => b.pointCount - a.pointCount)
 
                         let cumulativePoints = 0
                         finalAnnotations = []

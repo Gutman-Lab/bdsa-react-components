@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React, { useState, useCallback } from 'react'
 import { AnnotationManager, type AnnotationSearchResult } from './AnnotationManager'
 import { SlideViewer, SlideImageInfo } from '../SlideViewer/SlideViewer'
+import { IndexedDBAnnotationCache } from '../../cache/IndexedDBAnnotationCache'
 
 const meta: Meta<typeof AnnotationManager> = {
     title: 'Components/AnnotationManager',
@@ -145,6 +146,13 @@ const AnnotationManagerWithViewer = () => {
     const [loadedAnnotationIds, setLoadedAnnotationIds] = useState<Set<string>>(new Set())
     const [visibleAnnotations, setVisibleAnnotations] = useState<Map<string, boolean>>(new Map())
     const [annotationOpacities, setAnnotationOpacities] = useState<Map<string, number>>(new Map())
+    const [annotationHeaders, setAnnotationHeaders] = useState<Map<string, AnnotationSearchResult>>(new Map())
+    
+    // Create cache instance (persists across refreshes using IndexedDB)
+    const cache = React.useMemo(() => {
+        return new IndexedDBAnnotationCache()
+    }, [])
+    
     const dziUrl = `${exampleApiBaseUrl}/item/${exampleImageInfo.imageId}/tiles/dzi.dzi`
     
     const handleLoadChange = (annotationId: string, loaded: boolean) => {
@@ -212,18 +220,29 @@ const AnnotationManagerWithViewer = () => {
                     loadedAnnotations={loadedAnnotationIds}
                     visibleAnnotations={visibleAnnotations}
                     annotationOpacities={annotationOpacities}
+                    annotationCache={cache}
                     onAnnotationLoadChange={handleLoadChange}
                     onAnnotationVisibilityChange={handleVisibilityChange}
                     onAnnotationOpacityChange={handleOpacityChange}
                     onAnnotationReady={handleAnnotationReady}
                     showDefaultUI={true}
                 >
-                    {({ onAnnotationReady: managerReadyCallback }) => {
+                    {({ onAnnotationReady: managerReadyCallback, annotations }) => {
                         // Capture AnnotationManager's internal callback via render prop
                         // Store it directly (not in useEffect - render props are called during render)
                         if (managerReadyCallback) {
                             annotationManagerReadyRef.current = managerReadyCallback
                         }
+                        
+                        // Update annotation headers map for cache version checking in SlideViewer
+                        React.useEffect(() => {
+                            const headersMap = new Map<string, AnnotationSearchResult>()
+                            annotations.forEach((ann) => {
+                                headersMap.set(String(ann._id), ann)
+                            })
+                            setAnnotationHeaders(headersMap)
+                        }, [annotations])
+                        
                         return null // Use default UI
                     }}
                 </AnnotationManager>
@@ -239,6 +258,8 @@ const AnnotationManagerWithViewer = () => {
                     showAnnotationControls={false}
                     annotationOpacities={annotationOpacities}
                     visibleAnnotations={visibleAnnotations}
+                    annotationCache={cache}
+                    annotationHeaders={annotationHeaders}
                     onAnnotationReady={(id) => {
                         // This is called by SlideViewer when annotation is ready
                         // Call AnnotationManager's internal callback which clears loading state

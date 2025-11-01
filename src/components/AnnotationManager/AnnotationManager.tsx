@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { IndexedDBAnnotationCache } from '../../cache'
 import './AnnotationManager.css'
 
 export interface AnnotationSearchResult {
@@ -55,6 +56,11 @@ export interface AnnotationManagerProps {
     visibleAnnotations?: Map<string, boolean>
     /** Map of annotation IDs to their opacity (0-1) */
     annotationOpacities?: Map<string, number>
+    /** Optional cache instance to check if annotations are cached locally. If not provided, automatically creates an IndexedDBAnnotationCache. 
+     * Set to `null` to disable caching. If provided, will show a cache indicator icon when annotations are cached. */
+    annotationCache?: {
+        has(annotationId: string | number, versionHash?: string): Promise<boolean>
+    } | null
     /** Show default vertical UI (default: true). Set to false to use custom render prop. */
     showDefaultUI?: boolean
     className?: string
@@ -101,6 +107,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             loadedAnnotations: externalLoadedAnnotations,
             visibleAnnotations: externalVisibleAnnotations,
             annotationOpacities: externalAnnotationOpacities,
+            annotationCache,
             showDefaultUI = true,
             className = '',
             children,
@@ -125,6 +132,23 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
 
         // Track which annotations are currently loading (fetching/rendering)
         const [loadingAnnotations, setLoadingAnnotations] = useState<Set<string>>(new Set())
+        
+        // Track which annotations are cached locally
+        const [cachedAnnotationIds, setCachedAnnotationIds] = useState<Set<string>>(new Set())
+
+        // Auto-create IndexedDB cache if not provided and not explicitly disabled
+        const cache = useMemo(() => {
+            if (annotationCache === null) {
+                // Explicitly disabled
+                return null
+            }
+            if (annotationCache) {
+                // Provided by user
+                return annotationCache
+            }
+            // Auto-create IndexedDB cache
+            return new IndexedDBAnnotationCache()
+        }, [annotationCache])
 
         // Use external state if provided, otherwise use internal state
         const loadedAnnotations = externalLoadedAnnotations ?? internalLoadedAnnotations
@@ -157,9 +181,21 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                 console.log(`AnnotationManager: Loading state for ${id} was ${wasPresent ? 'present' : 'missing'}, now cleared. Remaining:`, Array.from(next))
                 return next
             })
+            
+            // Update cache indicator when annotation is loaded (it's now cached)
+            if (cache) {
+                cache.has(id).then((isCached) => {
+                    if (isCached) {
+                        setCachedAnnotationIds(prev => new Set(prev).add(id))
+                    }
+                }).catch(() => {
+                    // Ignore errors
+                })
+            }
+            
             // Call the external callback if provided
             externalOnAnnotationReady?.(id)
-        }, [externalOnAnnotationReady])
+        }, [externalOnAnnotationReady, cache])
 
 
         // Toggle annotation load state
@@ -331,6 +367,30 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                         console.log(`AnnotationManager: Annotation IDs:`, annotationList.map(a => a._id))
                     }
 
+                    // Check which annotations are cached (if cache is provided)
+                    if (cache && annotationList.length > 0) {
+                        const checkCacheForAnnotations = async () => {
+                            const cachedIds = new Set<string>()
+                            for (const ann of annotationList) {
+                                const annId = String(ann._id)
+                                try {
+                                    // Check cache without version hash (just check if exists)
+                                    const isCached = await cache.has(annId)
+                                    if (isCached) {
+                                        cachedIds.add(annId)
+                                    }
+                                } catch (error) {
+                                    // Ignore cache check errors
+                                }
+                            }
+                            setCachedAnnotationIds(cachedIds)
+                        }
+                        checkCacheForAnnotations()
+                    } else {
+                        // Clear cache state if no cache provided
+                        setCachedAnnotationIds(new Set())
+                    }
+
                     if (onAnnotationsLoaded) {
                         onAnnotationsLoaded(annotationList)
                     }
@@ -412,6 +472,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                         const isLoaded = loadedAnnotations.has(annIdStr)
                         const isLoading = loadingAnnotations.has(annIdStr)
                         const opacity = annotationOpacities.get(annIdStr) ?? 1
+                        const isCached = cachedAnnotationIds.has(annIdStr)
 
                         const isSelected = selectedAnnotationId === annIdStr
 
@@ -434,6 +495,18 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                                         {ann.public === true && (
                                             <span className="bdsa-annotation-manager__annotation-card-badge bdsa-annotation-manager__annotation-card-badge--public">
                                                 Public
+                                            </span>
+                                        )}
+                                        {isCached && (
+                                            <span 
+                                                className="bdsa-annotation-manager__annotation-card-cache-indicator"
+                                                title="Cached locally - will load quickly"
+                                            >
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    {/* Hard drive/database icon for cache indicator */}
+                                                    <rect x="2" y="3" width="20" height="18" rx="2" />
+                                                    <path d="M7 3h10M7 21h10M9 9h6M9 15h6" />
+                                                </svg>
                                             </span>
                                         )}
                                         <button

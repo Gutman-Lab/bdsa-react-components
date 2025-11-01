@@ -141,6 +141,22 @@
     color: #e65100;
 }
 
+.bdsa-annotation-manager__annotation-card-cache-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #17a2b8;
+    margin-left: 6px;
+    opacity: 0.8;
+    cursor: help;
+    vertical-align: middle;
+}
+
+.bdsa-annotation-manager__annotation-card-cache-indicator svg {
+    display: block;
+    stroke: #17a2b8;
+}
+
 .bdsa-annotation-manager__annotation-card-details {
     display: flex;
     gap: 16px;

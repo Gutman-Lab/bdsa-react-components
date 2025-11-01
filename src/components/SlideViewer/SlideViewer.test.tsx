@@ -156,15 +156,21 @@ describe('SlideViewer', () => {
     })
 
     describe('DZI URL Loading', () => {
-        it('loads image using DZI URL when provided', () => {
+        it('loads image using DZI URL when provided', async () => {
             const dziImageInfo: SlideImageInfo = {
                 dziUrl: EXAMPLE_DZI_URL,
             }
             render(<SlideViewer imageInfo={dziImageInfo} />)
-            expect(mockViewerOpen).toHaveBeenCalledWith(EXAMPLE_DZI_URL)
+            // Wait for IntersectionObserver and initialization delay
+            await waitFor(
+                () => {
+                    expect(mockViewerOpen).toHaveBeenCalledWith(EXAMPLE_DZI_URL)
+                },
+                { timeout: 2000 }
+            )
         })
 
-        it('prioritizes DZI URL over manual tile source construction', () => {
+        it('prioritizes DZI URL over manual tile source construction', async () => {
             const dziImageInfo: SlideImageInfo = {
                 dziUrl: EXAMPLE_DZI_URL,
                 imageId: 'should-be-ignored',
@@ -172,7 +178,13 @@ describe('SlideViewer', () => {
                 height: 8000,
             }
             render(<SlideViewer imageInfo={dziImageInfo} />)
-            expect(mockViewerOpen).toHaveBeenCalledWith(EXAMPLE_DZI_URL)
+            // Wait for IntersectionObserver and initialization delay
+            await waitFor(
+                () => {
+                    expect(mockViewerOpen).toHaveBeenCalledWith(EXAMPLE_DZI_URL)
+                },
+                { timeout: 2000 }
+            )
         })
     })
 
@@ -210,6 +222,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -247,6 +260,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={['id1', 'id2', 'id3']}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -270,6 +284,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -300,6 +315,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -388,6 +404,7 @@ describe('SlideViewer', () => {
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
                     maxTotalPoints={50000}
+                    annotationCache={null}
                 />
             )
 
@@ -422,6 +439,7 @@ describe('SlideViewer', () => {
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
                     showAnnotationInfo={true}
+                    annotationCache={null}
                 />
             )
 
@@ -460,6 +478,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -498,6 +517,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -537,6 +557,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -573,6 +594,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -837,6 +859,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 
@@ -863,6 +886,7 @@ describe('SlideViewer', () => {
                     imageInfo={{ dziUrl: EXAMPLE_DZI_URL }}
                     annotationIds={[EXAMPLE_ANNOTATION_ID]}
                     apiBaseUrl={EXAMPLE_API_BASE_URL}
+                    annotationCache={null}
                 />
             )
 

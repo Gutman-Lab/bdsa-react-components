@@ -28,3 +28,14 @@ export type {
     Resource,
 } from './components/FolderBrowser/FolderBrowser'
 
+// Export cache implementations
+export {
+    MemoryAnnotationCache,
+    IndexedDBAnnotationCache,
+    type AnnotationCache,
+    checkIndexedDBQuota,
+    requestPersistentStorage,
+    logQuotaInfo,
+    formatBytes,
+} from './cache'
+
