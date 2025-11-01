@@ -172,6 +172,8 @@ export interface SlideViewerProps {
         clear(): Promise<void>
         getStats?(): Promise<{ size: number; hits?: number; misses?: number; hitRate?: number }>
     } | null
+    /** If true, disables caching entirely (equivalent to annotationCache={null}). Useful for debugging or forcing fresh fetches. */
+    disableCache?: boolean
     /** Optional map of annotation headers (from /annotation?itemId=... endpoint) keyed by annotation ID.
      *  If provided, used to compute version hashes for cache invalidation when annotations change on the server.
      *  Should contain the metadata objects returned from AnnotationManager's annotation search endpoint.
@@ -291,7 +293,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             annotationOpacities,
             visibleAnnotations,
             onAnnotationReady,
-            annotationCache,
+            annotationCache: externalAnnotationCache,
+            disableCache = false,
             annotationHeaders,
         },
         ref
@@ -308,17 +311,17 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
         // Auto-create IndexedDB cache if not provided and not explicitly disabled
         const cache = useMemo(() => {
-            if (annotationCache === null) {
-                // Explicitly disabled
+            if (disableCache || externalAnnotationCache === null) {
+                // Explicitly disabled via prop
                 return null
             }
-            if (annotationCache) {
+            if (externalAnnotationCache) {
                 // Provided by user
-                return annotationCache
+                return externalAnnotationCache
             }
             // Auto-create IndexedDB cache
             return new IndexedDBAnnotationCache()
-        }, [annotationCache])
+        }, [externalAnnotationCache, disableCache])
 
         // Track if component is mounted to prevent operations after unmount
         const isMountedRef = useRef(true)

@@ -141,12 +141,19 @@
     color: #e65100;
 }
 
+.bdsa-annotation-manager__annotation-card-cache-indicator-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    flex-shrink: 0;
+}
+
 .bdsa-annotation-manager__annotation-card-cache-indicator {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     color: #17a2b8;
-    margin-left: 6px;
     opacity: 0.8;
     cursor: help;
     vertical-align: middle;
@@ -155,6 +162,36 @@
 .bdsa-annotation-manager__annotation-card-cache-indicator svg {
     display: block;
     stroke: #17a2b8;
+}
+
+.bdsa-annotation-manager__annotation-card-cache-bypass {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid #6c757d;
+    border-radius: 3px;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 2px;
+    min-width: 16px;
+    min-height: 16px;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+    opacity: 0.7;
+}
+
+.bdsa-annotation-manager__annotation-card-cache-bypass:hover {
+    background-color: #6c757d;
+    color: #fff;
+    border-color: #6c757d;
+    opacity: 1;
+}
+
+.bdsa-annotation-manager__annotation-card-cache-bypass svg {
+    display: block;
+    width: 10px;
+    height: 10px;
 }
 
 .bdsa-annotation-manager__annotation-card-details {

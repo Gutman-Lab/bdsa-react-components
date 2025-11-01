@@ -60,7 +60,10 @@ export interface AnnotationManagerProps {
      * Set to `null` to disable caching. If provided, will show a cache indicator icon when annotations are cached. */
     annotationCache?: {
         has(annotationId: string | number, versionHash?: string): Promise<boolean>
+        delete?(annotationId: string | number): Promise<void>
     } | null
+    /** If true, disables caching entirely (equivalent to annotationCache={null}). Useful for debugging or forcing fresh fetches. */
+    disableCache?: boolean
     /** Show default vertical UI (default: true). Set to false to use custom render prop. */
     showDefaultUI?: boolean
     className?: string
@@ -107,7 +110,8 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             loadedAnnotations: externalLoadedAnnotations,
             visibleAnnotations: externalVisibleAnnotations,
             annotationOpacities: externalAnnotationOpacities,
-            annotationCache,
+            annotationCache: externalAnnotationCache,
+            disableCache = false,
             showDefaultUI = true,
             className = '',
             children,
@@ -138,17 +142,17 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
 
         // Auto-create IndexedDB cache if not provided and not explicitly disabled
         const cache = useMemo(() => {
-            if (annotationCache === null) {
-                // Explicitly disabled
+            if (disableCache || externalAnnotationCache === null) {
+                // Explicitly disabled via prop
                 return null
             }
-            if (annotationCache) {
+            if (externalAnnotationCache) {
                 // Provided by user
-                return annotationCache
+                return externalAnnotationCache
             }
             // Auto-create IndexedDB cache
             return new IndexedDBAnnotationCache()
-        }, [annotationCache])
+        }, [externalAnnotationCache, disableCache])
 
         // Use external state if provided, otherwise use internal state
         const loadedAnnotations = externalLoadedAnnotations ?? internalLoadedAnnotations
@@ -498,16 +502,52 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                                             </span>
                                         )}
                                         {isCached && (
-                                            <span 
-                                                className="bdsa-annotation-manager__annotation-card-cache-indicator"
-                                                title="Cached locally - will load quickly"
-                                            >
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                    {/* Hard drive/database icon for cache indicator */}
-                                                    <rect x="2" y="3" width="20" height="18" rx="2" />
-                                                    <path d="M7 3h10M7 21h10M9 9h6M9 15h6" />
-                                                </svg>
-                                            </span>
+                                            <div className="bdsa-annotation-manager__annotation-card-cache-indicator-group">
+                                                <span 
+                                                    className="bdsa-annotation-manager__annotation-card-cache-indicator"
+                                                    title="Cached locally - will load quickly"
+                                                >
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        {/* Hard drive/database icon for cache indicator */}
+                                                        <rect x="2" y="3" width="20" height="18" rx="2" />
+                                                        <path d="M7 3h10M7 21h10M9 9h6M9 15h6" />
+                                                    </svg>
+                                                </span>
+                                                {cache && typeof cache.delete === 'function' && (
+                                                    <button
+                                                        className="bdsa-annotation-manager__annotation-card-cache-bypass"
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation()
+                                                            const annId = String(ann._id)
+                                                            try {
+                                                                await cache.delete!(annId)
+                                                                // Remove from cached set
+                                                                setCachedAnnotationIds(prev => {
+                                                                    const next = new Set(prev)
+                                                                    next.delete(annId)
+                                                                    return next
+                                                                })
+                                                                // If annotation is loaded, trigger reload by toggling off then on
+                                                                if (loadedAnnotations.has(annId)) {
+                                                                    toggleLoad(annId) // Unload
+                                                                    setTimeout(() => toggleLoad(annId), 100) // Reload
+                                                                }
+                                                            } catch (error) {
+                                                                console.warn('Failed to clear cache for annotation:', error)
+                                                            }
+                                                        }}
+                                                        title="Clear cache and refresh this annotation"
+                                                    >
+                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            {/* Refresh/reload icon */}
+                                                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                                                            <path d="M21 3v5h-5" />
+                                                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                                                            <path d="M3 21v-5h5" />
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                         <button
                                             className={`bdsa-annotation-manager__annotation-card-button bdsa-annotation-manager__annotation-card-button--load bdsa-annotation-manager__annotation-card-button--load-header`}
