@@ -1,6 +1,6 @@
 # bdsa-react-components - CURSOR Integration Guide
 
-**Version:** 0.1.2 | **Generated:** 2025-11-01T20:15:49.818Z
+**Version:** 0.1.3 | **Generated:** 2025-11-02T18:31:59.324Z
 
 > This document provides everything Cursor needs to integrate and use the bdsa-react-components library.
 > Copy this entire document into your project's .cursorrules or docs folder.
@@ -217,7 +217,33 @@ const fetchWithAuth = async (url: string, options?: RequestInit) => {
 />
 ```
 
-### 2. SlideViewer with API-Fetched Annotations
+### 2. SlideViewer with API-Fetched Annotations (RECOMMENDED)
+
+**Recommended approach:** Use `onLoadedAnnotationIdsChange` to sync annotation state:
+
+```tsx
+const [annotationIds, setAnnotationIds] = useState<string[]>([])
+const imageId = '6903df8dd26a6d93de19a9b2'
+
+<>
+  <AnnotationManager
+    imageId={imageId}
+    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"
+    onLoadedAnnotationIdsChange={(ids) => {
+      // Automatically syncs when user loads/unloads annotations
+      setAnnotationIds(ids)
+    }}
+  />
+  <SlideViewer
+    imageInfo={{ dziUrl: `.../item/${imageId}/tiles/dzi.dzi` }}
+    annotationIds={annotationIds}
+    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"
+    height="800px"
+  />
+</>
+```
+
+**Alternative (legacy):** Using `onAnnotationsLoaded` - requires manual ID extraction:
 
 ```tsx
 const [annotationIds, setAnnotationIds] = useState<string[]>([])
@@ -237,6 +263,12 @@ const imageId = '6903df8dd26a6d93de19a9b2'
   />
 </>
 ```
+
+**Additional callbacks available:**
+
+- `onAnnotationLoad(id, data?)` - Fires when an annotation is loaded
+- `onAnnotationHide(id)` - Fires when an annotation is hidden/unloaded
+- `onAnnotationOpacityChange(id, opacity)` - Fires when opacity changes
 
 ### 3. FolderBrowser
 
@@ -278,6 +310,67 @@ const imageId = '6903df8dd26a6d93de19a9b2'
 **TypeScript errors:**
 - Ensure `dist/index.d.ts` exists in the library
 - Restart TypeScript server in your editor (VS Code: Cmd+Shift+P → "TypeScript: Restart TS Server")
+
+## Annotation Caching
+
+The library includes automatic IndexedDB-based caching for annotation documents to speed up loading and reduce server requests.
+
+### Auto-Enabled Caching
+
+Both `AnnotationManager` and `SlideViewer` automatically create and use an `IndexedDBAnnotationCache` instance by default. This provides:
+
+- **Persistent caching** across page refreshes (uses IndexedDB, 50MB+ capacity)
+- **Automatic cache validation** using version hashes from annotation headers
+- **Per-annotation cache indicators** (database icon) when cached
+- **Per-annotation cache bypass** (refresh icon) to clear and reload specific annotations
+
+### Disabling Cache
+
+To disable caching globally for debugging:
+
+```tsx
+<AnnotationManager
+  imageId="..."
+  apiBaseUrl="..."
+  disableCache={true}  // Disables all caching
+/>
+<SlideViewer
+  annotationIds={[...]}
+  disableCache={true}  // Disables all caching
+/>
+```
+
+### Cache Implementation
+
+```tsx
+import { IndexedDBAnnotationCache, MemoryAnnotationCache } from 'bdsa-react-components'
+
+// Use a specific cache implementation (optional)
+const cache = new IndexedDBAnnotationCache()
+<AnnotationManager annotationCache={cache} ... />
+<SlideViewer annotationCache={cache} ... />
+```
+
+### Cache Utilities
+
+```tsx
+import { checkIndexedDBQuota, requestPersistentStorage, logQuotaInfo } from 'bdsa-react-components'
+
+// Check cache quota and usage
+const quotaInfo = await checkIndexedDBQuota()
+if (quotaInfo) {
+  console.log(`Usage: ${quotaInfo.usagePercent.toFixed(1)}%`)
+  console.log(`Available: ${quotaInfo.available} bytes`)
+}
+
+// Request persistent storage (prevents browser cleanup)
+await requestPersistentStorage()
+
+// Log quota info in readable format
+await logQuotaInfo()
+```
+
+**Note:** IndexedDB storage limits are automatically managed by the browser. When quota is exceeded, the browser will prompt the user for permission to expand storage.
 
 ## Dependencies
 

@@ -50,6 +50,30 @@ export interface AnnotationManagerProps {
     onAnnotationOpacityChange?: (annotationId: string, opacity: number) => void
     /** Callback when annotation has finished loading and is ready (called by SlideViewer after rendering) */
     onAnnotationReady?: (annotationId: string) => void
+    /** 
+     * Callback fired whenever the list of loaded annotation IDs changes.
+     * This is called when:
+     * - User clicks "Load" on an annotation
+     * - User clicks "Hide" on an annotation
+     * - Annotations are unloaded
+     * 
+     * @param annotationIds - Array of currently loaded annotation IDs
+     */
+    onLoadedAnnotationIdsChange?: (annotationIds: string[]) => void
+    /** 
+     * Callback fired when an individual annotation is loaded.
+     * Useful for tracking which specific annotation was just loaded.
+     * 
+     * @param annotationId - The ID of the annotation that was loaded
+     * @param annotationData - The full annotation document (optional, for performance)
+     */
+    onAnnotationLoad?: (annotationId: string, annotationData?: unknown) => void
+    /** 
+     * Callback fired when an individual annotation is hidden/unloaded.
+     * 
+     * @param annotationId - The ID of the annotation that was hidden
+     */
+    onAnnotationHide?: (annotationId: string) => void
     /** Map of annotation IDs to their loaded state */
     loadedAnnotations?: Set<string>
     /** Map of annotation IDs to their visibility state */
@@ -107,6 +131,9 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             onAnnotationVisibilityChange,
             onAnnotationOpacityChange,
             onAnnotationReady: externalOnAnnotationReady,
+            onLoadedAnnotationIdsChange,
+            onAnnotationLoad,
+            onAnnotationHide,
             loadedAnnotations: externalLoadedAnnotations,
             visibleAnnotations: externalVisibleAnnotations,
             annotationOpacities: externalAnnotationOpacities,
@@ -158,6 +185,18 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
         const loadedAnnotations = externalLoadedAnnotations ?? internalLoadedAnnotations
         const visibleAnnotations = externalVisibleAnnotations ?? internalVisibleAnnotations
         const annotationOpacities = externalAnnotationOpacities ?? internalAnnotationOpacities
+
+        // Fire onLoadedAnnotationIdsChange whenever the loaded annotations set changes
+        // Use a sorted array string for comparison to detect changes even if Set reference doesn't change
+        const loadedAnnotationsArray = useMemo(() => {
+            return Array.from(loadedAnnotations).sort()
+        }, [loadedAnnotations])
+        
+        useEffect(() => {
+            if (onLoadedAnnotationIdsChange) {
+                onLoadedAnnotationIdsChange(loadedAnnotationsArray)
+            }
+        }, [loadedAnnotationsArray, onLoadedAnnotationIdsChange])
 
         // Handle annotation ready callback (called when SlideViewer finishes loading)
         // This clears the loading state when an annotation is ready
@@ -226,6 +265,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                     setInternalAnnotationOpacities(prev => new Map(prev).set(idStr, 1))
                 }
                 onAnnotationLoadChange?.(idStr, true)
+                onAnnotationLoad?.(idStr) // Fire individual load callback (annotationData can be added later if needed)
             } else {
                 // Unload annotation
                 if (!externalLoadedAnnotations) {
@@ -250,6 +290,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                     })
                 }
                 onAnnotationLoadChange?.(idStr, false)
+                onAnnotationHide?.(idStr) // Fire individual hide callback
 
                 // Clear loading state if it exists
                 setLoadingAnnotations(prev => {
@@ -258,7 +299,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                     return next
                 })
             }
-        }, [externalLoadedAnnotations, externalVisibleAnnotations, externalAnnotationOpacities, loadedAnnotations, onAnnotationLoadChange])
+        }, [externalLoadedAnnotations, externalVisibleAnnotations, externalAnnotationOpacities, loadedAnnotations, onAnnotationLoadChange, onAnnotationLoad, onAnnotationHide])
 
         // Toggle annotation visibility using opacity (hide = opacity 0, show = restore previous opacity)
         const toggleVisibility = useCallback((annotationId: string) => {

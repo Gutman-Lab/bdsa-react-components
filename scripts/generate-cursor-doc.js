@@ -386,7 +386,29 @@ function generateCursorDoc() {
   doc += `/>\n`
   doc += `\`\`\`\n\n`
   
-  doc += `### 2. SlideViewer with API-Fetched Annotations\n\n`
+  doc += `### 2. SlideViewer with API-Fetched Annotations (RECOMMENDED)\n\n`
+  doc += `**Recommended approach:** Use \`onLoadedAnnotationIdsChange\` to sync annotation state:\n\n`
+  doc += `\`\`\`tsx\n`
+  doc += `const [annotationIds, setAnnotationIds] = useState<string[]>([])\n`
+  doc += `const imageId = '6903df8dd26a6d93de19a9b2'\n\n`
+  doc += `<>\n`
+  doc += `  <AnnotationManager\n`
+  doc += `    imageId={imageId}\n`
+  doc += `    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"\n`
+  doc += `    onLoadedAnnotationIdsChange={(ids) => {\n`
+  doc += `      // Automatically syncs when user loads/unloads annotations\n`
+  doc += `      setAnnotationIds(ids)\n`
+  doc += `    }}\n`
+  doc += `  />\n`
+  doc += `  <SlideViewer\n`
+  doc += `    imageInfo={{ dziUrl: \`.../item/\${imageId}/tiles/dzi.dzi\` }}\n`
+  doc += `    annotationIds={annotationIds}\n`
+  doc += `    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"\n`
+  doc += `    height="800px"\n`
+  doc += `  />\n`
+  doc += `</>\n`
+  doc += `\`\`\`\n\n`
+  doc += `**Alternative (legacy):** Using \`onAnnotationsLoaded\` - requires manual ID extraction:\n\n`
   doc += `\`\`\`tsx\n`
   doc += `const [annotationIds, setAnnotationIds] = useState<string[]>([])\n`
   doc += `const imageId = '6903df8dd26a6d93de19a9b2'\n\n`
@@ -404,6 +426,10 @@ function generateCursorDoc() {
   doc += `  />\n`
   doc += `</>\n`
   doc += `\`\`\`\n\n`
+  doc += `**Additional callbacks available:**\n\n`
+  doc += `- \`onAnnotationLoad(id, data?)\` - Fires when an annotation is loaded\n`
+  doc += `- \`onAnnotationHide(id)\` - Fires when an annotation is hidden/unloaded\n`
+  doc += `- \`onAnnotationOpacityChange(id, opacity)\` - Fires when opacity changes\n\n`
   
   doc += `### 3. FolderBrowser\n\n`
   doc += `\`\`\`tsx\n`
@@ -439,6 +465,51 @@ function generateCursorDoc() {
   doc += `**TypeScript errors:**\n`
   doc += `- Ensure \`dist/index.d.ts\` exists in the library\n`
   doc += `- Restart TypeScript server in your editor (VS Code: Cmd+Shift+P → "TypeScript: Restart TS Server")\n\n`
+  
+  doc += `## Annotation Caching\n\n`
+  doc += `The library includes automatic IndexedDB-based caching for annotation documents to speed up loading and reduce server requests.\n\n`
+  doc += `### Auto-Enabled Caching\n\n`
+  doc += `Both \`AnnotationManager\` and \`SlideViewer\` automatically create and use an \`IndexedDBAnnotationCache\` instance by default. This provides:\n\n`
+  doc += `- **Persistent caching** across page refreshes (uses IndexedDB, 50MB+ capacity)\n`
+  doc += `- **Automatic cache validation** using version hashes from annotation headers\n`
+  doc += `- **Per-annotation cache indicators** (database icon) when cached\n`
+  doc += `- **Per-annotation cache bypass** (refresh icon) to clear and reload specific annotations\n\n`
+  doc += `### Disabling Cache\n\n`
+  doc += `To disable caching globally for debugging:\n\n`
+  doc += `\`\`\`tsx\n`
+  doc += `<AnnotationManager\n`
+  doc += `  imageId="..."\n`
+  doc += `  apiBaseUrl="..."\n`
+  doc += `  disableCache={true}  // Disables all caching\n`
+  doc += `/>\n`
+  doc += `<SlideViewer\n`
+  doc += `  annotationIds={[...]}\n`
+  doc += `  disableCache={true}  // Disables all caching\n`
+  doc += `/>\n`
+  doc += `\`\`\`\n\n`
+  doc += `### Cache Implementation\n\n`
+  doc += `\`\`\`tsx\n`
+  doc += `import { IndexedDBAnnotationCache, MemoryAnnotationCache } from 'bdsa-react-components'\n\n`
+  doc += `// Use a specific cache implementation (optional)\n`
+  doc += `const cache = new IndexedDBAnnotationCache()\n`
+  doc += `<AnnotationManager annotationCache={cache} ... />\n`
+  doc += `<SlideViewer annotationCache={cache} ... />\n`
+  doc += `\`\`\`\n\n`
+  doc += `### Cache Utilities\n\n`
+  doc += `\`\`\`tsx\n`
+  doc += `import { checkIndexedDBQuota, requestPersistentStorage, logQuotaInfo } from 'bdsa-react-components'\n\n`
+  doc += `// Check cache quota and usage\n`
+  doc += `const quotaInfo = await checkIndexedDBQuota()\n`
+  doc += `if (quotaInfo) {\n`
+  doc += `  console.log(\`Usage: \${quotaInfo.usagePercent.toFixed(1)}%\`)\n`
+  doc += `  console.log(\`Available: \${quotaInfo.available} bytes\`)\n`
+  doc += `}\n\n`
+  doc += `// Request persistent storage (prevents browser cleanup)\n`
+  doc += `await requestPersistentStorage()\n\n`
+  doc += `// Log quota info in readable format\n`
+  doc += `await logQuotaInfo()\n`
+  doc += `\`\`\`\n\n`
+  doc += `**Note:** IndexedDB storage limits are automatically managed by the browser. When quota is exceeded, the browser will prompt the user for permission to expand storage.\n\n`
   
   doc += `## Dependencies\n\n`
   doc += `**Peer:** react ^18.0.0, react-dom ^18.0.0\n\n`
