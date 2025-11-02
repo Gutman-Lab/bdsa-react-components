@@ -1,0 +1,55 @@
+diff --git a/node_modules/osd-paperjs-annotation/src/js/paper-overlay.mjs b/node_modules/osd-paperjs-annotation/src/js/paper-overlay.mjs
+index 5f5aa6e..d831cc5 100644
+--- a/node_modules/osd-paperjs-annotation/src/js/paper-overlay.mjs
++++ b/node_modules/osd-paperjs-annotation/src/js/paper-overlay.mjs
+@@ -571,11 +571,32 @@ class PaperOverlay extends OpenSeadragon.EventSource{
+             return;
+         }
+ 
++        // Defensive check: ensure Paper.js view is still initialized
++        // This prevents _transformBounds errors when Paper.js is destroyed but event handlers still fire
++        if(!this.paperScope || !this.paperScope.view) {
++            return;
++        }
++        
++        // Check if _transformBounds exists (internal Paper.js property indicating initialization)
++        const view = this.paperScope.view;
++        if(view._transformBounds === null || view._transformBounds === undefined) {
++            return;
++        }
++
++        // Additional check: ensure viewer hasn't been destroyed
++        if(this.destroyed) {
++            return;
++        }
++
+         let viewportZoom = this.viewer.viewport.getZoom(true);
+         let oldZoom = this.paperScope.view.getZoom();
+         this.paperScope.view.setZoom(this.viewer.viewport._containerInnerSize.x * viewportZoom / this.scaleFactor);
+         
+         let center = this._getCenter();
++        if(!center) {
++            return; // _getCenter() may return null if viewer is destroyed
++        }
++        
+         this.viewer.drawer.canvas.pixelRatio = window.devicePixelRatio;
+         this.paperScope.view.center = new paper.Point(center.x, center.y).multiply(this.scaleFactor);
+ 
+@@ -596,7 +617,16 @@ class PaperOverlay extends OpenSeadragon.EventSource{
+         return this._pivot.multiply(this.scaleFactor);
+     }
+     _getCenter(){
+-        return this.viewer.viewport.getCenter(true);
++        // Defensive check: ensure viewer and viewport still exist
++        if(!this.viewer || !this.viewer.viewport || this.destroyed) {
++            return null;
++        }
++        try {
++            return this.viewer.viewport.getCenter(true);
++        } catch(e) {
++            // Viewer might be destroyed, return null to indicate failure
++            return null;
++        }
+     }
+ 
+     

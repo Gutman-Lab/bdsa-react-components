@@ -156,6 +156,69 @@ import 'bdsa-react-components/styles.css'
 </Card>
 ```
 
+### AnnotationManager + SlideViewer Integration
+
+**Recommended simplified pattern:**
+
+```tsx
+import { AnnotationManager, SlideViewer, IndexedDBAnnotationCache } from 'bdsa-react-components'
+import 'bdsa-react-components/styles.css'
+import { useState, useCallback, useMemo } from 'react'
+
+function AnnotationViewer({ imageId, apiBaseUrl, dziUrl }) {
+  const cache = useMemo(() => new IndexedDBAnnotationCache(), [])
+  
+  // Unified state
+  const [state, setState] = useState({
+    loadedIds: [],
+    opacities: new Map(),
+    visibility: new Map(),
+  })
+  
+  // Annotation headers for cache versioning
+  const [headers, setHeaders] = useState(new Map())
+  
+  // Shared callback - no render props needed!
+  const handleReady = useCallback((id) => {
+    console.log('Annotation ready:', id)
+  }, [])
+
+  return (
+    <div style={{ display: 'flex', height: '800px' }}>
+      <div style={{ width: '350px', borderRight: '2px solid #ddd' }}>
+        <AnnotationManager
+          imageId={imageId}
+          apiBaseUrl={apiBaseUrl}
+          annotationCache={cache}
+          slideViewerOnAnnotationReady={handleReady}
+          onAnnotationStateChange={setState}
+          onAnnotationHeadersChange={setHeaders}
+          showDefaultUI={true}
+        />
+      </div>
+      <div style={{ flex: 1 }}>
+        <SlideViewer
+          imageInfo={{ dziUrl }}
+          annotationIds={state.loadedIds}
+          annotationOpacities={state.opacities}
+          visibleAnnotations={state.visibility}
+          annotationCache={cache}
+          annotationHeaders={headers}
+          onAnnotationReady={handleReady}
+          height="800px"
+        />
+      </div>
+    </div>
+  )
+}
+```
+
+**Benefits:**
+- ✅ Single unified callback (`onAnnotationStateChange`) - fires immediately
+- ✅ No render props needed (`slideViewerOnAnnotationReady` prop)
+- ✅ Automatic headers sync (`onAnnotationHeadersChange`)
+- ✅ Built-in deduplication prevents infinite loops
+
 ## Troubleshooting
 
 ### "Module not found" error

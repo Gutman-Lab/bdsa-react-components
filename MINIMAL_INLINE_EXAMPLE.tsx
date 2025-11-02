@@ -4,12 +4,11 @@
  * Paste this directly into your React component file.
  */
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { 
   AnnotationManager, 
   SlideViewer, 
-  IndexedDBAnnotationCache,
-  type AnnotationSearchResult 
+  IndexedDBAnnotationCache
 } from 'bdsa-react-components'
 import 'bdsa-react-components/styles.css'
 
@@ -25,9 +24,6 @@ export const MyAnnotationViewer = () => {
   
   // Annotation headers for cache versioning
   const [annotationHeaders, setAnnotationHeaders] = useState<Map<string | number, unknown>>(new Map())
-  
-  // Ref to capture AnnotationManager's internal callback
-  const managerReadyRef = useRef<((id: string) => void) | null>(null)
 
   // Unified state object
   const [state, setState] = useState({
@@ -36,11 +32,9 @@ export const MyAnnotationViewer = () => {
     visibility: new Map<string, boolean>(),
   })
 
-  // Shared ready handler
+  // SIMPLIFIED: Shared ready handler - no refs needed!
   const handleReady = useCallback((id: string | number) => {
-    if (managerReadyRef.current) {
-      managerReadyRef.current(String(id))
-    }
+    console.log('Annotation ready:', id)
   }, [])
 
   return (
@@ -51,7 +45,7 @@ export const MyAnnotationViewer = () => {
           imageId={IMAGE_ID}
           apiBaseUrl={API_BASE_URL}
           annotationCache={cache}
-          onAnnotationReady={handleReady}
+          slideViewerOnAnnotationReady={handleReady}  // ← NEW: Simple prop!
           onAnnotationStateChange={(newState) => {
             setState({
               loadedIds: newState.loadedAnnotationIds,
@@ -59,18 +53,9 @@ export const MyAnnotationViewer = () => {
               visibility: newState.visibility,
             })
           }}
+          onAnnotationHeadersChange={setAnnotationHeaders}  // ← Automatic headers!
           showDefaultUI={true}
-        >
-          {({ onAnnotationReady, annotations }) => {
-            if (onAnnotationReady) managerReadyRef.current = onAnnotationReady
-            useEffect(() => {
-              const headers = new Map<string | number, AnnotationSearchResult>()
-              annotations.forEach(ann => headers.set(String(ann._id), ann))
-              setAnnotationHeaders(headers)
-            }, [annotations])
-            return null
-          }}
-        </AnnotationManager>
+        />
       </div>
 
       {/* Right: Image Viewer */}

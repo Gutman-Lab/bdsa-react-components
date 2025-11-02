@@ -113,6 +113,53 @@ A flexible card component for displaying content in a contained format.
 - `padding`: 'none' | 'small' | 'medium' | 'large'
 - Plus all standard HTML div attributes
 
+### AnnotationManager
+
+A component for managing annotation loading, visibility, and opacity in conjunction with SlideViewer. Provides a simplified integration pattern with automatic state synchronization.
+
+```tsx
+import { AnnotationManager, SlideViewer, IndexedDBAnnotationCache } from 'bdsa-react-components'
+import 'bdsa-react-components/styles.css'
+import { useState, useCallback, useMemo } from 'react'
+
+function AnnotationViewer({ imageId, apiBaseUrl, dziUrl }) {
+  const cache = useMemo(() => new IndexedDBAnnotationCache(), [])
+  const [state, setState] = useState({
+    loadedIds: [],
+    opacities: new Map(),
+    visibility: new Map(),
+  })
+  const [headers, setHeaders] = useState(new Map())
+  const handleReady = useCallback((id) => console.log('Ready:', id), [])
+
+  return (
+    <div style={{ display: 'flex', height: '800px' }}>
+      <AnnotationManager
+        imageId={imageId}
+        apiBaseUrl={apiBaseUrl}
+        annotationCache={cache}
+        slideViewerOnAnnotationReady={handleReady}
+        onAnnotationStateChange={setState}
+        onAnnotationHeadersChange={setHeaders}
+      />
+      <SlideViewer
+        imageInfo={{ dziUrl }}
+        annotationIds={state.loadedIds}
+        annotationOpacities={state.opacities}
+        annotationHeaders={headers}
+        onAnnotationReady={handleReady}
+        height="800px"
+      />
+    </div>
+  )
+}
+```
+
+**Key Props:**
+- `slideViewerOnAnnotationReady`: Callback shared with SlideViewer (no render props needed!)
+- `onAnnotationStateChange`: Unified callback that fires immediately on all state changes
+- `onAnnotationHeadersChange`: Automatic headers sync for cache versioning
+
 ### SlideViewer
 
 A powerful slide viewer component that integrates OpenSeadragon with Paper.js annotations for viewing Digital Slide Archive images with annotation overlays.

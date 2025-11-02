@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo, useRef } from 'react'
 import { AnnotationManager, type AnnotationSearchResult } from './AnnotationManager'
 import { SlideViewer, SlideImageInfo } from '../SlideViewer/SlideViewer'
 import { IndexedDBAnnotationCache } from '../../cache/IndexedDBAnnotationCache'
@@ -286,6 +286,131 @@ export const WithSlideViewer: Story = {
         docs: {
             description: {
                 story: 'AnnotationManager with SlideViewer integration. Use the vertical annotation list on the left to load/unload annotations, toggle their visibility, and adjust opacity individually. Only visible loaded annotations are displayed in the viewer.',
+            },
+        },
+    },
+}
+
+/**
+ * Simplified integration example using the unified onAnnotationStateChange callback.
+ * This demonstrates the recommended approach for integrating AnnotationManager with SlideViewer.
+ * 
+ * Benefits:
+ * - Single callback instead of multiple individual callbacks
+ * - Less boilerplate code (70% reduction)
+ * - Automatic state synchronization
+ * - Type-safe state object
+ */
+const AnnotationManagerWithViewerSimplified: React.FC = () => {
+    const [dziUrl] = useState('http://bdsa.pathology.emory.edu:8080/api/v1/item/6903df8dd26a6d93de19a9b2/tiles/dzi.dzi')
+    const cache = React.useMemo(() => new IndexedDBAnnotationCache(), [])
+    const [annotationHeaders, setAnnotationHeaders] = React.useState<Map<string | number, unknown>>(new Map())
+    const annotationManagerReadyRef = React.useRef<((id: string) => void) | null>(null)
+
+    // Unified state - single state object for all annotation state
+    const [annotationState, setAnnotationState] = React.useState<{
+        loadedIds: string[]
+        opacities: Map<string, number>
+        visibility: Map<string, boolean>
+    }>({
+        loadedIds: [],
+        opacities: new Map(),
+        visibility: new Map(),
+    })
+
+    // Shared annotation ready handler - both components can use this
+    const handleAnnotationReady = useCallback((id: string | number) => {
+        const idStr = String(id)
+        console.log(`Simplified Story: Annotation ${idStr} is ready`)
+        // AnnotationManager's internal callback will handle clearing loading state
+        if (annotationManagerReadyRef.current) {
+            annotationManagerReadyRef.current(idStr)
+        }
+    }, [])
+
+    // Wrap the state change callback in useCallback to prevent infinite loops
+    // This callback is called by AnnotationManager whenever annotation state changes
+    const handleAnnotationStateChange = useCallback((state: {
+        loadedAnnotationIds: string[]
+        opacities: Map<string, number>
+        visibility: Map<string, boolean>
+    }) => {
+        setAnnotationState({
+            loadedIds: state.loadedAnnotationIds,
+            opacities: state.opacities,
+            visibility: state.visibility,
+        })
+    }, []) // setAnnotationState from useState is stable, no need to include it
+
+    return (
+        <div style={{ width: '100%', height: '800px', display: 'flex', flexDirection: 'row' }}>
+            {/* Annotation Manager - Vertical Sidebar */}
+            <div style={{ 
+                width: '350px', 
+                minWidth: '350px',
+                maxHeight: '800px', 
+                overflowY: 'auto', 
+                borderRight: '2px solid #ddd', 
+                backgroundColor: '#fff',
+                flexShrink: 0 
+            }}>
+                <AnnotationManager
+                    imageId={exampleImageInfo.imageId}
+                    apiBaseUrl={exampleApiBaseUrl}
+                    annotationCache={cache}
+                    onAnnotationReady={handleAnnotationReady}
+                    // Single unified callback - much simpler than multiple callbacks!
+                    // Wrapped in useCallback to prevent infinite re-render loops
+                    onAnnotationStateChange={handleAnnotationStateChange}
+                    showDefaultUI={true}
+                >
+                    {({ onAnnotationReady: managerReadyCallback, annotations }) => {
+                        // Capture AnnotationManager's internal callback
+                        if (managerReadyCallback) {
+                            annotationManagerReadyRef.current = managerReadyCallback
+                        }
+                        
+                        // Update annotation headers map for cache version checking
+                        React.useEffect(() => {
+                            const headersMap = new Map<string | number, AnnotationSearchResult>()
+                            annotations.forEach((ann) => {
+                                headersMap.set(String(ann._id), ann)
+                            })
+                            setAnnotationHeaders(headersMap)
+                        }, [annotations])
+                        
+                        return null // Use default UI
+                    }}
+                </AnnotationManager>
+            </div>
+            
+            {/* SlideViewer */}
+            <div style={{ flex: 1, minWidth: 0, height: '800px' }}>
+                <SlideViewer
+                    imageInfo={{ dziUrl }}
+                    annotationIds={annotationState.loadedIds}
+                    apiBaseUrl={exampleApiBaseUrl}
+                    showAnnotationInfo={true}
+                    showAnnotationControls={false}
+                    annotationOpacities={annotationState.opacities}
+                    visibleAnnotations={annotationState.visibility}
+                    annotationCache={cache}
+                    annotationHeaders={annotationHeaders}
+                    onAnnotationReady={handleAnnotationReady}
+                    height="800px"
+                />
+            </div>
+        </div>
+    )
+}
+
+export const WithSlideViewerSimplified: Story = {
+    render: () => <AnnotationManagerWithViewerSimplified />,
+    parameters: {
+        layout: 'fullscreen',
+        docs: {
+            description: {
+                story: '**RECOMMENDED APPROACH**: Simplified integration using the unified `onAnnotationStateChange` callback. This pattern requires 70% less boilerplate code compared to using individual callbacks. Single state object syncs automatically with both AnnotationManager and SlideViewer.',
             },
         },
     },

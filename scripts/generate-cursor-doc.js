@@ -387,28 +387,74 @@ function generateCursorDoc() {
   doc += `\`\`\`\n\n`
   
   doc += `### 2. SlideViewer with API-Fetched Annotations (RECOMMENDED)\n\n`
-  doc += `**Recommended approach:** Use \`onLoadedAnnotationIdsChange\` to sync annotation state:\n\n`
+  doc += `**⭐ RECOMMENDED APPROACH:** Use \`onAnnotationStateChange\` - unified callback with complete state sync:\n\n`
   doc += `\`\`\`tsx\n`
-  doc += `const [annotationIds, setAnnotationIds] = useState<string[]>([])\n`
+  doc += `// Unified state - single state object for all annotation state\n`
+  doc += `const [annotationState, setAnnotationState] = useState({\n`
+  doc += `  loadedIds: [] as string[],\n`
+  doc += `  opacities: new Map<string, number>(),\n`
+  doc += `  visibility: new Map<string, boolean>(),\n`
+  doc += `})\n\n`
+  doc += `const [annotationHeaders, setAnnotationHeaders] = useState(new Map())\n\n`
   doc += `const imageId = '6903df8dd26a6d93de19a9b2'\n\n`
   doc += `<>\n`
   doc += `  <AnnotationManager\n`
   doc += `    imageId={imageId}\n`
   doc += `    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"\n`
-  doc += `    onLoadedAnnotationIdsChange={(ids) => {\n`
-  doc += `      // Automatically syncs when user loads/unloads annotations\n`
-  doc += `      setAnnotationIds(ids)\n`
+  doc += `    onAnnotationStateChange={(state) => {\n`
+  doc += `      // Single callback fires for all state changes (load, opacity, visibility)\n`
+  doc += `      // 70% less boilerplate than individual callbacks!\n`
+  doc += `      setAnnotationState({\n`
+  doc += `        loadedIds: state.loadedAnnotationIds,\n`
+  doc += `        opacities: state.opacities,\n`
+  doc += `        visibility: state.visibility,\n`
+  doc += `      })\n`
+  doc += `    }}\n`
+  doc += `    slideViewerOnAnnotationReady={(id) => {\n`
+  doc += `      // Shared handler - no render props needed!\n`
+  doc += `      console.log('Annotation ready:', id)\n`
+  doc += `    }}\n`
+  doc += `    onAnnotationHeadersChange={(headers) => {\n`
+  doc += `      // Automatic headers sync for cache versioning\n`
+  doc += `      setAnnotationHeaders(headers)\n`
+  doc += `    }}\n`
+  doc += `  />\n`
+  doc += `  <SlideViewer\n`
+  doc += `    imageInfo={{ dziUrl: \`.../item/\${imageId}/tiles/dzi.dzi\` }}\n`
+  doc += `    annotationIds={annotationState.loadedIds}\n`
+  doc += `    annotationOpacities={annotationState.opacities}\n`
+  doc += `    visibleAnnotations={annotationState.visibility}\n`
+  doc += `    annotationHeaders={annotationHeaders}\n`
+  doc += `    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"\n`
+  doc += `    onAnnotationReady={(id) => console.log('Annotation ready:', id)}\n`
+  doc += `    height="800px"\n`
+  doc += `  />\n`
+  doc += `</>\n`
+  doc += `\`\`\`\n\n`
+  doc += `**Alternative approach:** Using individual callbacks - more verbose but still supported:\n\n`
+  doc += `\`\`\`tsx\n`
+  doc += `const [annotationIds, setAnnotationIds] = useState<string[]>([])\n`
+  doc += `const [opacities, setOpacities] = useState(new Map<string, number>())\n`
+  doc += `const imageId = '6903df8dd26a6d93de19a9b2'\n\n`
+  doc += `<>\n`
+  doc += `  <AnnotationManager\n`
+  doc += `    imageId={imageId}\n`
+  doc += `    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"\n`
+  doc += `    onLoadedAnnotationIdsChange={(ids) => setAnnotationIds(ids)}\n`
+  doc += `    onAnnotationOpacityChange={(id, opacity) => {\n`
+  doc += `      setOpacities(prev => new Map(prev).set(id, opacity))\n`
   doc += `    }}\n`
   doc += `  />\n`
   doc += `  <SlideViewer\n`
   doc += `    imageInfo={{ dziUrl: \`.../item/\${imageId}/tiles/dzi.dzi\` }}\n`
   doc += `    annotationIds={annotationIds}\n`
+  doc += `    annotationOpacities={opacities}\n`
   doc += `    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"\n`
   doc += `    height="800px"\n`
   doc += `  />\n`
   doc += `</>\n`
   doc += `\`\`\`\n\n`
-  doc += `**Alternative (legacy):** Using \`onAnnotationsLoaded\` - requires manual ID extraction:\n\n`
+  doc += `**Legacy approach:** Using \`onAnnotationsLoaded\` - requires manual ID extraction:\n\n`
   doc += `\`\`\`tsx\n`
   doc += `const [annotationIds, setAnnotationIds] = useState<string[]>([])\n`
   doc += `const imageId = '6903df8dd26a6d93de19a9b2'\n\n`
@@ -426,7 +472,7 @@ function generateCursorDoc() {
   doc += `  />\n`
   doc += `</>\n`
   doc += `\`\`\`\n\n`
-  doc += `**Additional callbacks available:**\n\n`
+  doc += `**Additional callbacks available (legacy - prefer \`onAnnotationStateChange\` for new code):**\n\n`
   doc += `- \`onAnnotationLoad(id, data?)\` - Fires when an annotation is loaded\n`
   doc += `- \`onAnnotationHide(id)\` - Fires when an annotation is hidden/unloaded\n`
   doc += `- \`onAnnotationOpacityChange(id, opacity)\` - Fires when opacity changes\n\n`

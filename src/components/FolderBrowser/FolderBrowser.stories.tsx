@@ -210,7 +210,7 @@ export const WithMockData: Story = {
 export const WithRootCollection: Story = {
     args: {
         apiBaseUrl: exampleApiBaseUrl,
-        rootId: '6903df8dd26a6d93de19a9b2', // Example collection ID
+        rootId: '6903df5fd26a6d93de19a9af', // Valid collection ID
         rootType: 'collection',
     },
     parameters: {
@@ -225,7 +225,7 @@ export const WithRootCollection: Story = {
 export const WithRootFolder: Story = {
     args: {
         apiBaseUrl: exampleApiBaseUrl,
-        rootId: '6903df8dd26a6d93de19a9b1', // Example folder ID
+        rootId: '6903df87d26a6d93de19a9b0', // Valid folder ID
         rootType: 'folder',
     },
     parameters: {

@@ -1,6 +1,6 @@
 # bdsa-react-components - CURSOR Integration Guide
 
-**Version:** 0.1.3 | **Generated:** 2025-11-02T18:31:59.324Z
+**Version:** 0.1.6 | **Generated:** 2025-11-02T21:56:12.504Z
 
 > This document provides everything Cursor needs to integrate and use the bdsa-react-components library.
 > Copy this entire document into your project's .cursorrules or docs folder.
@@ -219,31 +219,82 @@ const fetchWithAuth = async (url: string, options?: RequestInit) => {
 
 ### 2. SlideViewer with API-Fetched Annotations (RECOMMENDED)
 
-**Recommended approach:** Use `onLoadedAnnotationIdsChange` to sync annotation state:
+**⭐ RECOMMENDED APPROACH:** Use `onAnnotationStateChange` - unified callback with complete state sync:
 
 ```tsx
-const [annotationIds, setAnnotationIds] = useState<string[]>([])
+// Unified state - single state object for all annotation state
+const [annotationState, setAnnotationState] = useState({
+  loadedIds: [] as string[],
+  opacities: new Map<string, number>(),
+  visibility: new Map<string, boolean>(),
+})
+
+const [annotationHeaders, setAnnotationHeaders] = useState(new Map())
+
 const imageId = '6903df8dd26a6d93de19a9b2'
 
 <>
   <AnnotationManager
     imageId={imageId}
     apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"
-    onLoadedAnnotationIdsChange={(ids) => {
-      // Automatically syncs when user loads/unloads annotations
-      setAnnotationIds(ids)
+    onAnnotationStateChange={(state) => {
+      // Single callback fires for all state changes (load, opacity, visibility)
+      // 70% less boilerplate than individual callbacks!
+      setAnnotationState({
+        loadedIds: state.loadedAnnotationIds,
+        opacities: state.opacities,
+        visibility: state.visibility,
+      })
+    }}
+    slideViewerOnAnnotationReady={(id) => {
+      // Shared handler - no render props needed!
+      console.log('Annotation ready:', id)
+    }}
+    onAnnotationHeadersChange={(headers) => {
+      // Automatic headers sync for cache versioning
+      setAnnotationHeaders(headers)
+    }}
+  />
+  <SlideViewer
+    imageInfo={{ dziUrl: `.../item/${imageId}/tiles/dzi.dzi` }}
+    annotationIds={annotationState.loadedIds}
+    annotationOpacities={annotationState.opacities}
+    visibleAnnotations={annotationState.visibility}
+    annotationHeaders={annotationHeaders}
+    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"
+    onAnnotationReady={(id) => console.log('Annotation ready:', id)}
+    height="800px"
+  />
+</>
+```
+
+**Alternative approach:** Using individual callbacks - more verbose but still supported:
+
+```tsx
+const [annotationIds, setAnnotationIds] = useState<string[]>([])
+const [opacities, setOpacities] = useState(new Map<string, number>())
+const imageId = '6903df8dd26a6d93de19a9b2'
+
+<>
+  <AnnotationManager
+    imageId={imageId}
+    apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"
+    onLoadedAnnotationIdsChange={(ids) => setAnnotationIds(ids)}
+    onAnnotationOpacityChange={(id, opacity) => {
+      setOpacities(prev => new Map(prev).set(id, opacity))
     }}
   />
   <SlideViewer
     imageInfo={{ dziUrl: `.../item/${imageId}/tiles/dzi.dzi` }}
     annotationIds={annotationIds}
+    annotationOpacities={opacities}
     apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"
     height="800px"
   />
 </>
 ```
 
-**Alternative (legacy):** Using `onAnnotationsLoaded` - requires manual ID extraction:
+**Legacy approach:** Using `onAnnotationsLoaded` - requires manual ID extraction:
 
 ```tsx
 const [annotationIds, setAnnotationIds] = useState<string[]>([])
@@ -264,7 +315,7 @@ const imageId = '6903df8dd26a6d93de19a9b2'
 </>
 ```
 
-**Additional callbacks available:**
+**Additional callbacks available (legacy - prefer `onAnnotationStateChange` for new code):**
 
 - `onAnnotationLoad(id, data?)` - Fires when an annotation is loaded
 - `onAnnotationHide(id)` - Fires when an annotation is hidden/unloaded

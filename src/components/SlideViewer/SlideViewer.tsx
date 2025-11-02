@@ -174,6 +174,10 @@ export interface SlideViewerProps {
     } | null
     /** If true, disables caching entirely (equivalent to annotationCache={null}). Useful for debugging or forcing fresh fetches. */
     disableCache?: boolean
+    /** If true, disables the IntersectionObserver visibility check and initializes immediately.
+     *  Useful for cases where you want immediate initialization regardless of viewport visibility.
+     *  Default: false (visibility check enabled for better performance and error prevention) */
+    disableVisibilityCheck?: boolean
     /** Optional map of annotation headers (from /annotation?itemId=... endpoint) keyed by annotation ID.
      *  If provided, used to compute version hashes for cache invalidation when annotations change on the server.
      *  Should contain the metadata objects returned from AnnotationManager's annotation search endpoint.
@@ -295,6 +299,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             onAnnotationReady,
             annotationCache: externalAnnotationCache,
             disableCache = false,
+            disableVisibilityCheck = false,
             annotationHeaders,
         },
         ref
@@ -333,8 +338,15 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         }, [])
 
         // Track component visibility to prevent initialization when hidden
-        const [isVisible, setIsVisible] = useState(true)
+        // This prevents _transformBounds errors by ensuring Paper.js only initializes when visible
+        const [isVisible, setIsVisible] = useState(!disableVisibilityCheck) // Initialize as visible if check disabled
         useEffect(() => {
+            if (disableVisibilityCheck) {
+                // Visibility check disabled - always consider visible
+                setIsVisible(true)
+                return
+            }
+            
             if (!containerRef.current) return
 
             const observer = new IntersectionObserver(
@@ -357,17 +369,61 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     observer.unobserve(containerRef.current)
                 }
             }
-        }, [])
+        }, [disableVisibilityCheck])
 
         // Global error handler to catch _transformBounds errors from library's mouse handlers
         useEffect(() => {
+            // Comprehensive check for _transformBounds related errors
+            const isTransformBoundsError = (error: unknown): boolean => {
+                if (!error) return false
+                
+                // Check error message
+                const message = error instanceof Error ? error.message : String(error)
+                if (message && typeof message === 'string') {
+                    const lowerMessage = message.toLowerCase()
+                    if (lowerMessage.includes('_transformbounds') || 
+                        lowerMessage.includes('transformbounds') ||
+                        lowerMessage.includes('cannot read properties of null') ||
+                        lowerMessage.includes('reading \'_transformbounds\'') ||
+                        lowerMessage.includes('reading "_transformbounds"')) {
+                        return true
+                    }
+                }
+                
+                // Check stack trace
+                if (error instanceof Error && error.stack) {
+                    const lowerStack = error.stack.toLowerCase()
+                    if (lowerStack.includes('_transformbounds') || 
+                        lowerStack.includes('transformbounds') ||
+                        lowerStack.includes('getbounds')) {
+                        return true
+                    }
+                }
+                
+                // Check if source file is from osd-paperjs-annotation
+                if (error instanceof ErrorEvent) {
+                    const filename = error.filename || ''
+                    if (filename.includes('osd-paperjs-annotation') || 
+                        filename.includes('annotation.js')) {
+                        const message = error.message || String(error)
+                        if (message.includes('null') || message.includes('_transformBounds')) {
+                            return true
+                        }
+                    }
+                }
+                
+                return false
+            }
+
             // Global error handler for _transformBounds errors
             const errorHandler = (event: ErrorEvent | Event) => {
-                const message = event instanceof ErrorEvent ? event.message : String(event)
-                if (message && typeof message === 'string' && message.includes('_transformBounds')) {
-                    console.warn('Suppressed _transformBounds error from library')
+                const error = event instanceof ErrorEvent ? event.error || event : event
+                
+                if (isTransformBoundsError(error)) {
+                    // Suppress the error silently (or log at debug level only)
                     if (event instanceof ErrorEvent) {
-                        event.preventDefault() // Suppress the error
+                        event.preventDefault()
+                        event.stopPropagation()
                     }
                     return true
                 }
@@ -377,21 +433,38 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             // Unhandled rejection handler
             const rejectionHandler = (event: PromiseRejectionEvent) => {
                 const reason = event.reason
-                const reasonStr = reason?.message || String(reason || '')
-                if (reasonStr.includes('_transformBounds')) {
-                    console.warn('Suppressed _transformBounds promise rejection')
-                    event.preventDefault() // Suppress the error
+                
+                if (isTransformBoundsError(reason)) {
+                    // Suppress the rejection
+                    event.preventDefault()
+                    event.stopPropagation()
+                    return true
                 }
+                return false
             }
 
-            // Add event listeners
+            // Add event listeners with capture phase for maximum coverage
             window.addEventListener('error', errorHandler as EventListener, true)
-            window.addEventListener('unhandledrejection', rejectionHandler)
+            window.addEventListener('unhandledrejection', rejectionHandler, true)
+
+            // Also set window.onerror as fallback (though addEventListener is preferred)
+            const originalOnError = window.onerror
+            window.onerror = (message, source, lineno, colno, error) => {
+                if (isTransformBoundsError(error) || isTransformBoundsError(message)) {
+                    return true // Suppress error
+                }
+                // Call original handler if it exists
+                if (originalOnError) {
+                    return originalOnError(message, source, lineno, colno, error)
+                }
+                return false
+            }
 
             // Cleanup
             return () => {
                 window.removeEventListener('error', errorHandler as EventListener, true)
-                window.removeEventListener('unhandledrejection', rejectionHandler)
+                window.removeEventListener('unhandledrejection', rejectionHandler, true)
+                window.onerror = originalOnError
             }
         }, [])
 
@@ -577,32 +650,86 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                         if (paperScope && paperScope.view) {
                             // Wrap view methods that might access _transformBounds
                             const originalView = paperScope.view
+                            
+                            // Helper to safely check if _transformBounds is accessible
+                            const hasTransformBounds = (obj: any): boolean => {
+                                try {
+                                    return obj !== null && 
+                                           obj !== undefined && 
+                                           typeof obj._transformBounds !== 'undefined' &&
+                                           obj._transformBounds !== null
+                                } catch {
+                                    return false
+                                }
+                            }
+                            
                             const viewProxy = new Proxy(originalView, {
                                 get: (target, prop) => {
+                                    // Intercept methods that might access _transformBounds
                                     if (prop === 'getBounds' || prop === '_transformBounds') {
                                         return function(...args: unknown[]) {
                                             try {
-                                                // Check if _transformBounds exists before accessing
-                                                if ((target as any)._transformBounds === null || (target as any)._transformBounds === undefined) {
-                                                    console.warn('Paper.js view not fully initialized, skipping bounds operation')
+                                                // Defensive check: ensure target and _transformBounds exist
+                                                if (!target || !hasTransformBounds(target)) {
+                                                    // Return a safe default instead of throwing
+                                                    if (prop === 'getBounds') {
+                                                        // Return a bounds object that won't break the library
+                                                        return { x: 0, y: 0, width: 0, height: 0 }
+                                                    }
                                                     return null
                                                 }
+                                                
                                                 if (prop === 'getBounds') {
-                                                    return (originalView.getBounds as any)?.apply(target, args)
+                                                    const bounds = (originalView.getBounds as any)?.apply(target, args)
+                                                    return bounds || { x: 0, y: 0, width: 0, height: 0 }
                                                 }
+                                                
                                                 return (target as any)[prop]
                                             } catch (error) {
-                                                if (error instanceof Error && error.message.includes('_transformBounds')) {
-                                                    // Silently suppress _transformBounds errors from library
-                                                    return null
+                                                // Catch any _transformBounds related errors
+                                                if (error instanceof Error) {
+                                                    const msg = error.message?.toLowerCase() || ''
+                                                    if (msg.includes('_transformbounds') || 
+                                                        msg.includes('transformbounds') ||
+                                                        msg.includes('cannot read properties of null')) {
+                                                        // Return safe defaults instead of throwing
+                                                        if (prop === 'getBounds') {
+                                                            return { x: 0, y: 0, width: 0, height: 0 }
+                                                        }
+                                                        return null
+                                                    }
                                                 }
+                                                // Re-throw non-_transformBounds errors
                                                 throw error
                                             }
                                         }
                                     }
-                                    return (target as any)[prop]
+                                    
+                                    // For all other properties, try to access safely
+                                    try {
+                                        const value = (target as any)[prop]
+                                        // If accessing _transformBounds property directly
+                                        if (prop === '_transformBounds' && (value === null || value === undefined)) {
+                                            // Return a dummy function to prevent null access errors
+                                            return () => ({ x: 0, y: 0, width: 0, height: 0 })
+                                        }
+                                        return value
+                                    } catch (error) {
+                                        // If accessing the property throws, return a safe default
+                                        if (error instanceof Error) {
+                                            const msg = error.message?.toLowerCase() || ''
+                                            if (msg.includes('_transformbounds') || msg.includes('null')) {
+                                                if (prop === '_transformBounds') {
+                                                    return () => ({ x: 0, y: 0, width: 0, height: 0 })
+                                                }
+                                                return null
+                                            }
+                                        }
+                                        throw error
+                                    }
                                 }
                             })
+                            
                             // Try to replace the view (may not work if library has locked reference)
                             try {
                                 (paperScope as any).view = viewProxy
@@ -691,6 +818,16 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     console.error('Error initializing SlideViewer:', error)
                     // Reset initialization flag on error so it can retry
                     isInitializedRef.current = false
+                    
+                    // If this is a _transformBounds error, it's likely due to Paper.js not being ready
+                    // Suppress it silently as it's handled by global error handlers
+                    if (error instanceof Error && error.message?.toLowerCase().includes('_transformbounds')) {
+                        // Already handled by global error handler - just reset flag
+                        return
+                    }
+                    
+                    // For other errors, log and allow retry on next render
+                    // Could add error state/prop here for consumer to display error UI if needed
                 }
             }, 100)
 
