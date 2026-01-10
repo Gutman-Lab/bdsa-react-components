@@ -47,6 +47,7 @@ declare module 'openseadragon' {
         addTiledImage(options: { tileSource: object; success?: () => void }): void
         createPaperOverlay(): PaperOverlay
         addHandler(event: string, handler: (event: unknown) => void): void
+        removeHandler(event: string, handler: (event: unknown) => void): void
     }
 
     export interface Viewport {
@@ -55,12 +56,22 @@ declare module 'openseadragon' {
         zoomTo(zoom: number, immediately?: boolean): void
         panTo(point: Point, immediately?: boolean): void
         goHome(immediately?: boolean): void
+        getZoom(): number
+        getBounds(): Rectangle | null
+    }
+
+    export interface Rectangle {
+        x: number
+        y: number
+        width: number
+        height: number
     }
 
     export interface World {
         getItemAt(index: number): TiledImage
         getItemCount(): number
         addHandler(event: string, handler: (event: unknown) => void): void
+        removeItem(item: TiledImage): void
     }
 
     export interface TiledImage {

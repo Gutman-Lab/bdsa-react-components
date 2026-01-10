@@ -1,6 +1,6 @@
 # bdsa-react-components - CURSOR Integration Guide
 
-**Version:** 0.1.23 | **Generated:** 2026-01-10T22:16:11.954Z
+**Version:** 0.1.23 | **Generated:** 2026-01-10T22:19:32.023Z
 
 > This document provides everything Cursor needs to integrate and use the bdsa-react-components library.
 > Copy this entire document into your project's .cursorrules or docs folder.
@@ -178,59 +178,6 @@ A slide viewer component that integrates OpenSeadragon with Paper.js annotations
 />
 ```
 
-**Overlay Tile Sources:**
-
-The `overlayTileSources` prop allows you to dynamically add image overlays on top of the base slide image. Overlays can be positioned, scaled, rotated, and have their opacity controlled.
-
-```tsx
-const overlays: OverlayTileSource[] = [
-  {
-    id: 'overlay-1',
-    tileSource: 'data:image/png;base64,iVBORw0KGgoAAAANS...', // Base64 image
-    x: 0.2,      // 20% from left (normalized 0-1)
-    y: 0.3,      // 30% from top (normalized 0-1)
-    width: 0.5,  // 50% of base image width
-    height: 0.5, // 50% of base image height
-    opacity: 0.7,
-    rotation: 0,
-    compositeOperation: 'source-over',
-    visible: true,
-  },
-  {
-    id: 'overlay-2',
-    tileSource: 'http://bdsa.pathology.emory.edu:8080/api/v1/item/123/tiles/dzi.dzi', // DZI URL
-    x: 0,
-    y: 0,
-    opacity: 0.5,
-  }
-]
-
-<SlideViewer
-  imageInfo={{ dziUrl: '...' }}
-  overlayTileSources={overlays}
-  height="800px"
-/>
-```
-
-**Overlay Tile Source Properties:**
-
-- `id: string | number` - Unique identifier (required)
-- `tileSource: string | unknown` - Image source:
-  - Base64 data URL: `'data:image/png;base64,...'`
-  - DZI URL: `'http://.../dzi.dzi'`
-  - Simple image URL: `'http://.../image.jpg'`
-  - OpenSeadragon tile source object
-- `x?: number` - X position (0-1, normalized). Default: 0
-- `y?: number` - Y position (0-1, normalized). Default: 0
-- `width?: number` - Width (0-1, normalized). If not provided, uses natural width
-- `height?: number` - Height (0-1, normalized). If not provided, uses natural height
-- `opacity?: number` - Opacity (0-1). Default: 1
-- `rotation?: number` - Rotation in degrees. Default: 0
-- `compositeOperation?: string` - Blend mode (e.g., 'multiply', 'screen', 'overlay'). Default: 'source-over'
-- `visible?: boolean` - Whether overlay is visible. Default: true
-
-**Note:** When both `width` and `height` are provided, only `width` is used (OpenSeadragon limitation). The overlay will maintain its aspect ratio. Coordinates are normalized (0-1) relative to base image dimensions and are automatically calculated and applied after image loads.
-
 **API Endpoints:**
 
 - `GET /annotation/{id}` - Fetch annotation document by ID
@@ -309,8 +256,6 @@ import type {
   ApiError,
   ApiErrorContext,
   ApiErrorHandler,
-  OverlayTileSource,
-  ViewportBounds,
 } from 'bdsa-react-components'
 ```
 

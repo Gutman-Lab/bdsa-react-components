@@ -125,7 +125,9 @@ export async function fetchWithErrorHandling(
                 error,
                 response,
                 onApiError,
-                retryFn,
+                () => {
+                    void retryFn()
+                },
                 {
                     ...context,
                     endpoint: url,
@@ -142,7 +144,9 @@ export async function fetchWithErrorHandling(
             err,
             undefined,
             onApiError,
-            retryFn,
+            () => {
+                void retryFn()
+            },
             {
                 ...context,
                 endpoint: url,

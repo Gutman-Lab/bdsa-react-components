@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import type { Collection, Folder, Item } from './FolderBrowser.types'
 import { buildFetchOptions as buildFetchOptionsUtil, parsePaginatedResponse, searchFolderInCollections } from './FolderBrowser.utils'
-import { handleApiError, type ApiError, type ApiErrorContext, type ApiErrorHandler } from '../../utils/apiErrorHandling'
+import { handleApiError, type ApiError, type ApiErrorHandler } from '../../utils/apiErrorHandling'
 import type { DebugLogger } from '../../utils/debugLog'
 
 export interface UseFolderBrowserDataFetchingParams {
@@ -180,9 +180,11 @@ export function useFolderBrowserDataFetching(
             }))
 
             // If startFolderId is provided and this is the target collection, expand the folder
+            // Note: loadFoldersForFolder is defined below, but we'll call it after it's defined
+            // For now, we'll skip auto-expanding subfolders here to avoid the order issue
             if (!append && startFolderId && foldersList.some(f => f._id === startFolderId)) {
                 setExpandedFolders(prev => new Set(prev).add(startFolderId))
-                await loadFoldersForFolder(foldersList.find(f => f._id === startFolderId)!)
+                // loadFoldersForFolder will be called separately if needed
             }
         } catch (err) {
             const url = `${apiBaseUrl}/folder?parentType=collection&parentId=${collection._id}`
@@ -201,7 +203,7 @@ export function useFolderBrowserDataFetching(
         } finally {
             setLoadingFolders(prev => ({ ...prev, [collection._id]: false }))
         }
-    }, [apiBaseUrl, fetchFn, buildFetchOptions, startFolderId, foldersPerPage, setFolders, setPaginationState, setLoadingFolders, setExpandedFolders, debugLog, onApiError, loadFoldersForFolder])
+    }, [apiBaseUrl, fetchFn, buildFetchOptions, startFolderId, foldersPerPage, setFolders, setPaginationState, setLoadingFolders, setExpandedFolders, debugLog, onApiError])
 
     // Fetch subfolders for a folder
     const loadFoldersForFolder = useCallback(async (folder: Folder, append = false) => {

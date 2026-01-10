@@ -26,7 +26,7 @@ function extractJSDoc(content, propName) {
   // This handles both single-line and multi-line JSDoc
   const pattern = new RegExp(`/\\*\\*\\s*\\*?\\s*([^/]+?)\\s*\\*/\\s*${propName}\\??:`, 's')
   const match = content.match(pattern)
-  
+
   if (match && match[1]) {
     // Clean up the description - remove asterisks, newlines, extra spaces
     return match[1]
@@ -35,7 +35,7 @@ function extractJSDoc(content, propName) {
       .replace(/\s+/g, ' ')
       .trim()
   }
-  
+
   return ''
 }
 
@@ -44,26 +44,26 @@ function extractJSDoc(content, propName) {
  */
 function extractComponentInfo(componentDir, componentName) {
   const tsxFile = join(componentDir, `${componentName}.tsx`)
-  
+
   if (!statSync(tsxFile).isFile()) {
     return null
   }
-  
+
   const content = readFileSync(tsxFile, 'utf8')
-  
+
   // Find the Props interface first (we'll use this to find description)
   const propsInterfaceMatch = content.match(/(?:export\s+)?interface\s+(\w*Props)\s*extends?\s*([^{]*?)\s*{([^}]+)}/s)
-  
+
   // Extract component description from JSDoc (before the component export, after the interface)
   const componentExportPattern = new RegExp(`export\\s+(?:const|function)\\s+${componentName}`, 'm')
-  
+
   const interfaceEnd = propsInterfaceMatch ? (propsInterfaceMatch.index || 0) + propsInterfaceMatch[0].length : 0
   const exportIndex = content.search(componentExportPattern)
   const searchArea = exportIndex > 0 ? content.substring(interfaceEnd || Math.max(0, exportIndex - 500), exportIndex) : ''
-  
+
   // Find JSDoc block between interface and export (multiline or single line)
   let description = `${componentName} component`
-  
+
   // Try multiline JSDoc
   const multilineMatch = searchArea.match(/\/\*\*\s*\*\s*(.+?)\s*\*\//s)
   if (multilineMatch && multilineMatch[1]) {
@@ -84,26 +84,26 @@ function extractComponentInfo(componentDir, componentName) {
       }
     }
   }
-  
+
   // Clean up description
   description = description.replace(/\s+/g, ' ').trim()
-  
+
   if (!propsInterfaceMatch) {
     return { name: componentName, description, props: [] }
   }
-  
+
   const propsContent = propsInterfaceMatch[3]
   const props = []
-  
+
   // Parse props more carefully - handle JSDoc before each prop
   // Split by /** to find JSDoc blocks
   const lines = propsContent.split('\n')
   let i = 0
   let currentProp = null
-  
+
   while (i < lines.length) {
     const line = lines[i].trim()
-    
+
     // Look for JSDoc comment
     if (line.startsWith('/**') || line.startsWith('*')) {
       // Collect JSDoc lines
@@ -116,7 +116,7 @@ function extractComponentInfo(componentDir, componentName) {
         }
         j++
       }
-      
+
       // Next line should be the prop
       if (j < lines.length) {
         const propLine = lines[j].trim()
@@ -124,11 +124,11 @@ function extractComponentInfo(componentDir, componentName) {
         if (propMatch) {
           const [, name, typeRaw] = propMatch
           const isOptional = propLine.includes('?')
-          
+
           let type = typeRaw.trim()
             .replace(/\s+/g, ' ')
             .replace(/\n/g, '')
-          
+
           props.push({
             name,
             type: type.length > 60 ? type.substring(0, 57) + '...' : type,
@@ -143,17 +143,17 @@ function extractComponentInfo(componentDir, componentName) {
       i = j
       continue
     }
-    
+
     // Look for prop without JSDoc
     const propMatch = line.match(/(\w+)\??\s*:\s*(.+?)(?:\s*=\s*([^\n,;]+))?[,;]?$/)
     if (propMatch) {
       const [, name, typeRaw] = propMatch
       const isOptional = line.includes('?')
-      
+
       let type = typeRaw.trim()
         .replace(/\s+/g, ' ')
         .replace(/\n/g, '')
-      
+
       props.push({
         name,
         type: type.length > 60 ? type.substring(0, 57) + '...' : type,
@@ -162,10 +162,10 @@ function extractComponentInfo(componentDir, componentName) {
         description: `${name} property`
       })
     }
-    
+
     i++
   }
-  
+
   // Also check default values from component implementation
   const defaultMatch = content.match(/\(\s*{([^}]+)}\s*,\s*ref\s*\)/s)
   if (defaultMatch) {
@@ -178,7 +178,7 @@ function extractComponentInfo(componentDir, componentName) {
       }
     })
   }
-  
+
   return {
     name: componentName,
     description,
@@ -192,17 +192,17 @@ function extractComponentInfo(componentDir, componentName) {
  */
 function getExportedTypes() {
   const indexContent = readFileSync(join(rootDir, 'src', 'index.ts'), 'utf8')
-  
+
   const types = []
   const exportTypeRegex = /export\s+type\s+{([^}]+)}/g
   let match
-  
+
   while ((match = exportTypeRegex.exec(indexContent)) !== null) {
     const typeList = match[1]
     const typeNames = typeList.split(',').map(t => t.trim()).filter(Boolean)
     types.push(...typeNames)
   }
-  
+
   return [...new Set(types)] // Remove duplicates
 }
 
@@ -211,14 +211,14 @@ function getExportedTypes() {
  */
 function generateCursorDoc() {
   const timestamp = new Date().toISOString()
-  
+
   // Get all component directories
   const components = []
   const componentDirs = readdirSync(srcDir).filter(item => {
     const itemPath = join(srcDir, item)
     return statSync(itemPath).isDirectory()
   })
-  
+
   for (const dir of componentDirs) {
     const componentName = basename(dir)
     const info = extractComponentInfo(join(srcDir, dir), componentName)
@@ -226,18 +226,18 @@ function generateCursorDoc() {
       components.push(info)
     }
   }
-  
+
   // Sort components alphabetically for consistent output
   components.sort((a, b) => a.name.localeCompare(b.name))
-  
+
   const exportedTypes = getExportedTypes()
-  
+
   let doc = `# bdsa-react-components - CURSOR Integration Guide\n\n`
   doc += `**Version:** ${version} | **Generated:** ${timestamp}\n\n`
   doc += `> This document provides everything Cursor needs to integrate and use the bdsa-react-components library.\n`
   doc += `> Copy this entire document into your project's .cursorrules or docs folder.\n`
   doc += `> **Auto-generated from source code** - Updated automatically on build.\n\n`
-  
+
   doc += `## Quick Start\n\n`
   doc += `### Published Package (when available)\n\n`
   doc += `\`\`\`bash\nnpm install bdsa-react-components\n\`\`\`\n\n`
@@ -253,35 +253,35 @@ function generateCursorDoc() {
   doc += `\`\`\`bash\n# In library directory\nnpm run build\n\`\`\`\n\n`
   doc += `### Import\n\n`
   doc += `\`\`\`tsx\nimport { ${components.map(c => c.name).join(', ')} } from 'bdsa-react-components'\nimport 'bdsa-react-components/styles.css'\n\`\`\`\n\n`
-  
+
   doc += `## Components API\n\n`
-  
+
   // Generate component docs
   components.forEach(component => {
     doc += `### ${component.name}\n\n`
     doc += `${component.description}\n\n`
-    
+
     if (component.extends) {
       doc += `**Extends:** \`${component.extends}\`\n\n`
     }
-    
+
     // Props table
     if (component.props.length > 0) {
       doc += `**Props:**\n\n`
       doc += `| Prop | Type | Default | Required | Description |\n`
       doc += `|------|------|---------|----------|-------------|\n`
-      
+
       component.props.forEach(prop => {
         const typeStr = prop.type.replace(/\|/g, '\\|').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        const defaultStr = prop.default !== undefined && prop.default !== null ? `\`${prop.default}\`` : 
-                          prop.required ? '-' : '`undefined`'
+        const defaultStr = prop.default !== undefined && prop.default !== null ? `\`${prop.default}\`` :
+          prop.required ? '-' : '`undefined`'
         const requiredStr = prop.required ? '**Yes**' : 'No'
         doc += `| \`${prop.name}\` | \`${typeStr}\` | ${defaultStr} | ${requiredStr} | ${prop.description} |\n`
       })
-      
+
       doc += `\n`
     }
-    
+
     // Component-specific examples
     if (component.name === 'SlideViewer') {
       doc += `**Example:**\n\n`
@@ -318,9 +318,57 @@ function generateCursorDoc() {
       doc += `**API Endpoints:**\n\n`
       doc += `- \`GET /collection\` - List collections\n`
       doc += `- \`GET /folder?parentType={type}&parentId={id}\` - List folders\n\n`
+    } else if (component.name === 'FolderThumbnailBrowser') {
+      doc += `**Example:**\n\n`
+      doc += `\`\`\`tsx\n`
+      doc += `<FolderThumbnailBrowser\n`
+      doc += `  apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"\n`
+      doc += `  folderId="6903df87d26a6d93de19a9b0"\n`
+      doc += `  viewerSize="l"\n`
+      doc += `  itemsPerPage={12}\n`
+      doc += `  showViewerControls={false}\n`
+      doc += `  selectedAnnotationName="Gray White Segmentation"\n`
+      doc += `  annotationOpacity={0.7}\n`
+      doc += `  onAnnotationOpacityChange={(opacity) => console.log(opacity)}\n`
+      doc += `/>\n`
+      doc += `\`\`\`\n\n`
+      doc += `**Features:**\n\n`
+      doc += `- Displays thumbnails using OpenSeadragon (full viewer with zoom/pan)\n`
+      doc += `- Supports annotation overlays with opacity control\n`
+      doc += `- Automatic pagination based on container size\n`
+      doc += `- Size presets: 's' (120px), 'm' (180px), 'l' (240px), 'xl' (320px)\n`
+      doc += `- Authentication via \`apiHeaders\` or \`fetchFn\`\n`
+      doc += `- Token query parameter support via \`tokenQueryParam\` prop\n\n`
+      doc += `**API Endpoints:**\n\n`
+      doc += `- \`GET /item?folderId={id}\` - Fetch items from folder\n`
+      doc += `- \`GET /item/{id}/tiles/dzi.dzi\` - DZI descriptor for thumbnail\n`
+      doc += `- \`GET /annotation?itemId={id}\` - Fetch annotations for item\n\n`
+    } else if (component.name === 'ThumbnailGrid') {
+      doc += `**Example:**\n\n`
+      doc += `\`\`\`tsx\n`
+      doc += `<ThumbnailGrid\n`
+      doc += `  apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"\n`
+      doc += `  folderId="6903df87d26a6d93de19a9b0"\n`
+      doc += `  thumbnailSize="l"\n`
+      doc += `  itemsPerPage={12}\n`
+      doc += `  tokenQueryParam={true}\n`
+      doc += `  apiHeaders={{ 'Girder-Token': token }}\n`
+      doc += `  onThumbnailClick={(item) => console.log(item)}\n`
+      doc += `/>\n`
+      doc += `\`\`\`\n\n`
+      doc += `**Features:**\n\n`
+      doc += `- Lightweight thumbnail grid (static images, no OpenSeadragon)\n`
+      doc += `- Faster loading for simple thumbnail browsing\n`
+      doc += `- Automatic pagination based on container size\n`
+      doc += `- Size presets: 's' (120px), 'm' (180px), 'l' (240px), 'xl' (320px)\n`
+      doc += `- Thumbnail URLs include \`?width={size}\` for optimized loading\n`
+      doc += `- Authentication via \`apiHeaders\` with optional \`tokenQueryParam\`\n\n`
+      doc += `**API Endpoints:**\n\n`
+      doc += `- \`GET /item?folderId={id}\` - Fetch items from folder\n`
+      doc += `- \`GET /item/{id}/tiles/thumbnail?width={size}&token={token}\` - Thumbnail image\n\n`
     }
   })
-  
+
   doc += `## Type Definitions\n\n`
   doc += `Import types:\n\n`
   doc += `\`\`\`tsx\nimport type {\n`
@@ -328,10 +376,10 @@ function generateCursorDoc() {
     doc += `  ${type},\n`
   })
   doc += `} from 'bdsa-react-components'\n\`\`\`\n\n`
-  
+
   // Add key type definitions for complex types
   doc += `### Key Types\n\n`
-  
+
   // Read SlideViewer to extract SlideImageInfo
   const slideViewerContent = readFileSync(join(rootDir, 'src', 'components', 'SlideViewer', 'SlideViewer.tsx'), 'utf8')
   const imageInfoMatch = slideViewerContent.match(/interface\s+SlideImageInfo\s*{([^}]+)}/s)
@@ -347,7 +395,7 @@ function generateCursorDoc() {
     })
     doc += `}\n\`\`\`\n\n`
   }
-  
+
   doc += `## Authentication\n\n`
   doc += `Components making API calls (\`SlideViewer\`, \`AnnotationManager\`, \`FolderBrowser\`) support auth via:\n\n`
   doc += `1. **\`fetchFn\` prop:** Custom fetch function \`(url: string, options?: RequestInit) => Promise<Response>\`\n`
@@ -369,9 +417,9 @@ function generateCursorDoc() {
   doc += `  // OR: apiHeaders={{ 'Authorization': \`Bearer \${token}\` }}\n`
   doc += `/>\n`
   doc += `\`\`\`\n\n`
-  
+
   doc += `## Common Integration Patterns\n\n`
-  
+
   doc += `### 1. SlideViewer with Manual Annotations\n\n`
   doc += `\`\`\`tsx\n`
   doc += `<SlideViewer\n`
@@ -385,7 +433,7 @@ function generateCursorDoc() {
   doc += `  onAnnotationClick={(ann) => console.log(ann)}\n`
   doc += `/>\n`
   doc += `\`\`\`\n\n`
-  
+
   doc += `### 2. SlideViewer with API-Fetched Annotations (RECOMMENDED)\n\n`
   doc += `**⭐ RECOMMENDED APPROACH:** Use \`onAnnotationStateChange\` - unified callback with complete state sync:\n\n`
   doc += `\`\`\`tsx\n`
@@ -476,7 +524,7 @@ function generateCursorDoc() {
   doc += `- \`onAnnotationLoad(id, data?)\` - Fires when an annotation is loaded\n`
   doc += `- \`onAnnotationHide(id)\` - Fires when an annotation is hidden/unloaded\n`
   doc += `- \`onAnnotationOpacityChange(id, opacity)\` - Fires when opacity changes\n\n`
-  
+
   doc += `### 3. FolderBrowser\n\n`
   doc += `\`\`\`tsx\n`
   doc += `<FolderBrowser\n`
@@ -486,7 +534,7 @@ function generateCursorDoc() {
   doc += `  foldersPerPage={50}\n`
   doc += `/>\n`
   doc += `\`\`\`\n\n`
-  
+
   doc += `## Important Notes\n\n`
   doc += `- **SlideViewer height:** Must specify explicit \`height\` prop (e.g., \`"600px"\`, \`"100vh"\`) - OpenSeadragon requirement\n`
   doc += `- **DZI URL vs Manual:** Provide either \`dziUrl\` OR all manual fields (\`imageId\`, \`width\`, \`height\`, \`tileWidth\`, \`levels\`, \`baseUrl\`)\n`
@@ -494,7 +542,7 @@ function generateCursorDoc() {
   doc += `- **API Base URL:** Format: \`http://bdsa.pathology.emory.edu:8080/api/v1\` (no trailing slash)\n`
   doc += `- **Styles:** Always import \`'bdsa-react-components/styles.css'\`\n`
   doc += `- **Peer deps:** Requires React 18+\n\n`
-  
+
   doc += `## Troubleshooting (npm link)\n\n`
   doc += `**"Module not found" error:**\n`
   doc += `- Ensure \`npm link\` was run in the library directory\n`
@@ -511,7 +559,7 @@ function generateCursorDoc() {
   doc += `**TypeScript errors:**\n`
   doc += `- Ensure \`dist/index.d.ts\` exists in the library\n`
   doc += `- Restart TypeScript server in your editor (VS Code: Cmd+Shift+P → "TypeScript: Restart TS Server")\n\n`
-  
+
   doc += `## Annotation Caching\n\n`
   doc += `The library includes automatic IndexedDB-based caching for annotation documents to speed up loading and reduce server requests.\n\n`
   doc += `### Auto-Enabled Caching\n\n`
@@ -556,14 +604,14 @@ function generateCursorDoc() {
   doc += `await logQuotaInfo()\n`
   doc += `\`\`\`\n\n`
   doc += `**Note:** IndexedDB storage limits are automatically managed by the browser. When quota is exceeded, the browser will prompt the user for permission to expand storage.\n\n`
-  
+
   doc += `## Dependencies\n\n`
   doc += `**Peer:** react ^18.0.0, react-dom ^18.0.0\n\n`
   doc += `**Direct:** openseadragon ^5.0.1, osd-paperjs-annotation, paper ^0.12.18\n\n`
-  
+
   doc += `---\n\n`
   doc += `_Auto-generated from source code - Regenerate with: npm run generate:cursor-doc_\n`
-  
+
   return doc
 }
 

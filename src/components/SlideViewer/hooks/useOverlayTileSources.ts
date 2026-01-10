@@ -127,7 +127,7 @@ export function useOverlayTileSources(
 
         // Remove overlays that are no longer in the props
         const overlaysToRemove: string[] = []
-        overlayTileSourceRefs.current.forEach((ref, id) => {
+        overlayTileSourceRefs.current.forEach((_ref, id) => {
             if (!currentOverlayIds.has(id)) {
                 overlaysToRemove.push(String(id))
             }
@@ -138,7 +138,7 @@ export function useOverlayTileSources(
             if (ref) {
                 try {
                     debugLog.log(`Removing overlay tile source ${id}`)
-                    world.removeItem(ref.tiledImage)
+                    world.removeItem(ref.tiledImage as any)
                     overlayTileSourceRefs.current.delete(id)
                 } catch (error) {
                     debugLog.warn(`Error removing overlay tile source ${id}:`, error)
@@ -291,7 +291,13 @@ export function useOverlayTileSources(
                             
                             // Set position explicitly using OpenSeadragon's Point class
                             if (tiledImage.setPosition) {
-                                tiledImage.setPosition(new OpenSeadragon.Point(x, y))
+                                // Use OpenSeadragon.Point if available, otherwise use object literal
+                                const Point = (OpenSeadragon as any).Point
+                                if (Point) {
+                                    tiledImage.setPosition(new Point(x, y))
+                                } else {
+                                    tiledImage.setPosition({ x, y })
+                                }
                             }
                             
                             // Set size if provided
@@ -350,7 +356,12 @@ export function useOverlayTileSources(
                         // This is a fallback to ensure positioning works even if the callback doesn't execute
                         try {
                             if ((tiledImage as any).setPosition) {
-                                (tiledImage as any).setPosition(new OpenSeadragon.Point(x, y))
+                                const Point = (OpenSeadragon as any).Point
+                                if (Point) {
+                                    (tiledImage as any).setPosition(new Point(x, y))
+                                } else {
+                                    (tiledImage as any).setPosition({ x, y })
+                                }
                             }
                             if (width !== undefined && (tiledImage as any).setWidth) {
                                 (tiledImage as any).setWidth(width)
@@ -380,13 +391,13 @@ export function useOverlayTileSources(
             if (viewer && overlayTileSourceRefs.current.size > 0) {
                 const world = viewer.world
                 if (world) {
-                    overlayTileSourceRefs.current.forEach((ref, id) => {
-                        try {
-                            world.removeItem(ref.tiledImage)
-                        } catch (error) {
-                            // Ignore cleanup errors
-                        }
-                    })
+                overlayTileSourceRefs.current.forEach((ref) => {
+                    try {
+                        world.removeItem(ref.tiledImage as any)
+                    } catch (error) {
+                        // Ignore cleanup errors
+                    }
+                })
                 }
                 overlayTileSourceRefs.current.clear()
             }

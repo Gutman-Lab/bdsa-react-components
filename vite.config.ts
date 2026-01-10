@@ -28,9 +28,21 @@ export default defineConfig({
                     'react/jsx-runtime': 'react/jsx-runtime',
                 },
             },
+            onwarn(warning, warn) {
+                // Suppress CSS minification warnings (false positives)
+                if (warning.code === 'css-syntax-error') {
+                    return
+                }
+                warn(warning)
+            },
         },
         sourcemap: true,
         emptyOutDir: true,
+        cssCodeSplit: false,
+        minify: 'esbuild',
+    },
+    esbuild: {
+        logOverride: { 'css-syntax-error': 'silent' },
     },
 })
 

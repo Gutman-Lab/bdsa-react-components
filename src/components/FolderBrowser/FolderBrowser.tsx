@@ -373,6 +373,35 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
         // Track last clicked folder for visual feedback
         const [lastClickedFolder, setLastClickedFolder] = useState<string | null>(null)
 
+        // Load all remaining items for a folder
+        const loadAllItems = useCallback(async (folderId: string, folder: Folder, event: React.MouseEvent) => {
+            event.stopPropagation() // Prevent any parent handlers (though not needed now, good practice)
+
+            if (!shouldFetchItems) {
+                return
+            }
+
+            const itemState = itemPaginationState[folderId]
+            if (!itemState?.hasMore) {
+                debugLog.log(`No more items to load for folder ${folderId}`)
+                return
+            }
+
+            setLoadingItems(prev => ({ ...prev, [folderId]: true }))
+
+            try {
+                // Load all remaining items by repeatedly calling loadItemsForFolder until hasMore is false
+                while (itemPaginationState[folderId]?.hasMore) {
+                    await loadItemsForFolder(folderId, folder, true)
+                }
+                debugLog.log(`Finished loading all items for folder ${folderId}`)
+            } catch (error) {
+                debugLog.warn(`Error loading all items for folder ${folderId}:`, error)
+            } finally {
+                setLoadingItems(prev => ({ ...prev, [folderId]: false }))
+            }
+        }, [shouldFetchItems, itemPaginationState, loadItemsForFolder, setLoadingItems, debugLog])
+
         // Toggle folder expansion
         const toggleFolder = useCallback(async (folder: Folder) => {
             const isExpanded = expandedFolders.has(folder._id)
@@ -470,36 +499,6 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                 renderItem,
             })
         }, [selectedResource, renderItem, handleItemSelect])
-
-        // Load all remaining items for a folder
-        const loadAllItems = useCallback(async (folderId: string, folder: Folder, event: React.MouseEvent) => {
-            event.stopPropagation() // Prevent any parent handlers (though not needed now, good practice)
-
-            if (!shouldFetchItems) {
-                return
-            }
-
-            debugLog.log(`Loading all items for folder ${folderId} (${folder.name})`)
-
-            // Keep loading until hasMore is false
-            // Use functional state updates to read the latest state
-            while (true) {
-                // Check current state using functional update to get latest value
-                let currentHasMore = false
-                setItemPaginationState(prev => {
-                    currentHasMore = prev[folderId]?.hasMore || false
-                    return prev // Don't actually update, just read
-                })
-
-                if (!currentHasMore) {
-                    break
-                }
-
-                await loadItemsForFolder(folderId, folder, true) // append = true
-            }
-
-            debugLog.log(`Finished loading all items for folder ${folderId}`)
-        }, [shouldFetchItems, loadItemsForFolder, debugLog])
 
         // Render folder recursively (must be defined before renderCollectionNode)
         const renderFolderNode = useCallback((folder: Folder, depth = 0) => {

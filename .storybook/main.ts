@@ -14,6 +14,7 @@ const config: StorybookConfig = {
     docs: {
         autodocs: "tag",
     },
+    staticDirs: ["../public"], // Serve static files from public directory (includes bdsa-schema.json)
 };
 export default config;
 
