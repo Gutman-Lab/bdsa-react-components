@@ -48,13 +48,13 @@ class DsaAuthStore {
       return stored
         ? JSON.parse(stored)
         : {
-            baseUrl: '',
-            resourceId: '',
-            resourceType: 'folder' as const,
-            fetchStrategy: 'unlimited' as const,
-            pageSize: 100,
-            metadataSyncTargetFolder: '',
-          }
+          baseUrl: '',
+          resourceId: '',
+          resourceType: 'folder' as const,
+          fetchStrategy: 'unlimited' as const,
+          pageSize: 100,
+          metadataSyncTargetFolder: '',
+        }
     } catch (error) {
       console.error('Error loading DSA config:', error)
       return {
@@ -342,6 +342,30 @@ class DsaAuthStore {
 
   getToken(): string {
     return this.token
+  }
+
+  /**
+   * Set token directly (used for API key → token exchange or backend-provided tokens)
+   * This bypasses the normal login flow and sets the token directly.
+   */
+  setToken(token: string, userInfo?: DsaUserInfo, expiryDays: number = 30): void {
+    this.token = token
+    if (userInfo) {
+      this.userInfo = userInfo
+    }
+    this.lastLogin = new Date()
+    this.tokenExpiry = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000)
+    this.isAuthenticated = true
+
+    // Save to localStorage
+    this.saveToken()
+    if (userInfo) {
+      this.saveUserInfo()
+    }
+    this.saveLastLogin()
+    this.saveTokenExpiry()
+
+    this.notify()
   }
 
   // Test connection to DSA server

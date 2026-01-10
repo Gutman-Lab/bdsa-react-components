@@ -1,159 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle } from 'react'
 import { IndexedDBAnnotationCache } from '../../cache'
+import { createDebugLogger } from '../../utils/debugLog'
 import './AnnotationManager.css'
+import type { AnnotationSearchResult, AnnotationManagerProps, AnnotationManagerHandle, AnnotationManagerContext } from './AnnotationManager.types'
 
-export interface AnnotationSearchResult {
-    _id: string
-    _modelType: string
-    _elementCount?: number
-    _detailsCount?: number
-    _version?: number
-    _accessLevel?: number
-    itemId?: string
-    public?: boolean
-    created?: string
-    updated?: string
-    creatorId?: string
-    updatedId?: string
-    groups?: (string | null)[]
-    annotation?: {
-        name?: string
-        description?: string
-        attributes?: Record<string, unknown>
-        display?: Record<string, unknown>
-    }
-    [key: string]: unknown
-}
-
-export interface AnnotationManagerProps {
-    /** Image/Item ID to search annotations for */
-    imageId?: string
-    /** Base URL for DSA API (e.g., http://bdsa.pathology.emory.edu:8080/api/v1) */
-    apiBaseUrl?: string
-    /** Maximum number of annotations to fetch per request (default: 50) */
-    limit?: number
-    /** Custom fetch function for API requests. Useful for adding authentication headers. */
-    fetchFn?: (url: string, options?: RequestInit) => Promise<Response>
-    /** Custom headers to add to all API requests. Merged with fetchFn headers if both are provided. */
-    apiHeaders?: HeadersInit
-    /** Callback when annotations are loaded */
-    onAnnotationsLoaded?: (annotations: AnnotationSearchResult[]) => void
-    /** Callback when annotation loading fails */
-    onError?: (error: Error) => void
-    /** Show debug panel with raw API response (default: false, hidden in production) */
-    showDebugPanel?: boolean
-    /** Callback when annotation is loaded/unloaded */
-    onAnnotationLoadChange?: (annotationId: string, loaded: boolean) => void
-    /** Callback when annotation visibility is toggled */
-    onAnnotationVisibilityChange?: (annotationId: string, visible: boolean) => void
-    /** Callback when annotation opacity changes */
-    onAnnotationOpacityChange?: (annotationId: string, opacity: number) => void
-    /** Callback when annotation has finished loading and is ready (called by SlideViewer after rendering) */
-    onAnnotationReady?: (annotationId: string) => void
-    /**
-     * Callback from SlideViewer that should be called when annotations are ready.
-     * This simplifies integration - just pass the same callback function to both
-     * AnnotationManager and SlideViewer. AnnotationManager will handle forwarding
-     * internally to clear loading states.
-     * 
-     * Use this instead of the render prop pattern for simpler integration.
-     */
-    slideViewerOnAnnotationReady?: (annotationId: string | number) => void
-    /** 
-     * Callback fired whenever the list of loaded annotation IDs changes.
-     * This is called when:
-     * - User clicks "Load" on an annotation
-     * - User clicks "Hide" on an annotation
-     * - Annotations are unloaded
-     * 
-     * @param annotationIds - Array of currently loaded annotation IDs
-     */
-    onLoadedAnnotationIdsChange?: (annotationIds: string[]) => void
-    /** 
-     * Callback fired when an individual annotation is loaded.
-     * Useful for tracking which specific annotation was just loaded.
-     * 
-     * @param annotationId - The ID of the annotation that was loaded
-     * @param annotationData - The full annotation document (optional, for performance)
-     */
-    onAnnotationLoad?: (annotationId: string, annotationData?: unknown) => void
-    /** 
-     * Callback fired when an individual annotation is hidden/unloaded.
-     * 
-     * @param annotationId - The ID of the annotation that was hidden
-     */
-    onAnnotationHide?: (annotationId: string) => void
-    /**
-     * Callback fired whenever annotation state changes.
-     * Provides complete state snapshot - annotation IDs, opacities, visibility, etc.
-     * This is the primary way to sync with SlideViewer and eliminates the need for
-     * multiple individual callbacks.
-     * 
-     * This callback fires whenever:
-     * - An annotation is loaded/unloaded
-     * - Annotation opacity changes
-     * - Annotation visibility changes
-     * 
-     * @param state - Complete annotation state snapshot
-     */
-    onAnnotationStateChange?: (state: {
-        /** Array of currently loaded annotation IDs */
-        loadedAnnotationIds: string[]
-        /** Map of annotation ID -> opacity (0.0 to 1.0) */
-        opacities: Map<string, number>
-        /** Map of annotation ID -> visibility (true = visible, false = hidden) */
-        visibility: Map<string, boolean>
-    }) => void
-    /**
-     * Callback fired whenever any annotation opacity changes.
-     * Provides complete map of all opacities - convenience alternative to individual callbacks.
-     * 
-     * This is a convenience callback. For complete state sync, use `onAnnotationStateChange` instead.
-     * 
-     * @param opacities - Map of all annotation ID -> opacity values
-     */
-    onAnnotationOpacitiesChange?: (opacities: Map<string, number>) => void
-    /**
-     * Callback fired whenever annotation headers change.
-     * Provides a map of annotation ID -> header document.
-     * 
-     * This eliminates the need to extract headers from the render prop pattern.
-     * Use this to automatically sync annotationHeaders to SlideViewer.
-     * 
-     * @param headers - Map of annotation ID -> annotation header document
-     */
-    onAnnotationHeadersChange?: (headers: Map<string | number, AnnotationSearchResult>) => void
-    /** Map of annotation IDs to their loaded state */
-    loadedAnnotations?: Set<string>
-    /** Map of annotation IDs to their visibility state */
-    visibleAnnotations?: Map<string, boolean>
-    /** Map of annotation IDs to their opacity (0-1) */
-    annotationOpacities?: Map<string, number>
-    /** Optional cache instance to check if annotations are cached locally. If not provided, automatically creates an IndexedDBAnnotationCache. 
-     * Set to `null` to disable caching. If provided, will show a cache indicator icon when annotations are cached. */
-    annotationCache?: {
-        has(annotationId: string | number, versionHash?: string): Promise<boolean>
-        delete?(annotationId: string | number): Promise<void>
-    } | null
-    /** If true, disables caching entirely (equivalent to annotationCache={null}). Useful for debugging or forcing fresh fetches. */
-    disableCache?: boolean
-    /** Show default vertical UI (default: true). Set to false to use custom render prop. */
-    showDefaultUI?: boolean
-    className?: string
-    children?: React.ReactNode | ((context: {
-        annotations: AnnotationSearchResult[]
-        loading: boolean
-        error: Error | null
-        annotationIds: string[]
-        loadedAnnotations: Set<string>
-        visibleAnnotations: Map<string, boolean>
-        annotationOpacities: Map<string, number>
-        toggleLoad: (annotationId: string) => void
-        toggleVisibility: (annotationId: string) => void
-        setOpacity: (annotationId: string, opacity: number) => void
-        onAnnotationReady: (annotationId: string | number) => void
-    }) => React.ReactNode)
-}
+export type { AnnotationSearchResult, AnnotationManagerProps, AnnotationManagerHandle, AnnotationManagerContext }
 
 /**
  * AnnotationManager component for managing annotation loading, visibility, and state.
@@ -165,7 +16,7 @@ export interface AnnotationManagerProps {
  * Note: By default, the API may only return public annotations. To access private
  * annotations, provide authentication via `fetchFn` or `apiHeaders` props.
  */
-export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationManagerProps>(
+export const AnnotationManager = React.forwardRef<AnnotationManagerHandle, AnnotationManagerProps>(
     (
         {
             imageId,
@@ -195,6 +46,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             showDefaultUI = true,
             className = '',
             children,
+            debug = false,
         },
         ref
     ) => {
@@ -217,12 +69,14 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
         // Track which annotations are currently loading (fetching/rendering)
         const [loadingAnnotations, setLoadingAnnotations] = useState<Set<string>>(new Set())
         
-        // Deduplication: Track which annotations have already notified they're ready
-        // Prevents infinite loops if onAnnotationReady is called multiple times
-        const notifiedReadyRef = useRef<Set<string>>(new Set())
-        
         // Track which annotations are cached locally
         const [cachedAnnotationIds, setCachedAnnotationIds] = useState<Set<string>>(new Set())
+        
+        // Track which annotation's metadata is being viewed
+        const [viewingMetadataFor, setViewingMetadataFor] = useState<string | null>(null)
+        
+        // Create debug logger
+        const debugLog = useMemo(() => createDebugLogger('AnnotationManager', debug), [debug])
 
         // Auto-create IndexedDB cache if not provided and not explicitly disabled
         const cache = useMemo(() => {
@@ -255,8 +109,13 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             }
         }, [loadedAnnotationsArray, onLoadedAnnotationIdsChange])
 
+        // Ref to store the annotation ready callback for use in fireStateChangeCallbacks
+        // This allows us to reference it before it's defined
+        const annotationReadyCallbackRef = useRef<((id: string | number) => void) | null>(null)
+
         // Helper function to fire state change callbacks immediately (synchronously)
         // This ensures callbacks fire immediately when actions occur, not in next render cycle
+        // NOTE: We'll pass the callback ref directly so it's always up-to-date
         const fireStateChangeCallbacks = useCallback(() => {
             const loadedIdsArray = Array.from(loadedAnnotations).sort()
             const opacitiesMap = new Map(annotationOpacities)
@@ -264,10 +123,16 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             
             // Fire unified state change callback immediately
             if (onAnnotationStateChange) {
+                // Get the current callback from ref (may be null initially, but will be set on next render)
+                const readyCallback = annotationReadyCallbackRef.current
                 onAnnotationStateChange({
                     loadedAnnotationIds: loadedIdsArray,
                     opacities: opacitiesMap,
                     visibility: visibilityMap,
+                    // Include the internal callback that SlideViewer should use
+                    // This eliminates the need for render props
+                    // Pass undefined if not set yet - it will be provided in next state change
+                    onAnnotationReady: readyCallback || undefined,
                 })
             }
             
@@ -298,23 +163,19 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             fireStateChangeCallbacks()
         }, [fireStateChangeCallbacks, loadedAnnotationsArray, opacitiesArray, visibilityArray])
 
-        // Unified annotation ready handler with deduplication
+        // Unified annotation ready handler
         // This handles both internal use and external callbacks from SlideViewer
+        // Note: SlideViewer already deduplicates by document ID, so we don't need to do it here
         const handleAnnotationReadyInternal = useCallback((annotationId: string | number) => {
             const id = String(annotationId) // Normalize to string
-            
-            // Deduplication: Skip if we've already processed this annotation
-            if (notifiedReadyRef.current.has(id)) {
-                return // Already notified, skip to prevent loops
-            }
-            
-            // Mark as notified
-            notifiedReadyRef.current.add(id)
+            debugLog.log(`handleAnnotationReadyInternal called for ${id}`)
             
             // Automatically clear loading state when called
             setLoadingAnnotations(prev => {
+                const wasLoading = prev.has(id)
                 const next = new Set(prev)
                 next.delete(id)
+                debugLog.log(`Cleared loading for ${id}. Was loading: ${wasLoading}. Still loading:`, Array.from(next))
                 return next
             })
             
@@ -333,6 +194,18 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             externalOnAnnotationReady?.(id)
             slideViewerOnAnnotationReady?.(id)
         }, [externalOnAnnotationReady, slideViewerOnAnnotationReady, cache])
+        
+        // Store the callback in ref immediately (refs are mutable and don't cause re-renders)
+        // This ensures it's available to fireStateChangeCallbacks even on first call
+        annotationReadyCallbackRef.current = handleAnnotationReadyInternal
+        
+        // Also update in useEffect to ensure it stays current across renders
+        // and trigger a state change callback so consumers get the callback
+        useEffect(() => {
+            annotationReadyCallbackRef.current = handleAnnotationReadyInternal
+            // Fire callbacks to ensure consumers get the callback reference
+            fireStateChangeCallbacks()
+        }, [handleAnnotationReadyInternal, fireStateChangeCallbacks])
 
         // Create a wrapper for the onAnnotationReady prop that automatically clears loading
         // This will be passed to SlideViewer - when SlideViewer calls it, loading is cleared
@@ -344,18 +217,20 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
         const toggleLoad = useCallback((annotationId: string) => {
             const idStr = String(annotationId) // Normalize to string
             const isLoaded = loadedAnnotations.has(idStr)
+            debugLog.log(`toggleLoad for ${idStr}. Currently loaded: ${isLoaded}`)
             if (!isLoaded) {
                 // Start loading annotation - mark as loading immediately
-                console.log(`AnnotationManager: Starting to load annotation ${idStr}`)
-                setLoadingAnnotations(prev => {
-                    const next = new Set(prev).add(idStr)
-                    console.log(`AnnotationManager: Added ${idStr} to loading set. Now loading:`, Array.from(next))
-                    return next
-                })
+                debugLog.log(`Adding ${idStr} to loading state`)
+                setLoadingAnnotations(prev => new Set(prev).add(idStr))
 
                 // Load annotation (this will trigger SlideViewer to fetch and render)
                 if (!externalLoadedAnnotations) {
-                    setInternalLoadedAnnotations(prev => new Set(prev).add(idStr))
+                    debugLog.log(`toggleLoad: Adding ${idStr} to internalLoadedAnnotations`)
+                    setInternalLoadedAnnotations(prev => {
+                        const next = new Set(prev).add(idStr)
+                        debugLog.log(`internalLoadedAnnotations now:`, Array.from(next))
+                        return next
+                    })
                 }
                 if (!externalVisibleAnnotations) {
                     setInternalVisibleAnnotations(prev => new Map(prev).set(idStr, true))
@@ -366,9 +241,8 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                 onAnnotationLoadChange?.(idStr, true)
                 onAnnotationLoad?.(idStr) // Fire individual load callback (annotationData can be added later if needed)
                 
-                // Fire state change callbacks immediately after state update
-                // Use setTimeout to ensure state has updated (React batches updates)
-                setTimeout(() => fireStateChangeCallbacks(), 0)
+                // Don't manually call fireStateChangeCallbacks here - let the useEffect handle it
+                // after React has applied the state updates. Manual calls cause race conditions.
             } else {
                 // Unload annotation
                 if (!externalLoadedAnnotations) {
@@ -402,11 +276,8 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                     return next
                 })
                 
-                // Clear deduplication tracking so annotation can be reloaded
-                notifiedReadyRef.current.delete(idStr)
-                
-                // Fire state change callbacks immediately after state update
-                setTimeout(() => fireStateChangeCallbacks(), 0)
+                // Don't manually call fireStateChangeCallbacks here - let the useEffect handle it
+                // after React has applied the state updates. Manual calls cause race conditions.
             }
         }, [externalLoadedAnnotations, externalVisibleAnnotations, externalAnnotationOpacities, loadedAnnotations, onAnnotationLoadChange, onAnnotationLoad, onAnnotationHide, fireStateChangeCallbacks])
 
@@ -441,8 +312,8 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                 onAnnotationVisibilityChange?.(annotationId, true)
             }
             
-            // Fire state change callbacks immediately after state update
-            setTimeout(() => fireStateChangeCallbacks(), 0)
+            // Don't manually call fireStateChangeCallbacks here - let the useEffect handle it
+            // after React has applied the state updates. Manual calls cause race conditions.
         }, [externalAnnotationOpacities, externalVisibleAnnotations, annotationOpacities, onAnnotationOpacityChange, onAnnotationVisibilityChange, fireStateChangeCallbacks])
 
         // Set annotation opacity
@@ -452,8 +323,8 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             }
             onAnnotationOpacityChange?.(annotationId, opacity)
             
-            // Fire state change callbacks immediately after state update
-            setTimeout(() => fireStateChangeCallbacks(), 0)
+            // Don't manually call fireStateChangeCallbacks here - let the useEffect handle it
+            // after React has applied the state updates. Manual calls cause race conditions.
         }, [externalAnnotationOpacities, onAnnotationOpacityChange, fireStateChangeCallbacks])
 
         // Fetch annotations when imageId or apiBaseUrl changes
@@ -488,7 +359,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                         fetchOptions.headers = apiHeaders
                     }
 
-                    console.log(`AnnotationManager: Fetching annotations from: ${url}`)
+                    debugLog.log(`Fetching annotations from: ${url}`)
                     const response = await customFetch(url, fetchOptions)
 
                     if (!response.ok) {
@@ -496,7 +367,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                     }
 
                     const data = await response.json()
-                    console.log(`AnnotationManager: API response:`, data)
+                    debugLog.log(`API response:`, data)
 
                     // Store raw response as JSON string for debug panel
                     if (showDebugPanel) {
@@ -508,23 +379,23 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                     if (Array.isArray(data)) {
                         // DSA API returns array directly
                         annotationList = data
-                        console.log(`AnnotationManager: Parsed ${annotationList.length} annotation(s) from array response`)
+                        debugLog.log(`Parsed ${annotationList.length} annotation(s) from array response`)
                     } else if (data && Array.isArray(data.data)) {
                         // Some APIs might return paginated response
                         annotationList = data.data
-                        console.log(`AnnotationManager: Parsed ${annotationList.length} annotation(s) from paginated response`)
+                        debugLog.log(`Parsed ${annotationList.length} annotation(s) from paginated response`)
                     } else if (data && typeof data === 'object') {
                         // If it's a single annotation object, wrap it in an array
                         annotationList = [data]
-                        console.log(`AnnotationManager: Parsed 1 annotation from single object response`)
+                        debugLog.log(`Parsed 1 annotation from single object response`)
                     } else {
-                        console.warn(`AnnotationManager: Unexpected response format:`, typeof data, data)
+                        debugLog.warn(`Unexpected response format:`, typeof data, data)
                     }
 
                     setAnnotations(annotationList)
-                    console.log(`AnnotationManager: Fetched ${annotationList.length} annotation(s) from API`)
+                    debugLog.log(`Fetched ${annotationList.length} annotation(s) from API`)
                     if (annotationList.length > 0) {
-                        console.log(`AnnotationManager: Annotation IDs:`, annotationList.map(a => a._id))
+                        debugLog.log(`Annotation IDs:`, annotationList.map(a => a._id))
                     }
                     
                     // Fire annotation headers change callback automatically
@@ -606,6 +477,95 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
             onAnnotationReady: onAnnotationReady,
             loadingAnnotations,
         }), [annotations, loading, error, loadedAnnotations, visibleAnnotations, annotationOpacities, toggleLoad, toggleVisibility, setOpacity, handleAnnotationReadyInternal, onAnnotationReady, loadingAnnotations])
+
+        // Expose imperative handle for parent components to query annotation state
+        const containerRef = useRef<HTMLDivElement>(null)
+        useImperativeHandle(ref, () => ({
+            getAnnotations: () => annotations,
+            getAnnotation: (id: string) => annotations.find(a => String(a._id) === id),
+            getLoadedAnnotationIds: () => Array.from(loadedAnnotations),
+            isAnnotationLoaded: (id: string) => loadedAnnotations.has(id),
+            isAnnotationVisible: (id: string) => {
+                const opacity = annotationOpacities.get(id) ?? 1
+                return opacity > 0
+            },
+            getAnnotationOpacity: (id: string) => annotationOpacities.get(id) ?? 1,
+            isAnnotationLoading: (id: string) => loadingAnnotations.has(id),
+            getVisibleAnnotationIds: () => {
+                return Array.from(loadedAnnotations).filter(id => {
+                    const opacity = annotationOpacities.get(id) ?? 1
+                    return opacity > 0
+                })
+            },
+            getAnnotationState: () => ({
+                loadedAnnotationIds: Array.from(loadedAnnotations),
+                opacities: new Map(annotationOpacities),
+                visibility: new Map(visibleAnnotations),
+                loadingAnnotationIds: Array.from(loadingAnnotations),
+            }),
+        }), [annotations, loadedAnnotations, visibleAnnotations, annotationOpacities, loadingAnnotations])
+
+        // Helper function to filter out element-level info from metadata
+        const filterMetadata = useCallback((ann: AnnotationSearchResult): Record<string, unknown> => {
+            const filtered: Record<string, unknown> = {}
+            
+            // Include top-level metadata fields
+            const fieldsToInclude = [
+                '_id',
+                '_modelType',
+                '_elementCount',
+                '_detailsCount',
+                '_version',
+                '_accessLevel',
+                'itemId',
+                'public',
+                'created',
+                'updated',
+                'creatorId',
+                'updatedId',
+                'groups',
+            ]
+            
+            // Add top-level fields
+            fieldsToInclude.forEach(key => {
+                if (key in ann && ann[key] !== undefined) {
+                    filtered[key] = ann[key]
+                }
+            })
+            
+            // Include annotation.name and annotation.description, but not nested element data
+            if (ann.annotation) {
+                filtered.annotation = {
+                    name: ann.annotation.name,
+                    description: ann.annotation.description,
+                    attributes: ann.annotation.attributes,
+                    display: ann.annotation.display,
+                }
+            }
+            
+            // Include any other top-level fields that aren't element-level data
+            Object.keys(ann).forEach(key => {
+                if (!fieldsToInclude.includes(key) && key !== 'annotation') {
+                    const value = ann[key]
+                    // Skip if it's an array of complex objects (likely element data)
+                    if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
+                        // Skip arrays of objects (likely elements)
+                        return
+                    }
+                    // Skip if it's a deeply nested object (likely element data)
+                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        const keys = Object.keys(value)
+                        if (keys.length > 10) {
+                            // Likely element data, skip
+                            return
+                        }
+                    }
+                    filtered[key] = value
+                }
+            })
+            
+            return filtered
+        }, [])
 
         // Default vertical UI
         const renderDefaultUI = () => {
@@ -726,6 +686,20 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                                             </div>
                                         )}
                                         <button
+                                            className={`bdsa-annotation-manager__annotation-card-button bdsa-annotation-manager__annotation-card-button--metadata`}
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                setViewingMetadataFor(ann._id)
+                                            }}
+                                            title="View metadata"
+                                        >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="12" cy="12" r="10" />
+                                                <line x1="12" y1="16" x2="12" y2="12" />
+                                                <line x1="12" y1="8" x2="12.01" y2="8" />
+                                            </svg>
+                                        </button>
+                                        <button
                                             className={`bdsa-annotation-manager__annotation-card-button bdsa-annotation-manager__annotation-card-button--load bdsa-annotation-manager__annotation-card-button--load-header`}
                                             onClick={(e) => {
                                                 e.stopPropagation()
@@ -757,6 +731,20 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                                     {ann._detailsCount !== undefined && (
                                         <div className="bdsa-annotation-manager__annotation-card-detail">
                                             <strong>Points:</strong> {ann._detailsCount.toLocaleString()}
+                                            {ann.updated && (
+                                                <span className="bdsa-annotation-manager__annotation-card-detail-separator">•</span>
+                                            )}
+                                            {ann.updated && (
+                                                <span className="bdsa-annotation-manager__annotation-card-detail-date">
+                                                    Modified: {new Date(ann.updated).toLocaleDateString(undefined, { 
+                                                        year: 'numeric', 
+                                                        month: 'short', 
+                                                        day: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </span>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -833,7 +821,7 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
 
         return (
             <div
-                ref={ref}
+                ref={containerRef}
                 className={`bdsa-annotation-manager ${className}`}
             >
                 {showDefaultUI ? (
@@ -858,6 +846,42 @@ export const AnnotationManager = React.forwardRef<HTMLDivElement, AnnotationMana
                         </pre>
                     </div>
                 )}
+                {viewingMetadataFor && (() => {
+                    const ann = annotations.find(a => String(a._id) === viewingMetadataFor)
+                    if (!ann) return null
+                    const filteredMetadata = filterMetadata(ann)
+                    return (
+                        <div 
+                            className="bdsa-annotation-manager__metadata-modal-overlay"
+                            onClick={(e) => {
+                                if (e.target === e.currentTarget) {
+                                    setViewingMetadataFor(null)
+                                }
+                            }}
+                        >
+                            <div className="bdsa-annotation-manager__metadata-modal">
+                                <div className="bdsa-annotation-manager__metadata-modal-header">
+                                    <h3>Metadata: {ann.annotation?.name || ann._id}</h3>
+                                    <button
+                                        className="bdsa-annotation-manager__metadata-modal-close"
+                                        onClick={() => setViewingMetadataFor(null)}
+                                        title="Close"
+                                    >
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div className="bdsa-annotation-manager__metadata-modal-content">
+                                    <pre className="bdsa-annotation-manager__metadata-modal-json">
+                                        {JSON.stringify(filteredMetadata, null, 2)}
+                                    </pre>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                })()}
             </div>
         )
     }

@@ -1,6 +1,6 @@
 # bdsa-react-components - CURSOR Integration Guide
 
-**Version:** 0.1.6 | **Generated:** 2025-11-02T21:56:12.504Z
+**Version:** 0.1.23 | **Generated:** 2026-01-10T22:16:11.954Z
 
 > This document provides everything Cursor needs to integrate and use the bdsa-react-components library.
 > Copy this entire document into your project's .cursorrules or docs folder.
@@ -42,7 +42,7 @@ npm run build
 ### Import
 
 ```tsx
-import { AnnotationManager, Button, Card, FolderBrowser, SlideViewer } from 'bdsa-react-components'
+import { AnnotationManager, Button, Card, DsaAuthManager, DsaErrorBoundary, FolderBrowser, FolderThumbnailBrowser, ProtocolManager, SlideViewer, ThumbnailGrid, ThumbnailViewer } from 'bdsa-react-components'
 import 'bdsa-react-components/styles.css'
 ```
 
@@ -98,6 +98,14 @@ A flexible card component for the BDSA project
 | `hoverable` | `boolean` | `false` | No | Whether the card is hoverable (shows hover effect) |
 | `padding` | `'none' \| 'small' \| 'medium' \| 'large'` | `'medium'` | No | Padding size |
 
+### DsaAuthManager
+
+DsaAuthManager component
+
+### DsaErrorBoundary
+
+DsaErrorBoundary component
+
 ### FolderBrowser
 
 FolderBrowser component
@@ -116,6 +124,44 @@ FolderBrowser component
 - `GET /collection` - List collections
 - `GET /folder?parentType={type}&parentId={id}` - List folders
 
+### FolderThumbnailBrowser
+
+Size presets for thumbnails
+
+**Example:**
+
+```tsx
+<FolderThumbnailBrowser
+  apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"
+  folderId="6903df87d26a6d93de19a9b0"
+  viewerSize="l"
+  itemsPerPage={12}
+  showViewerControls={false}
+  selectedAnnotationName="Gray White Segmentation"
+  annotationOpacity={0.7}
+  onAnnotationOpacityChange={(opacity) => console.log(opacity)}
+/>
+```
+
+**Features:**
+
+- Displays thumbnails using OpenSeadragon (full viewer with zoom/pan)
+- Supports annotation overlays with opacity control
+- Automatic pagination based on container size
+- Size presets: 's' (120px), 'm' (180px), 'l' (240px), 'xl' (320px)
+- Authentication via `apiHeaders` or `fetchFn`
+- Token query parameter support via `tokenQueryParam` prop
+
+**API Endpoints:**
+
+- `GET /item?folderId={id}` - Fetch items from folder
+- `GET /item/{id}/tiles/dzi.dzi` - DZI descriptor for thumbnail
+- `GET /annotation?itemId={id}` - Fetch annotations for item
+
+### ProtocolManager
+
+ProtocolManager component
+
 ### SlideViewer
 
 A slide viewer component that integrates OpenSeadragon with Paper.js annotations for viewing Digital Slide Archive images with annotation overlays.
@@ -132,9 +178,98 @@ A slide viewer component that integrates OpenSeadragon with Paper.js annotations
 />
 ```
 
+**Overlay Tile Sources:**
+
+The `overlayTileSources` prop allows you to dynamically add image overlays on top of the base slide image. Overlays can be positioned, scaled, rotated, and have their opacity controlled.
+
+```tsx
+const overlays: OverlayTileSource[] = [
+  {
+    id: 'overlay-1',
+    tileSource: 'data:image/png;base64,iVBORw0KGgoAAAANS...', // Base64 image
+    x: 0.2,      // 20% from left (normalized 0-1)
+    y: 0.3,      // 30% from top (normalized 0-1)
+    width: 0.5,  // 50% of base image width
+    height: 0.5, // 50% of base image height
+    opacity: 0.7,
+    rotation: 0,
+    compositeOperation: 'source-over',
+    visible: true,
+  },
+  {
+    id: 'overlay-2',
+    tileSource: 'http://bdsa.pathology.emory.edu:8080/api/v1/item/123/tiles/dzi.dzi', // DZI URL
+    x: 0,
+    y: 0,
+    opacity: 0.5,
+  }
+]
+
+<SlideViewer
+  imageInfo={{ dziUrl: '...' }}
+  overlayTileSources={overlays}
+  height="800px"
+/>
+```
+
+**Overlay Tile Source Properties:**
+
+- `id: string | number` - Unique identifier (required)
+- `tileSource: string | unknown` - Image source:
+  - Base64 data URL: `'data:image/png;base64,...'`
+  - DZI URL: `'http://.../dzi.dzi'`
+  - Simple image URL: `'http://.../image.jpg'`
+  - OpenSeadragon tile source object
+- `x?: number` - X position (0-1, normalized). Default: 0
+- `y?: number` - Y position (0-1, normalized). Default: 0
+- `width?: number` - Width (0-1, normalized). If not provided, uses natural width
+- `height?: number` - Height (0-1, normalized). If not provided, uses natural height
+- `opacity?: number` - Opacity (0-1). Default: 1
+- `rotation?: number` - Rotation in degrees. Default: 0
+- `compositeOperation?: string` - Blend mode (e.g., 'multiply', 'screen', 'overlay'). Default: 'source-over'
+- `visible?: boolean` - Whether overlay is visible. Default: true
+
+**Note:** When both `width` and `height` are provided, only `width` is used (OpenSeadragon limitation). The overlay will maintain its aspect ratio. Coordinates are normalized (0-1) relative to base image dimensions and are automatically calculated and applied after image loads.
+
 **API Endpoints:**
 
 - `GET /annotation/{id}` - Fetch annotation document by ID
+
+### ThumbnailGrid
+
+Size presets for thumbnails
+
+**Example:**
+
+```tsx
+<ThumbnailGrid
+  apiBaseUrl="http://bdsa.pathology.emory.edu:8080/api/v1"
+  folderId="6903df87d26a6d93de19a9b0"
+  thumbnailSize="l"
+  itemsPerPage={12}
+  tokenQueryParam={true}
+  apiHeaders={{ 'Girder-Token': token }}
+  onThumbnailClick={(item) => console.log(item)}
+/>
+```
+
+**Features:**
+
+- Lightweight thumbnail grid (static images, no OpenSeadragon)
+- Faster loading for simple thumbnail browsing
+- Automatic pagination based on container size
+- Size presets: 's' (120px), 'm' (180px), 'l' (240px), 'xl' (320px)
+- Thumbnail URLs include `?width={size}` for optimized loading
+- Authentication via `apiHeaders` with optional `tokenQueryParam`
+
+**API Endpoints:**
+
+- `GET /item?folderId={id}` - Fetch items from folder
+- `GET /item/{id}/tiles/thumbnail?width={size}&token={token}` - Thumbnail image
+
+### ThumbnailViewer
+
+Individual thumbnail component that wraps SlideViewer for displaying a single DSA item with optional annotation overlay.
 
 ## Type Definitions
 
@@ -154,24 +289,32 @@ import type {
   FolderBrowserProps,
   Collection,
   Folder,
+  Item as FolderBrowserItem,
   Resource,
+  DsaAuthManagerProps,
+  FolderThumbnailBrowserProps,
+  ThumbnailViewerProps,
+  ThumbnailGridProps,
+  Protocol,
+  ProtocolType,
+  ProtocolStorage,
+  DsaSyncAdapter as DsaSyncAdapterType,
+  SchemaValidator as SchemaValidatorType,
+  ProtocolContextValue,
+  ProtocolProviderProps,
+  ProtocolCardProps,
+  ProtocolListProps,
+  ProtocolModalProps,
+  ProtocolsTabProps,
+  ApiError,
+  ApiErrorContext,
+  ApiErrorHandler,
+  OverlayTileSource,
+  ViewportBounds,
 } from 'bdsa-react-components'
 ```
 
 ### Key Types
-
-**SlideImageInfo:**
-```typescript
-interface SlideImageInfo {
-  imageId?: string | number
-  width?: number
-  height?: number
-  tileWidth?: number
-  levels?: number
-  baseUrl?: string
-  http: //bdsa.pathology.emory.edu:8080/api/v1/item/{itemId
-}
-```
 
 ## Authentication
 

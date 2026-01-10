@@ -1,271 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import OpenSeadragon from 'openseadragon'
 import { PaperOverlay, AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { FeatureCollection, Feature } from 'geojson'
-import type { Viewer as OpenSeadragonViewer, Options as OpenSeadragonOptions } from 'openseadragon'
+import type { Viewer as OpenSeadragonViewer } from 'openseadragon'
 import { IndexedDBAnnotationCache } from '../../cache'
-/**
- * Compute version hash from annotation header for cache invalidation
- * Extracts version-relevant fields and computes a hash
- */
-function computeVersionHash(header: Record<string, unknown>): string {
-    // Extract fields that indicate changes
-    const versionFields: Record<string, unknown> = {}
-    if (header._id !== undefined) versionFields._id = header._id
-    if (header._version !== undefined) versionFields._version = header._version
-    if (header._modelType !== undefined) versionFields._modelType = header._modelType
-    if (header.updated !== undefined) versionFields.updated = header.updated
-    if (header.modified !== undefined) versionFields.modified = header.modified
-    if (header._accessLevel !== undefined) versionFields._accessLevel = header._accessLevel
-    
-    // Include annotation metadata if present
-    if (header.annotation && typeof header.annotation === 'object') {
-        const ann = header.annotation as Record<string, unknown>
-        if (ann.name !== undefined) versionFields.name = ann.name
-    }
-    
-    // Simple hash function (djb2 variant)
-    const jsonString = JSON.stringify(versionFields, Object.keys(versionFields).sort())
-    let hash = 5381
-    for (let i = 0; i < jsonString.length; i++) {
-        hash = ((hash << 5) + hash) + jsonString.charCodeAt(i)
-        hash = hash & hash // Convert to 32-bit integer
-    }
-    return (hash >>> 0).toString(16)
-}
+import { applyPaperJsPatches } from '../../utils/patchOsdPaperjs'
+import { createDebugLogger } from '../../utils/debugLog'
+import type { SlideViewerProps, AnnotationFeature } from './SlideViewer.types'
+import { extractToken, appendTokenToUrl, DEFAULT_ANNOTATION_INFO_CONFIG } from './SlideViewer.utils'
+import { useAnnotationFetching, useAnnotationRendering, useAnnotationOpacity, useSlideViewerInitialization, useViewportChange, useOverlayTileSources } from './hooks'
+
+// Apply patches IMMEDIATELY when this module loads (not in a component lifecycle)
+// This must happen before any Paper.js operations
+applyPaperJsPatches()
 import './SlideViewer.css'
 
-export interface SlideImageInfo {
-    /** Image ID from DSA (used if dziUrl is not provided) */
-    imageId?: string | number
-    /** Image width in pixels (used if dziUrl is not provided) */
-    width?: number
-    /** Image height in pixels (used if dziUrl is not provided) */
-    height?: number
-    /** Tile width (used if dziUrl is not provided) */
-    tileWidth?: number
-    /** Number of zoom levels (used if dziUrl is not provided) */
-    levels?: number
-    /** Base URL for DSA tile server (used if dziUrl is not provided) */
-    baseUrl?: string
-    /** DZI descriptor URL (e.g., 'http://bdsa.pathology.emory.edu:8080/api/v1/item/{itemId}/tiles/dzi.dzi')
-     *  If provided, this will be used instead of manually constructing tile URLs */
-    dziUrl?: string
-}
-
-export interface AnnotationFeature {
-    /** Unique identifier for the annotation */
-    id?: string | number
-    /** Left coordinate in pixels */
-    left: number
-    /** Top coordinate in pixels */
-    top: number
-    /** Width in pixels */
-    width: number
-    /** Height in pixels */
-    height: number
-    /** Optional color for the annotation stroke */
-    color?: string
-    /** Optional group identifier */
-    group?: string | number
-    /** Optional label */
-    label?: string
-    /** Type of annotation (rectangle, polyline, etc.) */
-    annotationType?: 'rectangle' | 'polyline'
-    /** Points array for polyline annotations */
-    points?: Array<[number, number]>
-    /** Whether polyline is closed */
-    closed?: boolean
-    /** Fill color for polyline */
-    fillColor?: string
-    /** Store full element for rendering */
-    element?: unknown
-    /** Optional additional properties */
-    [key: string]: unknown
-}
-
-export interface AnnotationInfoProperty {
-    /** Key to access the property value from the annotation document */
-    key: string
-    /** Display label for this property */
-    label: string
-    /** Optional formatter function to transform the value before display */
-    formatter?: (value: unknown, doc: { id: string | number; elementCount: number; totalPoints: number; types: string[]; filteredCount?: number; filteredPoints?: number }) => string | React.ReactNode
-    /** Whether to display this property (default: true) */
-    show?: boolean
-}
-
-export interface AnnotationInfoConfig {
-    /** Properties to display for each fetched annotation document */
-    documentProperties?: AnnotationInfoProperty[]
-    /** Whether to show the "Fetched from DSA API" section */
-    showFetchedSection?: boolean
-    /** Whether to show the "Provided Annotations" section */
-    showProvidedSection?: boolean
-    /** Whether to show the "Total Rendered" section */
-    showTotalSection?: boolean
-    /** Custom header text */
-    headerText?: string
-}
-
-export interface SlideViewerProps {
-    /** Image information for the slide to display */
-    imageInfo: SlideImageInfo
-    /** Annotations to render on the slide (array of rectangles or GeoJSON) */
-    annotations?: AnnotationFeature[] | FeatureCollection
-    /** Annotation IDs to fetch from DSA API (baseUrl/annotation/{id}) */
-    annotationIds?: (string | number)[]
-    /** Base URL for DSA API (e.g., 'http://bdsa.pathology.emory.edu:8080/api/v1') */
-    apiBaseUrl?: string
-    /** Callback when viewer is ready */
-    onViewerReady?: (viewer: OpenSeadragonViewer) => void
-    /** Callback when annotation is clicked */
-    onAnnotationClick?: (annotation: AnnotationFeature) => void
-    /** Default stroke color for annotations */
-    defaultAnnotationColor?: string
-    /** Stroke width for annotations */
-    strokeWidth?: number
-    /** Additional OpenSeadragon configuration options */
-    osdOptions?: OpenSeadragonOptions
-    /** Custom CSS class name */
-    className?: string
-    /** Height for the viewer container (e.g., '600px', '100vh', '100%').
-     *  Required: OpenSeadragon needs an explicit height to initialize properly. */
-    height?: string | number
-    /** Width for the viewer container (defaults to '100%') */
-    width?: string | number
-    /** Display information about loaded annotation documents */
-    showAnnotationInfo?: boolean
-    /** Configuration for customizing the annotation info panel display */
-    annotationInfoConfig?: AnnotationInfoConfig
-    /** Maximum number of points allowed per annotation element (default: 10000).
-     *  Annotations exceeding this limit will be skipped with a warning. */
-    maxPointsPerAnnotation?: number
-    /** Maximum total number of points allowed across all annotations (default: 100000).
-     *  If exceeded, annotations will be filtered starting from the largest ones. */
-    maxTotalPoints?: number
-    /** Custom fetch function for API requests. Useful for adding authentication headers.
-     *  If not provided, uses the default `fetch`. The function should match the Fetch API signature. */
-    fetchFn?: (url: string, options?: RequestInit) => Promise<Response>
-    /** Custom headers to add to all API requests. Merged with fetchFn headers if both are provided. */
-    apiHeaders?: HeadersInit
-    /** Show annotation controls panel in the sidebar (default: false) */
-    showAnnotationControls?: boolean
-    /** Default opacity for all annotations (0-1, default: 1) */
-    defaultAnnotationOpacity?: number
-    /** Map of annotation IDs to their individual opacity values (0-1). Overrides defaultAnnotationOpacity for specific annotations. */
-    annotationOpacities?: Map<string | number, number> | Record<string, number>
-    /** Map of annotation IDs to their visibility state. If provided, only visible annotations will be rendered/updated. */
-    visibleAnnotations?: Map<string | number, boolean> | Record<string, boolean>
-    /** Callback when annotation has finished loading and rendering. Called with the annotation ID. */
-    onAnnotationReady?: (annotationId: string | number) => void
-    /** Optional pull-through cache for annotation documents. Acts as a cache-aside proxy:
-     *  1. Checks cache first on fetch requests
-     *  2. On cache miss, fetches from API and stores in cache
-     *  3. On cache hit, returns cached data immediately (no API call)
-     *  If not provided, automatically creates an IndexedDBAnnotationCache. Set to `null` to disable caching. */
-    annotationCache?: {
-        get(annotationId: string | number, versionHash?: string): Promise<unknown | null>
-        set(annotationId: string | number, data: unknown, options?: { ttl?: number; versionHash?: string }): Promise<void>
-        has(annotationId: string | number, versionHash?: string): Promise<boolean>
-        delete(annotationId: string | number): Promise<void>
-        clear(): Promise<void>
-        getStats?(): Promise<{ size: number; hits?: number; misses?: number; hitRate?: number }>
-    } | null
-    /** If true, disables caching entirely (equivalent to annotationCache={null}). Useful for debugging or forcing fresh fetches. */
-    disableCache?: boolean
-    /** If true, disables the IntersectionObserver visibility check and initializes immediately.
-     *  Useful for cases where you want immediate initialization regardless of viewport visibility.
-     *  Default: false (visibility check enabled for better performance and error prevention) */
-    disableVisibilityCheck?: boolean
-    /** Optional map of annotation headers (from /annotation?itemId=... endpoint) keyed by annotation ID.
-     *  If provided, used to compute version hashes for cache invalidation when annotations change on the server.
-     *  Should contain the metadata objects returned from AnnotationManager's annotation search endpoint.
-     *  Typically obtained from AnnotationManager: `annotations.map(ann => [ann._id, ann])` or similar.
-     *  If not provided, cache will work but version-based invalidation will be disabled. */
-    annotationHeaders?: Map<string | number, unknown> | Record<string, unknown>
-}
-
-/**
- * Helper function to apply opacity to a color string
- * Always returns rgba format for consistency, even at 100% opacity
- */
-function applyOpacity(color: string, opacity: number): string {
-    // Clamp opacity to valid range
-    const clampedOpacity = Math.max(0, Math.min(1, opacity))
-    
-    // Always convert to rgba for consistent rendering, even at 100%
-    if (color.startsWith('rgba(')) {
-        // Extract RGB values, ignore existing alpha
-        const match = color.match(/(\d+(?:\.\d+)?)/g)
-        if (match && match.length >= 3) {
-            const r = match[0]
-            const g = match[1]
-            const b = match[2]
-            return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`
-        }
-    } else if (color.startsWith('rgb(')) {
-        // Extract RGB values from rgb() format
-        const match = color.match(/(\d+(?:\.\d+)?)/g)
-        if (match && match.length >= 3) {
-            const r = match[0]
-            const g = match[1]
-            const b = match[2]
-            return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`
-        }
-    } else if (color.startsWith('#')) {
-        // Convert hex to rgba
-        const hex = color.replace('#', '')
-        // Handle both 3-digit and 6-digit hex
-        let r: number, g: number, b: number
-        if (hex.length === 3) {
-            r = parseInt(hex[0] + hex[0], 16)
-            g = parseInt(hex[1] + hex[1], 16)
-            b = parseInt(hex[2] + hex[2], 16)
-        } else {
-            r = parseInt(hex.substring(0, 2), 16)
-            g = parseInt(hex.substring(2, 4), 16)
-            b = parseInt(hex.substring(4, 6), 16)
-        }
-        return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`
-    }
-
-    // Fallback: return as-is if we can't parse it
-    // This should rarely happen, but preserves original behavior for edge cases
-    return color
-}
-
-/**
- * Default configuration for annotation info panel
- */
-const DEFAULT_ANNOTATION_INFO_CONFIG: AnnotationInfoConfig = {
-    documentProperties: [
-        { key: 'id', label: 'ID', formatter: (value) => String(value) },
-        { key: 'elementCount', label: 'Elements', formatter: (value) => String(value) },
-        { key: 'totalPoints', label: 'Points/Vertices', formatter: (value) => String(value) },
-        {
-            key: 'types',
-            label: 'Types',
-            formatter: (value) => Array.isArray(value) && value.length > 0 ? value.join(', ') : 'N/A',
-            show: true
-        },
-        {
-            key: 'filteredCount',
-            label: 'Filtered',
-            formatter: (_value, doc) => {
-                if (doc.filteredCount !== undefined && doc.filteredCount > 0) {
-                    return `${doc.filteredCount} element(s) (${doc.filteredPoints || 0} points) skipped`
-                }
-                return 'None'
-            },
-            show: true,
-        },
-    ],
-    showFetchedSection: true,
-    showProvidedSection: true,
-    showTotalSection: true,
-    headerText: 'Annotation Information',
-}
+// Re-export types for backward compatibility
+export type { SlideImageInfo, AnnotationFeature, AnnotationInfoProperty, AnnotationInfoConfig, SlideViewerProps, ViewportBounds, OverlayTileSource } from './SlideViewer.types'
 
 /**
  * A slide viewer component that integrates OpenSeadragon with Paper.js annotations
@@ -280,6 +30,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             apiBaseUrl,
             onViewerReady,
             onAnnotationClick,
+            onViewportChange,
             defaultAnnotationColor = '#ff0000',
             strokeWidth = 2,
             osdOptions = {},
@@ -292,6 +43,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             maxTotalPoints = 100000,
             fetchFn,
             apiHeaders,
+            authToken,
+            tokenQueryParam = false,
             showAnnotationControls = false,
             defaultAnnotationOpacity = 1,
             annotationOpacities,
@@ -301,6 +54,9 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             disableCache = false,
             disableVisibilityCheck = false,
             annotationHeaders,
+            onApiError,
+            overlayTileSources = [],
+            debug = false,
         },
         ref
     ) => {
@@ -308,11 +64,12 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         const [viewer, setViewer] = useState<OpenSeadragonViewer | null>(null)
         const [overlay, setOverlay] = useState<PaperOverlay | null>(null)
         const [toolkit, setToolkit] = useState<AnnotationToolkit | null>(null)
-        const [fetchedAnnotations, setFetchedAnnotations] = useState<AnnotationFeature[]>([])
-        const [annotationDocuments, setAnnotationDocuments] = useState<Array<{ id: string | number; elementCount: number; types: string[] }>>([])
         const tiledImageRef = useRef<{ addPaperItem: (item: unknown) => void; paperItems?: unknown[] } | null>(null)
         const lastRenderedAnnotationsRef = useRef<string>('')
         const [annotationOpacity, setAnnotationOpacity] = useState<number>(defaultAnnotationOpacity)
+
+        // Create debug logger
+        const debugLog = useMemo(() => createDebugLogger('SlideViewer', debug), [debug])
 
         // Auto-create IndexedDB cache if not provided and not explicitly disabled
         const cache = useMemo(() => {
@@ -502,11 +259,6 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             }
         }, [isPaperJsReady])
 
-        // Create stable key for fetched annotations
-        const fetchedAnnotationsKey = useMemo(() => {
-            return fetchedAnnotations.map(a => `${a.id}:${a.left}:${a.top}:${a.width}:${a.height}`).join('|')
-        }, [fetchedAnnotations])
-
         // Generate a unique viewer ID for this component instance
         const viewerIdRef = useRef(`osd-viewer-${Math.random().toString(36).substr(2, 9)}`)
 
@@ -527,10 +279,39 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             onAnnotationClickRef.current = onAnnotationClick
         }, [onAnnotationClick])
 
+        // Extract token from authToken or apiHeaders (memoized)
+        const token = useMemo(() => {
+            return extractToken(authToken, apiHeaders)
+        }, [authToken, apiHeaders])
+
+        // Create wrapped fetch function that appends token to URLs when tokenQueryParam is true
+        const wrappedFetch = useMemo(() => {
+            const baseFetch = fetchFn || fetch
+            if (!tokenQueryParam || !token) {
+                return baseFetch
+            }
+            
+            return (url: string, options?: RequestInit) => {
+                const urlWithToken = appendTokenToUrl(url, token)
+                return baseFetch(urlWithToken, options)
+            }
+        }, [fetchFn, token, tokenQueryParam])
+
+        // Get the DZI URL with token if needed (memoized to prevent unnecessary re-renders)
+        const processedDziUrl = useMemo((): string | null => {
+            if (!imageInfo.dziUrl) {
+                return null
+            }
+            if (tokenQueryParam && token) {
+                return appendTokenToUrl(imageInfo.dziUrl, token)
+            }
+            return imageInfo.dziUrl ?? null
+        }, [imageInfo.dziUrl, token, tokenQueryParam])
+
         // Get the DZI URL or construct a key for manual mode to track changes (memoized to prevent unnecessary re-renders)
         const imageKey = useMemo(() => {
-            return imageInfo.dziUrl || `${imageInfo.imageId}-${imageInfo.baseUrl}`
-        }, [imageInfo.dziUrl, imageInfo.imageId, imageInfo.baseUrl])
+            return processedDziUrl || imageInfo.dziUrl || `${imageInfo.imageId}-${imageInfo.baseUrl}`
+        }, [processedDziUrl, imageInfo.dziUrl, imageInfo.imageId, imageInfo.baseUrl])
 
         // Create stable key for annotations to prevent unnecessary re-renders
         const annotationsKey = useMemo(() => {
@@ -541,6 +322,27 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             }
             return '[]'
         }, [annotations])
+
+        // Fetch annotations from DSA API if annotationIds are provided
+        const { fetchedAnnotations, annotationDocuments } = useAnnotationFetching(
+            annotationIds,
+            apiBaseUrl,
+            defaultAnnotationColor,
+            maxPointsPerAnnotation,
+            maxTotalPoints,
+            wrappedFetch,
+            cache,
+            annotationHeaders,
+            apiHeaders,
+            isMountedRef,
+            debug,
+            onApiError
+        )
+
+        // Create stable key for fetched annotations
+        const fetchedAnnotationsKey = useMemo(() => {
+            return fetchedAnnotations.map(a => `${a.id}:${a.left}:${a.top}:${a.width}:${a.height}`).join('|')
+        }, [fetchedAnnotations])
 
         // Parse annotations once to avoid recreating in effect
         const parsedManualAnnotations = useMemo(() => {
@@ -579,680 +381,53 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         }, [annotationsKey, defaultAnnotationColor])
 
         // Initialize OpenSeadragon viewer
-        useEffect(() => {
-            if (!containerRef.current) return
-            // Only check visibility for initial mount, don't re-initialize if visibility changes
-            if (!isVisible && !isInitializedRef.current) {
-                // Component not visible and not yet initialized, don't initialize yet
-                return
-            }
-            if (isInitializedRef.current) {
-                // Already initialized, don't re-initialize unless imageKey changed
-                return
-            }
-
-            // Store references for cleanup
-            let osdViewer: OpenSeadragonViewer | null = null
-            let paperOverlay: PaperOverlay | null = null
-            let annotationToolkit: AnnotationToolkit | null = null
-
-            // Add small delay to ensure DOM is ready
-            const initTimer = setTimeout(() => {
-                if (!isMountedRef.current || !containerRef.current) return
-                // Double-check visibility before initializing (user might have scrolled away)
-                if (!isVisible) {
-                    return
-                }
-
-                try {
-                    isInitializedRef.current = true
-                    lastImageKeyRef.current = imageKey
-
-
-                    // Set the ID on the container element (OpenSeadragon needs an element with an ID)
-                    containerRef.current.id = viewerIdRef.current
-
-                    const defaultOsdOptions: OpenSeadragonOptions = {
-                        id: viewerIdRef.current, // Use ID like the working example
-                        prefixUrl: 'https://openseadragon.github.io/openseadragon/images/',
-                        maxImageCacheCount: 1000,
-                        crossOriginPolicy: 'Anonymous',
-                        autoHideControls: false,
-                        debugMode: false,
-                        // Enable navigation controls by default
-                        showNavigator: true,
-                        showZoomControl: true,
-                        showHomeControl: true,
-                        showFullPageControl: true,
-                        // User-provided options override defaults
-                        ...osdOptions,
-                    }
-
-                    // Create viewer first (empty, like the working example)
-                    osdViewer = OpenSeadragon(defaultOsdOptions)
-
-                    // Create Paper overlay from the viewer (before adding images, like working example)
-                    paperOverlay = osdViewer.createPaperOverlay() as PaperOverlay
-                    if (isMountedRef.current) {
-                        setOverlay(paperOverlay)
-                    }
-
-                    // Create annotation toolkit immediately (like working example - before loading image)
-                    annotationToolkit = new AnnotationToolkit(osdViewer, {
-                        overlay: paperOverlay,
-                    })
-                    
-                    // Add error handling for library's mouse event handlers
-                    // The library's internal mouse handlers can throw _transformBounds errors
-                    // if Paper.js isn't fully initialized when mouse events fire
-                    if (annotationToolkit && typeof (annotationToolkit as any).overlay?.paperScope?.view !== 'undefined') {
-                        const paperScope = (annotationToolkit as any).overlay.paperScope
-                        if (paperScope && paperScope.view) {
-                            // Wrap view methods that might access _transformBounds
-                            const originalView = paperScope.view
-                            
-                            // Helper to safely check if _transformBounds is accessible
-                            const hasTransformBounds = (obj: any): boolean => {
-                                try {
-                                    return obj !== null && 
-                                           obj !== undefined && 
-                                           typeof obj._transformBounds !== 'undefined' &&
-                                           obj._transformBounds !== null
-                                } catch {
-                                    return false
-                                }
-                            }
-                            
-                            const viewProxy = new Proxy(originalView, {
-                                get: (target, prop) => {
-                                    // Intercept methods that might access _transformBounds
-                                    if (prop === 'getBounds' || prop === '_transformBounds') {
-                                        return function(...args: unknown[]) {
-                                            try {
-                                                // Defensive check: ensure target and _transformBounds exist
-                                                if (!target || !hasTransformBounds(target)) {
-                                                    // Return a safe default instead of throwing
-                                                    if (prop === 'getBounds') {
-                                                        // Return a bounds object that won't break the library
-                                                        return { x: 0, y: 0, width: 0, height: 0 }
-                                                    }
-                                                    return null
-                                                }
-                                                
-                                                if (prop === 'getBounds') {
-                                                    const bounds = (originalView.getBounds as any)?.apply(target, args)
-                                                    return bounds || { x: 0, y: 0, width: 0, height: 0 }
-                                                }
-                                                
-                                                return (target as any)[prop]
-                                            } catch (error) {
-                                                // Catch any _transformBounds related errors
-                                                if (error instanceof Error) {
-                                                    const msg = error.message?.toLowerCase() || ''
-                                                    if (msg.includes('_transformbounds') || 
-                                                        msg.includes('transformbounds') ||
-                                                        msg.includes('cannot read properties of null')) {
-                                                        // Return safe defaults instead of throwing
-                                                        if (prop === 'getBounds') {
-                                                            return { x: 0, y: 0, width: 0, height: 0 }
-                                                        }
-                                                        return null
-                                                    }
-                                                }
-                                                // Re-throw non-_transformBounds errors
-                                                throw error
-                                            }
-                                        }
-                                    }
-                                    
-                                    // For all other properties, try to access safely
-                                    try {
-                                        const value = (target as any)[prop]
-                                        // If accessing _transformBounds property directly
-                                        if (prop === '_transformBounds' && (value === null || value === undefined)) {
-                                            // Return a dummy function to prevent null access errors
-                                            return () => ({ x: 0, y: 0, width: 0, height: 0 })
-                                        }
-                                        return value
-                                    } catch (error) {
-                                        // If accessing the property throws, return a safe default
-                                        if (error instanceof Error) {
-                                            const msg = error.message?.toLowerCase() || ''
-                                            if (msg.includes('_transformbounds') || msg.includes('null')) {
-                                                if (prop === '_transformBounds') {
-                                                    return () => ({ x: 0, y: 0, width: 0, height: 0 })
-                                                }
-                                                return null
-                                            }
-                                        }
-                                        throw error
-                                    }
-                                }
-                            })
-                            
-                            // Try to replace the view (may not work if library has locked reference)
-                            try {
-                                (paperScope as any).view = viewProxy
-                            } catch (e) {
-                                // If we can't replace, that's okay - we'll handle errors globally
-                            }
-                        }
-                    }
-                    
-                    if (isMountedRef.current) {
-                        setToolkit(annotationToolkit)
-                    }
-
-                    // Add event handlers (like the working example)
-                    if (!osdViewer) return
-                    
-                    osdViewer.addHandler('open-failed', (e: unknown) => {
-                        console.warn('OpenSeadragon: Open failed', e)
-                    })
-
-                    osdViewer.addHandler('open', (e: unknown) => {
-                        if (!isMountedRef.current || !osdViewer) return
-                        console.log('OpenSeadragon: Image opened', e)
-                        setViewer(osdViewer)
-                        // Use ref to avoid dependency issues
-                        if (onViewerReadyRef.current) {
-                            onViewerReadyRef.current(osdViewer)
-                        }
-                    })
-
-                    // Wait for tiled image to be added (like the working example)
-                    osdViewer.world.addHandler('add-item', (event: unknown) => {
-                        if (!isMountedRef.current) return
-                        const typedEvent = event as { item: { addPaperItem: (item: unknown) => void } }
-                        console.log('Tiled image added:', typedEvent.item)
-                        tiledImageRef.current = typedEvent.item as { addPaperItem: (item: unknown) => void; paperItems?: unknown[] }
-                    })
-
-                    // Load the image immediately - use viewer.open() for DZI URLs, or addTiledImage for manual tile sources
-                    if (imageInfo.dziUrl) {
-                        // Use viewer.open() for DZI descriptor URL - call this immediately, don't wait
-                        osdViewer.open(imageInfo.dziUrl)
-                    } else {
-                        // Manual tile source construction (requires all fields)
-                        if (
-                            !imageInfo.imageId ||
-                            !imageInfo.width ||
-                            !imageInfo.height ||
-                            !imageInfo.tileWidth ||
-                            !imageInfo.levels ||
-                            !imageInfo.baseUrl
-                        ) {
-                            console.error(
-                                'SlideViewer: If dziUrl is not provided, all manual fields (imageId, width, height, tileWidth, levels, baseUrl) are required'
-                            )
-                            return
-                        }
-
-                        const tileSource = {
-                            width: imageInfo.width,
-                            height: imageInfo.height,
-                            tileSize: imageInfo.tileWidth,
-                            minLevel: 0,
-                            maxLevel: imageInfo.levels - 1,
-                            getTileUrl: (level: number, x: number, y: number) => {
-                                return `${imageInfo.baseUrl}/wsi/files/tile/${imageInfo.imageId}/${level}/${x}/${y}`
-                            },
-                        }
-
-                        // Add the tile source to the viewer
-                        if (osdViewer) {
-                            osdViewer.addTiledImage({
-                                tileSource,
-                                success: () => {
-                                    if (!isMountedRef.current || !osdViewer) return
-                                    setViewer(osdViewer)
-                                    // Use ref to avoid dependency issues
-                                    if (onViewerReadyRef.current) {
-                                        onViewerReadyRef.current(osdViewer)
-                                    }
-                                },
-                            })
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error initializing SlideViewer:', error)
-                    // Reset initialization flag on error so it can retry
-                    isInitializedRef.current = false
-                    
-                    // If this is a _transformBounds error, it's likely due to Paper.js not being ready
-                    // Suppress it silently as it's handled by global error handlers
-                    if (error instanceof Error && error.message?.toLowerCase().includes('_transformbounds')) {
-                        // Already handled by global error handler - just reset flag
-                        return
-                    }
-                    
-                    // For other errors, log and allow retry on next render
-                    // Could add error state/prop here for consumer to display error UI if needed
-                }
-            }, 100)
-
-            return () => {
-                clearTimeout(initTimer)
-                
-                // Only cleanup if imageKey actually changed (which means we're re-initializing) or component is unmounting
-                // Don't cleanup on every dependency update
-                const imageKeyChanged = imageKey !== lastImageKeyRef.current
-                const shouldCleanup = !isMountedRef.current || imageKeyChanged
-                
-                if (shouldCleanup) {
-                    // Update the tracked imageKey
-                    if (imageKeyChanged) {
-                        lastImageKeyRef.current = imageKey
-                    }
-                    // Cleanup in reverse order with error handling
-                    // Use local variables captured from the effect closure
-                    if (annotationToolkit) {
-                        try {
-                            annotationToolkit.destroy()
-                        } catch (e) {
-                            console.warn('Error destroying annotation toolkit:', e)
-                        }
-                    }
-                    if (paperOverlay) {
-                        try {
-                            paperOverlay.destroy()
-                        } catch (e) {
-                            console.warn('Error destroying paper overlay:', e)
-                        }
-                    }
-                    if (osdViewer) {
-                        try {
-                            // Check if viewer has isDestroyed property before destroying
-                            if (typeof (osdViewer as any).isDestroyed === 'boolean' && (osdViewer as any).isDestroyed) {
-                                return
-                            }
-                            osdViewer.destroy()
-                        } catch (e) {
-                            console.warn('Error destroying OpenSeadragon viewer:', e)
-                        }
-                    }
-
-                    // Only reset initialization flag if actually unmounting or image changed
-                    if (!isMountedRef.current) {
-                        isInitializedRef.current = false
-                    }
-                }
-
-                // Don't clear state here - let React handle it on unmount
-                // Clearing state here can cause infinite loops if the effect runs again
-            }
-        }, [imageKey, osdOptions]) // Only depend on imageKey and osdOptions - not visibility
-
-        // Fetch annotations from DSA API if annotationIds are provided
-        useEffect(() => {
-            if (!isMountedRef.current) return
-            // Early return if no annotationIds - don't set state unnecessarily
-            if (!annotationIds || annotationIds.length === 0 || !apiBaseUrl) {
-                // Only clear if we had annotations before (avoid creating new empty array reference)
-                setFetchedAnnotations((prev) => {
-                    if (prev.length === 0) {
-                        return prev // Return same reference to prevent re-render
-                    }
-                    return []
-                })
-                setAnnotationDocuments((prev) => {
-                    if (prev.length === 0) {
-                        return prev // Return same reference to prevent re-render
-                    }
-                    return []
-                })
-                return
-            }
-
-            const fetchAnnotations = async () => {
-                try {
-                    console.log(`Fetching ${annotationIds.length} annotation(s) from DSA API...`)
-                    // Use custom fetch function if provided, otherwise use default fetch
-                    const customFetch = fetchFn || fetch
-
-                    // Fetch annotations from /annotation/{id} endpoint (not geojson)
-                    const annotationPromises = annotationIds.map(async (id) => {
-                        // Get annotation header for version hash computation (if available)
-                        const header = annotationHeaders 
-                            ? (annotationHeaders instanceof Map 
-                                ? annotationHeaders.get(id) 
-                                : annotationHeaders[String(id)])
-                            : undefined
-                        
-                        // Compute version hash from header if available
-                        const versionHash = header ? computeVersionHash(header as Record<string, unknown>) : undefined
-
-                        // Check cache first if available
-                        if (cache) {
-                            try {
-                                const cached = await cache.get(id, versionHash)
-                                if (cached !== null && cached !== undefined) {
-                                    // Validate cached data structure - must be an object with elements
-                                    const isValid = cached && typeof cached === 'object' && (
-                                        (cached as any).elements || 
-                                        (cached as any).annotation?.elements ||
-                                        (cached as any).annotation?.elements === null || // Allow empty arrays
-                                        Array.isArray((cached as any).annotation?.elements)
-                                    )
-                                    
-                                    if (isValid) {
-                                        console.log(`Cache hit for annotation ${id}${versionHash ? ` (version hash: ${versionHash})` : ''}`, {
-                                            hasElements: !!(cached as any)?.elements || !!(cached as any)?.annotation?.elements,
-                                            elementCount: Array.isArray((cached as any)?.elements) 
-                                                ? (cached as any).elements.length 
-                                                : Array.isArray((cached as any)?.annotation?.elements)
-                                                ? (cached as any).annotation.elements.length
-                                                : 0
-                                        })
-                                        return cached
-                                    } else {
-                                        // Invalid cached data - clear it and fetch fresh
-                                        console.warn(`Invalid cached data format for annotation ${id}, clearing cache and fetching fresh...`, {
-                                            type: typeof cached,
-                                            keys: cached && typeof cached === 'object' ? Object.keys(cached as any) : 'N/A',
-                                            hasElements: !!(cached as any)?.elements || !!(cached as any)?.annotation?.elements
-                                        })
-                                        await cache.delete(id).catch(err => console.warn('Failed to delete invalid cache entry:', err))
-                                        // Fall through to fetch from API
-                                    }
-                                }
-                            } catch (cacheError) {
-                                console.warn(`Error reading from cache for annotation ${id}, fetching from API:`, cacheError)
-                                // Fall through to fetch from API
-                            }
-                            
-                            if (versionHash) {
-                                console.log(`Cache miss or version mismatch for annotation ${id} (current version hash: ${versionHash}), fetching from API...`)
-                            } else {
-                                console.log(`Cache miss for annotation ${id}, fetching from API...`)
-                            }
-                        }
-
-                        const url = `${apiBaseUrl}/annotation/${id}`
-                        console.log(`Fetching annotation ${id} from: ${url}`)
-
-                        // Build request options with custom headers if provided
-                        const fetchOptions: RequestInit = {}
-                        if (apiHeaders) {
-                            fetchOptions.headers = apiHeaders
-                        }
-
-                        const response = await customFetch(url, fetchOptions)
-                        if (!response.ok) {
-                            console.warn(`Failed to fetch annotation ${id}:`, response.statusText, response.status)
-                            return null
-                        }
-                        const data = await response.json()
-                        console.log(`Successfully fetched annotation ${id}:`, data)
-                        
-                        // Store in cache if available (with version hash if we have header)
-                        if (cache && data) {
-                            await cache.set(id, data, { versionHash })
-                        }
-                        
-                        return data
-                    })
-
-                    const annotationData = await Promise.all(annotationPromises)
-
-                    // Check if component is still mounted before setting state
-                    if (!isMountedRef.current) {
-                        console.log('Component unmounted during annotation fetch, skipping state update')
-                        return
-                    }
-
-                    // Track annotation document info
-                    const docInfo: Array<{
-                        id: string | number
-                        elementCount: number
-                        totalPoints: number
-                        types: string[]
-                        filteredCount?: number
-                        filteredPoints?: number
-                    }> = []
-
-                    let totalFilteredCount = 0
-                    let totalFilteredPoints = 0
-
-                    // Parse annotation documents (like the working example)
-                    const validAnnotations = annotationData
-                        .filter((ann: unknown): ann is unknown => ann !== null && ann !== undefined)
-                        .map((annotationDoc: unknown, index: number) => {
-                            // Normalize annotationId to string for consistency
-                            const annotationId = String(annotationIds[index])
-                            const types = new Set<string>()
-                            const parsed: AnnotationFeature[] = []
-                            let totalPoints = 0
-                            let filteredCount = 0
-                            let filteredPoints = 0
-
-                            // Get elements from annotation (like working example)
-                            let elements: unknown[] = []
-                            if (annotationDoc && typeof annotationDoc === 'object') {
-                                const ann = annotationDoc as {
-                                    elements?: Array<{
-                                        type?: string
-                                        points?: Array<[number, number]>
-                                        x?: number
-                                        y?: number
-                                        width?: number
-                                        height?: number
-                                        lineColor?: string
-                                        fillColor?: string
-                                        lineWidth?: number
-                                        group?: string
-                                        label?: string
-                                        [key: string]: unknown
-                                    }>
-                                    [key: string]: unknown
-                                }
-
-                                if (ann.elements && Array.isArray(ann.elements)) {
-                                    elements = ann.elements
-                                } else if ((ann as { annotation?: { elements?: unknown[] } }).annotation?.elements) {
-                                    elements = (ann as { annotation: { elements: unknown[] } }).annotation.elements
-                                }
-                            }
-
-                            // Parse each element (like working example)
-                            for (const element of elements) {
-                                if (element && typeof element === 'object') {
-                                    const el = element as {
-                                        type?: string
-                                        points?: Array<[number, number]>
-                                        x?: number
-                                        y?: number
-                                        width?: number
-                                        height?: number
-                                        lineColor?: string
-                                        fillColor?: string
-                                        lineWidth?: number
-                                        group?: string
-                                        label?: string
-                                        closed?: boolean
-                                        [key: string]: unknown
-                                    }
-
-                                    // Track element type
-                                    if (el.type) {
-                                        types.add(el.type)
-                                    }
-
-                                    if (el.type === 'rectangle' && el.x !== undefined && el.y !== undefined && el.width !== undefined && el.height !== undefined) {
-                                        // Rectangles have 4 vertices (corners)
-                                        const pointsInElement = 4
-                                        if (pointsInElement > maxPointsPerAnnotation) {
-                                            filteredCount++
-                                            filteredPoints += pointsInElement
-                                            console.warn(
-                                                `Skipping rectangle annotation ${el.group || parsed.length} in document ${annotationId}: ` +
-                                                `has ${pointsInElement} points (exceeds limit of ${maxPointsPerAnnotation})`
-                                            )
-                                        } else {
-                                            totalPoints += pointsInElement
-                                            parsed.push({
-                                                id: el.group || parsed.length,
-                                                left: el.x,
-                                                top: el.y,
-                                                width: el.width,
-                                                height: el.height,
-                                                color: el.lineColor || defaultAnnotationColor,
-                                                group: el.group,
-                                                label: el.label,
-                                                annotationType: 'rectangle',
-                                                element: el, // Store full element for rendering
-                                                documentId: annotationId, // Store document ID for opacity lookup
-                                            })
-                                        }
-                                    } else if (el.type === 'polyline' && el.points && el.points.length >= 2) {
-                                        // For polylines, check point count before processing
-                                        const pointsInElement = el.points.length
-                                        if (pointsInElement > maxPointsPerAnnotation) {
-                                            filteredCount++
-                                            filteredPoints += pointsInElement
-                                            console.warn(
-                                                `Skipping polyline annotation ${el.group || parsed.length} in document ${annotationId}: ` +
-                                                `has ${pointsInElement} points (exceeds limit of ${maxPointsPerAnnotation})`
-                                            )
-                                        } else {
-                                            // For polylines, count the actual points
-                                            totalPoints += pointsInElement
-                                            // For polylines, store the actual points and type
-                                            // Calculate bounding box for compatibility
-                                            const xs = el.points.map((p) => p[0])
-                                            const ys = el.points.map((p) => p[1])
-                                            const left = Math.min(...xs)
-                                            const top = Math.min(...ys)
-                                            const right = Math.max(...xs)
-                                            const bottom = Math.max(...ys)
-                                            const width = right - left
-                                            const height = bottom - top
-
-                                            parsed.push({
-                                                id: el.group || parsed.length,
-                                                left,
-                                                top,
-                                                width,
-                                                height,
-                                                color: el.lineColor || defaultAnnotationColor,
-                                                group: el.group,
-                                                label: el.label,
-                                                annotationType: 'polyline',
-                                                points: el.points,
-                                                closed: el.closed,
-                                                fillColor: el.fillColor,
-                                                element: el, // Store full element for rendering
-                                                documentId: annotationId, // Store document ID for opacity lookup
-                                            })
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Store document info
-                            docInfo.push({
-                                id: annotationId,
-                                elementCount: parsed.length,
-                                totalPoints,
-                                types: Array.from(types),
-                                filteredCount: filteredCount > 0 ? filteredCount : undefined,
-                                filteredPoints: filteredPoints > 0 ? filteredPoints : undefined,
-                            })
-
-                            // Accumulate filtered counts
-                            totalFilteredCount += filteredCount
-                            totalFilteredPoints += filteredPoints
-
-                            return parsed
-                        })
-                        .flat()
-
-                    // Post-process to enforce maxTotalPoints limit
-                    let finalAnnotations = validAnnotations
-                    const totalPointsAcrossAll = validAnnotations.reduce((sum: number, ann: AnnotationFeature) => {
-                        if (ann.annotationType === 'polyline' && ann.points) {
-                            return sum + ann.points.length
-                        } else {
-                            return sum + 4 // rectangles have 4 points
-                        }
-                    }, 0)
-
-                    if (totalPointsAcrossAll > maxTotalPoints) {
-                        console.warn(
-                            `Total points (${totalPointsAcrossAll}) exceeds limit (${maxTotalPoints}). ` +
-                            `Filtering annotations starting from largest ones...`
-                        )
-
-                        // Sort annotations by point count (largest first) and filter
-                        const annotationsWithPointCounts = validAnnotations.map((ann: AnnotationFeature) => ({
-                            annotation: ann,
-                            pointCount: ann.annotationType === 'polyline' && ann.points
-                                ? ann.points.length
-                                : 4,
-                        }))
-
-                        annotationsWithPointCounts.sort((a: { annotation: AnnotationFeature; pointCount: number }, b: { annotation: AnnotationFeature; pointCount: number }) => b.pointCount - a.pointCount)
-
-                        let cumulativePoints = 0
-                        finalAnnotations = []
-                        for (const { annotation, pointCount } of annotationsWithPointCounts) {
-                            if (cumulativePoints + pointCount <= maxTotalPoints) {
-                                finalAnnotations.push(annotation)
-                                cumulativePoints += pointCount
-                            } else {
-                                console.warn(
-                                    `Skipping annotation ${annotation.id}: adding ${pointCount} points would exceed total limit ` +
-                                    `(${cumulativePoints + pointCount} > ${maxTotalPoints})`
-                                )
-                            }
-                        }
-
-                        console.warn(
-                            `Filtered annotations: ${validAnnotations.length} → ${finalAnnotations.length} ` +
-                            `(${validAnnotations.length - finalAnnotations.length} skipped)`
-                        )
-                    }
-
-                    if (totalFilteredCount > 0) {
-                        console.warn(
-                            `Annotation document(s) ${annotationIds.join(', ')}: ` +
-                            `${totalFilteredCount} annotation(s) filtered due to per-annotation point limits ` +
-                            `(${totalFilteredPoints} total points skipped)`
-                        )
-                    }
-
-                    console.log(`Parsed ${finalAnnotations.length} annotation feature(s) from ${annotationIds.length} annotation document(s)`)
-                    // Check if component is still mounted before setting state
-                    if (!isMountedRef.current) {
-                        console.log('Component unmounted after annotation parsing, skipping state update')
-                        return
-                    }
-                    
-                    setFetchedAnnotations(finalAnnotations)
-                    setAnnotationDocuments(docInfo)
-                } catch (error) {
-                    console.error('Error fetching annotations:', error)
-                    // Only set state if component is still mounted
-                    if (isMountedRef.current) {
-                        setFetchedAnnotations([])
-                    }
-                }
-            }
-
-            fetchAnnotations()
-        }, [
-            // Create stable string key from annotationIds array to avoid re-running when array reference changes
-            annotationIds ? JSON.stringify(annotationIds) : '',
-            apiBaseUrl || '',
-            defaultAnnotationColor,
-            maxPointsPerAnnotation,
-            maxTotalPoints,
-            // Note: fetchFn and apiHeaders are intentionally not in deps - they're used in the closure
-            // If they change, the effect should re-run, but we'll handle that via refs or user responsibility
-        ])
+        useSlideViewerInitialization(
+            containerRef,
+            isVisible,
+            isMountedRef,
+            isInitializedRef,
+            lastImageKeyRef,
+            viewerIdRef,
+            imageKey,
+            processedDziUrl,
+            imageInfo,
+            token,
+            tokenQueryParam,
+            apiHeaders,
+            osdOptions,
+            onViewerReadyRef,
+            setViewer,
+            setOverlay,
+            setToolkit,
+            tiledImageRef,
+            appendTokenToUrl,
+            debugLog
+        )
 
         // Render annotations when they change
-        useEffect(() => {
+        useAnnotationRendering(
+            viewer,
+            overlay,
+            toolkit,
+            parsedManualAnnotations,
+            fetchedAnnotations,
+            annotationsKey,
+            fetchedAnnotationsKey,
+            annotationOpacity,
+            annotationOpacities,
+            visibleAnnotations,
+            defaultAnnotationColor,
+            strokeWidth,
+            onAnnotationClickRef,
+            onAnnotationReady,
+            tiledImageRef,
+            lastRenderedAnnotationsRef,
+            safeDrawPaperView,
+            debugLog
+        )
+
+        // OLD CODE - REPLACED BY useAnnotationRendering hook above
+        /* useEffect(() => {
             if (!viewer || !overlay || !toolkit) return
 
             const paperScope = overlay.paperScope
@@ -1279,7 +454,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             // Update ref BEFORE rendering to prevent re-entering
             lastRenderedAnnotationsRef.current = combinedKey
 
-            console.log(`Rendering ${annotationFeatures.length} total annotation(s)`)
+            debugLog.log(`Rendering ${annotationFeatures.length} total annotation(s)`)
 
             // If no annotations to render, clear existing ones and return
             if (annotationFeatures.length === 0) {
@@ -1303,7 +478,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
             // TiledImage already checked above
 
-            console.log(`About to render ${annotationFeatures.length} annotations, tiledImage:`, tiledImage)
+            debugLog.log(`About to render ${annotationFeatures.length} annotations, tiledImage:`, tiledImage)
 
             // Clear existing annotations in proper order to avoid transform bounds errors
             // The osd-paperjs-annotation library can throw errors if items are removed
@@ -1374,7 +549,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     const documentId = (annotation as { documentId?: string | number }).documentId
                     const lookupId = documentId !== undefined ? String(documentId) : undefined
                     
-                    console.log(`SlideViewer: Processing annotation feature id=${annotation.id}, documentId=${documentId}, lookupId=${lookupId}`)
+                    debugLog.log(`SlideViewer: Processing annotation feature id=${annotation.id}, documentId=${documentId}, lookupId=${lookupId}`)
                     
                     // Get per-annotation opacity if available, otherwise use global opacity
                     // Use documentId (annotation document ID) for opacity lookup, not the individual feature ID
@@ -1386,12 +561,12 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                         }
                     }
                     
-                    console.log(`SlideViewer: Annotation opacity=${annotationSpecificOpacity}, will ${annotationSpecificOpacity <= 0 ? 'skip' : 'render'}`)
+                    debugLog.log(`SlideViewer: Annotation opacity=${annotationSpecificOpacity}, will ${annotationSpecificOpacity <= 0 ? 'skip' : 'render'}`)
                     
                     // Check visibility based on opacity (opacity-based visibility)
                     // Skip rendering if opacity is 0 (hidden)
                     if (annotationSpecificOpacity <= 0) {
-                        console.log(`SlideViewer: Skipping annotation with opacity 0 (hidden)`)
+                        debugLog.log(`SlideViewer: Skipping annotation with opacity 0 (hidden)`)
                         continue
                     }
                     
@@ -1482,7 +657,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                     // Always use the normalized string version for consistency with AnnotationManager
                     if (lookupId !== undefined) {
                         renderedDocumentIds.add(lookupId)
-                        console.log(`SlideViewer: Added documentId '${lookupId}' to renderedDocumentIds. Set now has:`, Array.from(renderedDocumentIds))
+                        debugLog.log(`SlideViewer: Added documentId '${lookupId}' to renderedDocumentIds. Set now has:`, Array.from(renderedDocumentIds))
                     } else {
                         console.warn(`SlideViewer: Cannot track document ID - lookupId is undefined for annotation id=${annotation.id}`)
                     }
@@ -1494,18 +669,18 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             // Draw the view safely (like the working example)
             safeDrawPaperView(paperScope)
 
-            console.log(`Finished rendering ${annotationFeatures.length} annotations`)
-            console.log(`SlideViewer: onAnnotationReady is ${onAnnotationReady ? 'defined' : 'undefined'}, renderedDocumentIds has ${renderedDocumentIds.size} items:`, Array.from(renderedDocumentIds))
+            debugLog.log(`Finished rendering ${annotationFeatures.length} annotations`)
+            debugLog.log(`SlideViewer: onAnnotationReady is ${onAnnotationReady ? 'defined' : 'undefined'}, renderedDocumentIds has ${renderedDocumentIds.size} items:`, Array.from(renderedDocumentIds))
             
             // Call onAnnotationReady for each unique document ID that was rendered
             if (onAnnotationReady && renderedDocumentIds.size > 0) {
                 // Use setTimeout to ensure rendering is complete before notifying
                 setTimeout(() => {
-                    console.log(`SlideViewer: setTimeout fired, calling onAnnotationReady for ${renderedDocumentIds.size} document(s)`)
+                    debugLog.log(`SlideViewer: setTimeout fired, calling onAnnotationReady for ${renderedDocumentIds.size} document(s)`)
                     renderedDocumentIds.forEach((documentId) => {
                         try {
                             // documentId is already a normalized string from the Set
-                            console.log(`SlideViewer: Calling onAnnotationReady('${documentId}')`)
+                            debugLog.log(`SlideViewer: Calling onAnnotationReady('${documentId}')`)
                             onAnnotationReady(documentId)
                         } catch (e) {
                             console.error(`Error calling onAnnotationReady for ${documentId}:`, e)
@@ -1522,135 +697,86 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             annotationsKey, // Stable key for manual annotations
             fetchedAnnotationsKey, // Stable key for fetched annotations
             strokeWidth,
-            annotationOpacity, // Re-render when opacity changes
-            annotationOpacities, // Re-render when per-annotation opacities change
+            // REMOVED annotationOpacity and annotationOpacities from dependencies
+            // They are handled by the separate opacity update effect below (lines 1614-1734)
+            // This prevents full re-renders when only opacity changes
             visibleAnnotations, // Re-render when visibility changes
             onAnnotationReady, // Include callback in dependencies
             // parsedManualAnnotations and fetchedAnnotations are captured from closure
             // onAnnotationClick removed - using ref instead
-        ])
+        ]) */
 
         // Update opacity on existing annotations when opacity changes
+        useAnnotationOpacity(
+            viewer,
+            overlay,
+            toolkit,
+            annotationOpacity,
+            annotationOpacities,
+            visibleAnnotations,
+            defaultAnnotationOpacity,
+            defaultAnnotationColor,
+            safeDrawPaperView
+        )
+
+        // Handle viewport change callbacks
+        useViewportChange(viewer, onViewportChange, imageInfo, debugLog)
+
+        // Get base image dimensions for overlay positioning
+        const [baseImageWidth, setBaseImageWidth] = useState<number | null>(null)
+        const [baseImageHeight, setBaseImageHeight] = useState<number | null>(null)
+
+        // Update base image dimensions when viewer or image changes
+        // Prioritize imageInfo dimensions as they represent the actual pixel dimensions
         useEffect(() => {
-            if (!viewer || !overlay || !toolkit) return
-
-            const paperScope = overlay.paperScope
-            if (!paperScope || !paperScope.project) return
-
-            try {
-                const existingFeatures = toolkit.getFeatures()
-                if (existingFeatures && Array.isArray(existingFeatures)) {
-                    // Convert maps if needed
-                    const opacityMap = annotationOpacities instanceof Map 
-                        ? annotationOpacities 
-                        : annotationOpacities 
-                            ? new Map(Object.entries(annotationOpacities).map(([k, v]) => [String(k), v]))
-                            : null
-                    
-                    let hasUpdates = false
-                    
-                    for (const feature of existingFeatures) {
-                        try {
-                            if (feature && typeof feature === 'object') {
-                                const paperItem = feature as {
-                                    annotationId?: string | number
-                                    strokeColor?: string | { r: number; g: number; b: number; alpha: number }
-                                    fillColor?: string | { r: number; g: number; b: number; alpha: number }
-                                    data?: { annotation?: AnnotationFeature }
-                                    remove?: () => void
-                                }
-
-                                // Get original color from annotation data
-                                const annotation = paperItem.data?.annotation
-                                if (!annotation) continue
-
-                                // Use documentId (annotation document ID) for lookup - this is the key in the maps
-                                const documentId = (annotation as { documentId?: string | number }).documentId
-                                // Convert to string for consistent Map key matching
-                                const lookupId = documentId !== undefined ? String(documentId) : undefined
-                                
-                                if (lookupId === undefined) {
-                                    // No documentId - skip this feature (shouldn't happen, but be safe)
-                                    continue
-                                }
-                                
-                                // Check visibility based on opacity (opacity-based visibility)
-                                // If opacity is 0, the annotation should be hidden
-                                let featureOpacity = annotationOpacity
-                                if (opacityMap && lookupId !== undefined) {
-                                    const specificOpacity = opacityMap.get(lookupId)
-                                    if (specificOpacity !== undefined) {
-                                        featureOpacity = specificOpacity
-                                    }
-                                }
-                                
-                                if (featureOpacity <= 0) {
-                                    // Annotation should be hidden (opacity 0) - set opacity to 0 or remove
-                                    try {
-                                        // Try to set opacity to 0 first (less destructive than removing)
-                                        const strokeColor = annotation.color || defaultAnnotationColor
-                                        const fillColor = annotation.fillColor || 'rgba(0, 0, 0, 0)'
-                                        if (paperItem.strokeColor) {
-                                            paperItem.strokeColor = applyOpacity(strokeColor, 0) as any
-                                            hasUpdates = true
-                                        }
-                                        if (paperItem.fillColor) {
-                                            paperItem.fillColor = applyOpacity(fillColor, 0) as any
-                                            hasUpdates = true
-                                        }
-                                    } catch (e) {
-                                        // If opacity update fails, try removal as fallback
-                                        try {
-                                            if (paperItem.remove) {
-                                                paperItem.remove()
-                                                hasUpdates = true
-                                            }
-                                        } catch (removeError) {
-                                            console.warn('Could not hide annotation:', removeError)
-                                        }
-                                    }
-                                    continue // Skip further opacity update for hidden annotations
-                                }
-
-                                // Get the target opacity for this feature
-                                let targetOpacity = annotationOpacity
-                                if (opacityMap && lookupId !== undefined && opacityMap.has(lookupId)) {
-                                    // Use per-annotation opacity if available
-                                    const specificOpacity = opacityMap.get(lookupId)
-                                    if (specificOpacity !== undefined) {
-                                        targetOpacity = specificOpacity
-                                    }
-                                }
-
-                                const strokeColor = annotation.color || defaultAnnotationColor
-                                const fillColor = annotation.fillColor || 'rgba(0, 0, 0, 0)'
-
-                                // Update stroke color opacity
-                                if (paperItem.strokeColor) {
-                                    paperItem.strokeColor = applyOpacity(strokeColor, targetOpacity) as any
-                                    hasUpdates = true
-                                }
-
-                                // Update fill color opacity
-                                if (paperItem.fillColor) {
-                                    paperItem.fillColor = applyOpacity(fillColor, targetOpacity) as any
-                                    hasUpdates = true
-                                }
-                            }
-                        } catch (e) {
-                            console.warn('Error updating annotation opacity:', e)
-                        }
-                    }
-
-                    // Only redraw if we actually made updates
-                    if (hasUpdates) {
-                        safeDrawPaperView(paperScope)
-                    }
-                }
-            } catch (e) {
-                console.warn('Could not update annotation opacity:', e)
+            if (!viewer) {
+                setBaseImageWidth(null)
+                setBaseImageHeight(null)
+                return
             }
-        }, [annotationOpacity, annotationOpacities, visibleAnnotations, viewer, overlay, toolkit, defaultAnnotationOpacity, defaultAnnotationColor, safeDrawPaperView])
+
+            // Prioritize imageInfo dimensions if available (these are the actual pixel dimensions)
+            if (imageInfo.width && imageInfo.height) {
+                setBaseImageWidth(imageInfo.width)
+                setBaseImageHeight(imageInfo.height)
+                debugLog.log('Base image dimensions (from imageInfo):', imageInfo.width, imageInfo.height)
+                return
+            }
+
+            const world = viewer.world
+            if (!world || world.getItemCount() === 0) {
+                setBaseImageWidth(null)
+                setBaseImageHeight(null)
+                return
+            }
+
+            // Get dimensions from the base (first) tiled image as fallback
+            const baseTiledImage = world.getItemAt(0)
+            if (baseTiledImage) {
+                try {
+                    const contentSize = (baseTiledImage as any).getContentSize?.()
+                    if (contentSize && contentSize.x > 0 && contentSize.y > 0) {
+                        setBaseImageWidth(contentSize.x)
+                        setBaseImageHeight(contentSize.y)
+                        debugLog.log('Base image dimensions (from contentSize):', contentSize.x, contentSize.y)
+                        return
+                    }
+
+                    const sourceBounds = (baseTiledImage as any).getSourceBounds?.()
+                    if (sourceBounds && sourceBounds.width > 0 && sourceBounds.height > 0) {
+                        setBaseImageWidth(sourceBounds.width)
+                        setBaseImageHeight(sourceBounds.height)
+                        debugLog.log('Base image dimensions (from sourceBounds):', sourceBounds.width, sourceBounds.height)
+                        return
+                    }
+                } catch (error) {
+                    debugLog.warn('Error getting base image dimensions:', error)
+                }
+            }
+        }, [viewer, imageInfo, debugLog])
+
+        // Handle overlay tile sources
+        useOverlayTileSources(viewer, overlayTileSources, baseImageWidth, baseImageHeight, debugLog)
 
         // Merge user config with defaults
         const infoConfig = useMemo(() => {

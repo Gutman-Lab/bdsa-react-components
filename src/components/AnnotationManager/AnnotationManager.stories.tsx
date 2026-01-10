@@ -40,7 +40,7 @@ export const Default: Story = {
                     </div>
                 )
             }
-            
+
             if (error) {
                 return (
                     <div className="bdsa-annotation-manager__list">
@@ -50,7 +50,7 @@ export const Default: Story = {
                     </div>
                 )
             }
-            
+
             if (annotations.length === 0) {
                 return (
                     <div className="bdsa-annotation-manager__list">
@@ -60,10 +60,10 @@ export const Default: Story = {
                     </div>
                 )
             }
-            
+
             const publicCount = annotations.filter(a => a.public === true).length
             const privateCount = annotations.length - publicCount
-            
+
             return (
                 <div className="bdsa-annotation-manager__list">
                     <div className="bdsa-annotation-manager__list-header">
@@ -147,14 +147,14 @@ const AnnotationManagerWithViewer = () => {
     const [visibleAnnotations, setVisibleAnnotations] = useState<Map<string, boolean>>(new Map())
     const [annotationOpacities, setAnnotationOpacities] = useState<Map<string, number>>(new Map())
     const [annotationHeaders, setAnnotationHeaders] = useState<Map<string, AnnotationSearchResult>>(new Map())
-    
+
     // Create cache instance (persists across refreshes using IndexedDB)
     const cache = React.useMemo(() => {
         return new IndexedDBAnnotationCache()
     }, [])
-    
+
     const dziUrl = `${exampleApiBaseUrl}/item/${exampleImageInfo.imageId}/tiles/dzi.dzi`
-    
+
     const handleLoadChange = (annotationId: string, loaded: boolean) => {
         if (loaded) {
             setLoadedAnnotationIds(prev => new Set(prev).add(annotationId))
@@ -178,44 +178,44 @@ const AnnotationManagerWithViewer = () => {
             })
         }
     }
-    
+
     const handleVisibilityChange = (annotationId: string, visible: boolean) => {
         setVisibleAnnotations(prev => new Map(prev).set(annotationId, visible))
     }
-    
+
     const handleOpacityChange = (annotationId: string, opacity: number) => {
         setAnnotationOpacities(prev => new Map(prev).set(annotationId, opacity))
     }
-    
+
     // This callback is passed to AnnotationManager's onAnnotationReady prop for logging
     const handleAnnotationReady = useCallback((annotationId: string | number) => {
         console.log(`Annotation ${annotationId} is ready`)
     }, [])
-    
+
     // Store reference to AnnotationManager's internal onAnnotationReady callback
     const annotationManagerReadyRef = React.useRef<((id: string | number) => void) | null>(null)
-    
+
     // Filter loaded annotations to only include visible ones for the viewer
     // Visibility is now opacity-based, so check opacity > 0
     const visibleLoadedAnnotations = Array.from(loadedAnnotationIds).filter(id => {
         const opacity = annotationOpacities.get(id) ?? 1
         return opacity > 0
     })
-    
+
     return (
         <div style={{ width: '100%', height: '800px', display: 'flex', flexDirection: 'row' }}>
             {/* Annotation Manager - Vertical Sidebar */}
-            <div style={{ 
-                width: '350px', 
+            <div style={{
+                width: '350px',
                 minWidth: '350px',
-                maxHeight: '800px', 
-                overflowY: 'auto', 
-                borderRight: '2px solid #ddd', 
+                maxHeight: '800px',
+                overflowY: 'auto',
+                borderRight: '2px solid #ddd',
                 backgroundColor: '#fff',
-                flexShrink: 0 
+                flexShrink: 0
             }}>
                 <AnnotationManager
-                    imageId={exampleImageInfo.imageId}
+                    imageId={exampleImageInfo.imageId ? String(exampleImageInfo.imageId) : undefined}
                     apiBaseUrl={exampleApiBaseUrl}
                     loadedAnnotations={loadedAnnotationIds}
                     visibleAnnotations={visibleAnnotations}
@@ -233,7 +233,7 @@ const AnnotationManagerWithViewer = () => {
                         if (managerReadyCallback) {
                             annotationManagerReadyRef.current = managerReadyCallback
                         }
-                        
+
                         // Update annotation headers map for cache version checking in SlideViewer
                         React.useEffect(() => {
                             const headersMap = new Map<string, AnnotationSearchResult>()
@@ -242,12 +242,12 @@ const AnnotationManagerWithViewer = () => {
                             })
                             setAnnotationHeaders(headersMap)
                         }, [annotations])
-                        
+
                         return null // Use default UI
                     }}
                 </AnnotationManager>
             </div>
-            
+
             {/* SlideViewer */}
             <div style={{ flex: 1, minWidth: 0, height: '800px' }}>
                 <SlideViewer
@@ -296,94 +296,132 @@ export const WithSlideViewer: Story = {
  * This demonstrates the recommended approach for integrating AnnotationManager with SlideViewer.
  * 
  * Benefits:
- * - Single callback instead of multiple individual callbacks
+ * - Single callback for state management instead of multiple individual callbacks
  * - Less boilerplate code (70% reduction)
  * - Automatic state synchronization
  * - Type-safe state object
+ * 
+ * NOTE: We still use a minimal render prop to get the callback - this is more reliable
+ * than trying to pass it through state change callbacks.
  */
 const AnnotationManagerWithViewerSimplified: React.FC = () => {
+    console.log('[Simplified] Component rendering')
     const [dziUrl] = useState('http://bdsa.pathology.emory.edu:8080/api/v1/item/6903df8dd26a6d93de19a9b2/tiles/dzi.dzi')
     const cache = React.useMemo(() => new IndexedDBAnnotationCache(), [])
-    const [annotationHeaders, setAnnotationHeaders] = React.useState<Map<string | number, unknown>>(new Map())
-    const annotationManagerReadyRef = React.useRef<((id: string) => void) | null>(null)
+    const [annotationHeaders, setAnnotationHeaders] = React.useState<Map<string | number, AnnotationSearchResult>>(new Map())
 
     // Unified state - single state object for all annotation state
+    // Store serialized versions to enable proper change detection
     const [annotationState, setAnnotationState] = React.useState<{
         loadedIds: string[]
-        opacities: Map<string, number>
-        visibility: Map<string, boolean>
-    }>({
-        loadedIds: [],
-        opacities: new Map(),
-        visibility: new Map(),
+        opacitiesEntries: Array<[string, number]>
+        visibilityEntries: Array<[string, boolean]>
+    }>(() => {
+        console.log('[Simplified] Initializing state with empty arrays')
+        return {
+            loadedIds: [],
+            opacitiesEntries: [],
+            visibilityEntries: [],
+        }
     })
 
-    // Shared annotation ready handler - both components can use this
-    const handleAnnotationReady = useCallback((id: string | number) => {
-        const idStr = String(id)
-        console.log(`Simplified Story: Annotation ${idStr} is ready`)
-        // AnnotationManager's internal callback will handle clearing loading state
-        if (annotationManagerReadyRef.current) {
-            annotationManagerReadyRef.current(idStr)
-        }
-    }, [])
+    // Store reference to AnnotationManager's internal onAnnotationReady callback
+    // This is captured via render prop (reliable) and passed to SlideViewer
+    const annotationManagerReadyRef = React.useRef<((id: string | number) => void) | null>(null)
 
     // Wrap the state change callback in useCallback to prevent infinite loops
     // This callback is called by AnnotationManager whenever annotation state changes
+    // Serialize Maps to arrays to enable proper change detection
     const handleAnnotationStateChange = useCallback((state: {
         loadedAnnotationIds: string[]
         opacities: Map<string, number>
         visibility: Map<string, boolean>
     }) => {
-        setAnnotationState({
-            loadedIds: state.loadedAnnotationIds,
-            opacities: state.opacities,
-            visibility: state.visibility,
+        console.log('[Simplified] handleAnnotationStateChange called with loadedIds:', state.loadedAnnotationIds)
+        const opacitiesArr = Array.from(state.opacities.entries()).sort(([a], [b]) => a.localeCompare(b))
+        const visibilityArr = Array.from(state.visibility.entries()).sort(([a], [b]) => a.localeCompare(b))
+
+        setAnnotationState((prev) => {
+            // Only update if actually changed (deep comparison of serialized data)
+            const loadedIdsSame = JSON.stringify(prev.loadedIds) === JSON.stringify(state.loadedAnnotationIds.sort())
+            const opacitiesSame = JSON.stringify(prev.opacitiesEntries) === JSON.stringify(opacitiesArr)
+            const visibilitySame = JSON.stringify(prev.visibilityEntries) === JSON.stringify(visibilityArr)
+
+            console.log('[Simplified] State comparison - same?', { loadedIdsSame, opacitiesSame, visibilitySame })
+
+            if (loadedIdsSame && opacitiesSame && visibilitySame) {
+                return prev // No change, return same object to prevent re-render
+            }
+
+            console.log('[Simplified] Updating state to:', {
+                loadedIds: state.loadedAnnotationIds,
+                opacitiesEntries: opacitiesArr,
+                visibilityEntries: visibilityArr,
+            })
+
+            return {
+                loadedIds: state.loadedAnnotationIds,
+                opacitiesEntries: opacitiesArr,
+                visibilityEntries: visibilityArr,
+            }
         })
     }, []) // setAnnotationState from useState is stable, no need to include it
+
+    // This callback is passed to AnnotationManager's onAnnotationReady prop for logging
+    const handleAnnotationReady = useCallback((annotationId: string | number) => {
+        // Optional: Add any custom logic when annotation is ready
+    }, [])
+
+    // Memoize the state objects to prevent infinite loops
+    // Reconstruct Maps/Sets from serialized state only when data actually changes
+    const loadedAnnotationsSet = React.useMemo(() => {
+        return new Set(annotationState.loadedIds)
+    }, [annotationState.loadedIds])
+
+    const opacitiesMap = React.useMemo(() => {
+        return new Map(annotationState.opacitiesEntries)
+    }, [annotationState.opacitiesEntries])
+
+    const visibilityMap = React.useMemo(() => {
+        return new Map(annotationState.visibilityEntries)
+    }, [annotationState.visibilityEntries])
 
     return (
         <div style={{ width: '100%', height: '800px', display: 'flex', flexDirection: 'row' }}>
             {/* Annotation Manager - Vertical Sidebar */}
-            <div style={{ 
-                width: '350px', 
+            <div style={{
+                width: '350px',
                 minWidth: '350px',
-                maxHeight: '800px', 
-                overflowY: 'auto', 
-                borderRight: '2px solid #ddd', 
+                maxHeight: '800px',
+                overflowY: 'auto',
+                borderRight: '2px solid #ddd',
                 backgroundColor: '#fff',
-                flexShrink: 0 
+                flexShrink: 0
             }}>
                 <AnnotationManager
-                    imageId={exampleImageInfo.imageId}
+                    imageId={exampleImageInfo.imageId ? String(exampleImageInfo.imageId) : undefined}
                     apiBaseUrl={exampleApiBaseUrl}
                     annotationCache={cache}
-                    onAnnotationReady={handleAnnotationReady}
-                    // Single unified callback - much simpler than multiple callbacks!
-                    // Wrapped in useCallback to prevent infinite re-render loops
+                    // DON'T pass state back - use uncontrolled mode
+                    // AnnotationManager manages state internally
+                    // Single unified callback for state notifications - much simpler!
                     onAnnotationStateChange={handleAnnotationStateChange}
+                    // Use onAnnotationHeadersChange instead of render prop for cleaner code
+                    onAnnotationHeadersChange={setAnnotationHeaders}
+                    onAnnotationReady={handleAnnotationReady}
                     showDefaultUI={true}
                 >
-                    {({ onAnnotationReady: managerReadyCallback, annotations }) => {
-                        // Capture AnnotationManager's internal callback
+                    {({ onAnnotationReady: managerReadyCallback }) => {
+                        // Minimal render prop - just capture the callback (same pattern as working version)
+                        // This is more reliable than trying to get it from state change callbacks
                         if (managerReadyCallback) {
                             annotationManagerReadyRef.current = managerReadyCallback
                         }
-                        
-                        // Update annotation headers map for cache version checking
-                        React.useEffect(() => {
-                            const headersMap = new Map<string | number, AnnotationSearchResult>()
-                            annotations.forEach((ann) => {
-                                headersMap.set(String(ann._id), ann)
-                            })
-                            setAnnotationHeaders(headersMap)
-                        }, [annotations])
-                        
                         return null // Use default UI
                     }}
                 </AnnotationManager>
             </div>
-            
+
             {/* SlideViewer */}
             <div style={{ flex: 1, minWidth: 0, height: '800px' }}>
                 <SlideViewer
@@ -392,11 +430,20 @@ const AnnotationManagerWithViewerSimplified: React.FC = () => {
                     apiBaseUrl={exampleApiBaseUrl}
                     showAnnotationInfo={true}
                     showAnnotationControls={false}
-                    annotationOpacities={annotationState.opacities}
-                    visibleAnnotations={annotationState.visibility}
+                    annotationOpacities={opacitiesMap}
+                    visibleAnnotations={visibilityMap}
                     annotationCache={cache}
                     annotationHeaders={annotationHeaders}
-                    onAnnotationReady={handleAnnotationReady}
+                    onAnnotationReady={(id) => {
+                        // This is called by SlideViewer when annotation is ready
+                        // Call AnnotationManager's internal callback which clears loading state
+                        console.log(`[Simplified] SlideViewer says ${id} is ready. Callback exists:`, !!annotationManagerReadyRef.current)
+                        if (annotationManagerReadyRef.current) {
+                            annotationManagerReadyRef.current(id)
+                        }
+                        // Also call the external handler for any custom logic
+                        handleAnnotationReady(id)
+                    }}
                     height="800px"
                 />
             </div>
@@ -437,7 +484,7 @@ export const WithDebugPanel: Story = {
                     <ul>
                         {annotations.map((ann) => (
                             <li key={ann._id}>
-                                {ann.annotation?.name || ann._id} 
+                                {ann.annotation?.name || ann._id}
                                 {ann._elementCount !== undefined && ` (${ann._elementCount} elements)`}
                                 {ann.public === false && <span style={{ color: '#999', marginLeft: '8px' }}>(private)</span>}
                             </li>
@@ -457,6 +504,197 @@ export const WithDebugPanel: Story = {
     },
 }
 
+/**
+ * Tabbed view example for debugging _transformBounds errors when switching between images.
+ * This demonstrates a common use case where users switch between different images,
+ * which can trigger _transformBounds errors if Paper.js isn't properly cleaned up.
+ */
+/**
+ * Wrapper component that adds tab functionality to the simplified AnnotationManager.
+ * This demonstrates composition - reusing the simplified component rather than duplicating logic.
+ */
+const SimplifiedViewerWithImage: React.FC<{ imageId: string; dziUrl: string }> = ({ imageId, dziUrl }) => {
+    const cache = React.useMemo(() => new IndexedDBAnnotationCache(), [])
+    const [annotationHeaders, setAnnotationHeaders] = React.useState<Map<string | number, AnnotationSearchResult>>(new Map())
+    const annotationManagerReadyRef = React.useRef<((id: string | number) => void) | null>(null)
+
+    // Unified state - single state object for all annotation state
+    // Store serialized versions to enable proper change detection
+    const [annotationState, setAnnotationState] = React.useState<{
+        loadedIds: string[]
+        opacitiesEntries: Array<[string, number]>
+        visibilityEntries: Array<[string, boolean]>
+    }>({
+        loadedIds: [],
+        opacitiesEntries: [],
+        visibilityEntries: [],
+    })
+
+    const handleAnnotationStateChange = useCallback((state: {
+        loadedAnnotationIds: string[]
+        opacities: Map<string, number>
+        visibility: Map<string, boolean>
+    }) => {
+        const opacitiesArr = Array.from(state.opacities.entries()).sort(([a], [b]) => a.localeCompare(b))
+        const visibilityArr = Array.from(state.visibility.entries()).sort(([a], [b]) => a.localeCompare(b))
+
+        setAnnotationState((prev) => {
+            const loadedIdsSame = JSON.stringify(prev.loadedIds) === JSON.stringify(state.loadedAnnotationIds.sort())
+            const opacitiesSame = JSON.stringify(prev.opacitiesEntries) === JSON.stringify(opacitiesArr)
+            const visibilitySame = JSON.stringify(prev.visibilityEntries) === JSON.stringify(visibilityArr)
+
+            if (loadedIdsSame && opacitiesSame && visibilitySame) {
+                return prev
+            }
+
+            return {
+                loadedIds: state.loadedAnnotationIds,
+                opacitiesEntries: opacitiesArr,
+                visibilityEntries: visibilityArr,
+            }
+        })
+    }, [])
+
+    const handleAnnotationReady = useCallback((annotationId: string | number) => {
+        // Optional: Add any custom logic when annotation is ready
+    }, [])
+
+    const opacitiesMap = React.useMemo(() => new Map(annotationState.opacitiesEntries), [annotationState.opacitiesEntries])
+    const visibilityMap = React.useMemo(() => new Map(annotationState.visibilityEntries), [annotationState.visibilityEntries])
+
+    return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'row' }}>
+            <div style={{
+                width: '350px',
+                minWidth: '350px',
+                maxHeight: '100%',
+                overflowY: 'auto',
+                borderRight: '2px solid #ddd',
+                backgroundColor: '#fff',
+                flexShrink: 0
+            }}>
+                <AnnotationManager
+                    imageId={imageId}
+                    apiBaseUrl={exampleApiBaseUrl}
+                    annotationCache={cache}
+                    onAnnotationStateChange={handleAnnotationStateChange}
+                    onAnnotationHeadersChange={setAnnotationHeaders}
+                    onAnnotationReady={handleAnnotationReady}
+                    showDefaultUI={true}
+                >
+                    {({ onAnnotationReady: managerReadyCallback }) => {
+                        if (managerReadyCallback) {
+                            annotationManagerReadyRef.current = managerReadyCallback
+                        }
+                        return null
+                    }}
+                </AnnotationManager>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
+                <SlideViewer
+                    imageInfo={{ dziUrl }}
+                    annotationIds={annotationState.loadedIds}
+                    apiBaseUrl={exampleApiBaseUrl}
+                    showAnnotationInfo={true}
+                    showAnnotationControls={false}
+                    annotationOpacities={opacitiesMap}
+                    visibleAnnotations={visibilityMap}
+                    annotationCache={cache}
+                    annotationHeaders={annotationHeaders}
+                    onAnnotationReady={(id) => {
+                        if (annotationManagerReadyRef.current) {
+                            annotationManagerReadyRef.current(id)
+                        }
+                        handleAnnotationReady(id)
+                    }}
+                    height="100%"
+                />
+            </div>
+        </div>
+    )
+}
+
+const AnnotationManagerWithTabs: React.FC = () => {
+    const [activeTab, setActiveTab] = useState<'image1' | 'image2'>('image1')
+
+    const image1Id = '6903df8dd26a6d93de19a9b2'
+    const image2Id = '6903dfaed26a6d93de19d070'
+
+    const currentImageId = activeTab === 'image1' ? image1Id : image2Id
+    const dziUrl1 = `${exampleApiBaseUrl}/item/${image1Id}/tiles/dzi.dzi`
+    const dziUrl2 = `${exampleApiBaseUrl}/item/${image2Id}/tiles/dzi.dzi`
+    const currentDziUrl = activeTab === 'image1' ? dziUrl1 : dziUrl2
+
+    return (
+        <div style={{ width: '100%', height: '800px', display: 'flex', flexDirection: 'column' }}>
+            {/* Tab Navigation */}
+            <div style={{
+                display: 'flex',
+                borderBottom: '2px solid #ddd',
+                backgroundColor: '#f5f5f5',
+                padding: '0'
+            }}>
+                <button
+                    onClick={() => {
+                        console.log('[Tabs] Switching to Image 1 - this will unmount Image 2 SlideViewer')
+                        setActiveTab('image1')
+                    }}
+                    style={{
+                        padding: '12px 24px',
+                        border: 'none',
+                        backgroundColor: activeTab === 'image1' ? '#fff' : 'transparent',
+                        borderBottom: activeTab === 'image1' ? '2px solid #007bff' : '2px solid transparent',
+                        cursor: 'pointer',
+                        fontWeight: activeTab === 'image1' ? 'bold' : 'normal',
+                        fontSize: '14px'
+                    }}
+                >
+                    Image 1 ({image1Id})
+                </button>
+                <button
+                    onClick={() => {
+                        console.log('[Tabs] Switching to Image 2 - this will unmount Image 1 SlideViewer')
+                        setActiveTab('image2')
+                    }}
+                    style={{
+                        padding: '12px 24px',
+                        border: 'none',
+                        backgroundColor: activeTab === 'image2' ? '#fff' : 'transparent',
+                        borderBottom: activeTab === 'image2' ? '2px solid #007bff' : '2px solid transparent',
+                        cursor: 'pointer',
+                        fontWeight: activeTab === 'image2' ? 'bold' : 'normal',
+                        fontSize: '14px'
+                    }}
+                >
+                    Image 2 ({image2Id})
+                </button>
+            </div>
+
+            {/* Content Area - Use the simplified viewer component */}
+            <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0 }}>
+                <SimplifiedViewerWithImage
+                    key={currentImageId} // Force remount when switching images to test cleanup
+                    imageId={currentImageId}
+                    dziUrl={currentDziUrl}
+                />
+            </div>
+        </div>
+    )
+}
+
+export const WithTabs: Story = {
+    render: () => <AnnotationManagerWithTabs />,
+    parameters: {
+        layout: 'fullscreen',
+        docs: {
+            description: {
+                story: '**DEBUGGING EXAMPLE**: Tabbed view that switches between two images. This helps debug `_transformBounds` errors that occur when switching between images. Watch the console for errors when clicking between tabs. The `key` prop forces remounting to test proper cleanup.',
+            },
+        },
+    },
+}
+
 export const WithAuthentication: Story = {
     args: {
         imageId: '6903df8dd26a6d93de19a9b2',
@@ -468,7 +706,7 @@ export const WithAuthentication: Story = {
             const headers = new Headers(options?.headers)
             // headers.set('Authorization', 'Bearer YOUR_TOKEN_HERE')
             // headers.set('Girder-Token', 'YOUR_GIRDER_TOKEN')
-            
+
             return fetch(url, {
                 ...options,
                 headers,
@@ -495,7 +733,7 @@ export const WithAuthentication: Story = {
                     <ul>
                         {annotations.map((ann) => (
                             <li key={ann._id}>
-                                {ann.annotation?.name || ann._id} 
+                                {ann.annotation?.name || ann._id}
                                 {ann._elementCount !== undefined && ` (${ann._elementCount} elements)`}
                                 {ann.public === false && <span style={{ color: '#666', marginLeft: '8px' }}>(private)</span>}
                             </li>

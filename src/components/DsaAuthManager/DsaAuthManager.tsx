@@ -1,6 +1,84 @@
 /**
  * DSA Authentication Manager Component
- * Provides a UI for logging in/out of DSA servers
+ * 
+ * Provides a complete authentication UI for DSA (Digital Slide Archive) servers.
+ * This component handles login/logout, session management, and authentication state.
+ * 
+ * Features:
+ * - Login/logout UI with status indicators
+ * - Persistent sessions using localStorage
+ * - Token management with automatic validation
+ * - Server URL configuration (optional)
+ * - Compact mode for toolbars and headers
+ * 
+ * @example Basic usage
+ * ```tsx
+ * import { DsaAuthManager } from 'bdsa-react-components'
+ * 
+ * function App() {
+ *   return (
+ *     <div>
+ *       <h1>My BDSA Application</h1>
+ *       <DsaAuthManager />
+ *     </div>
+ *   )
+ * }
+ * ```
+ * 
+ * @example With authentication callback
+ * ```tsx
+ * import { DsaAuthManager } from 'bdsa-react-components'
+ * import { useState } from 'react'
+ * 
+ * function App() {
+ *   const [isAuthenticated, setIsAuthenticated] = useState(false)
+ * 
+ *   return (
+ *     <div>
+ *       <DsaAuthManager onAuthChange={setIsAuthenticated} />
+ *       {isAuthenticated ? (
+ *         <div>Welcome! You can now access DSA resources.</div>
+ *       ) : (
+ *         <div>Please login to access DSA resources.</div>
+ *       )}
+ *     </div>
+ *   )
+ * }
+ * ```
+ * 
+ * @example Compact mode for toolbars
+ * ```tsx
+ * function Toolbar() {
+ *   return (
+ *     <div className="toolbar">
+ *       <button>Load</button>
+ *       <button>Save</button>
+ *       <DsaAuthManager compact={true} />
+ *     </div>
+ *   )
+ * }
+ * ```
+ * 
+ * @example Pre-configured server (locked URL)
+ * ```tsx
+ * import { DsaAuthManager, dsaAuthStore } from 'bdsa-react-components'
+ * import { useEffect } from 'react'
+ * 
+ * function App() {
+ *   useEffect(() => {
+ *     // Configure server URL programmatically
+ *     dsaAuthStore.updateConfig({ 
+ *       baseUrl: 'http://bdsa.pathology.emory.edu:8080' 
+ *     })
+ *   }, [])
+ * 
+ *   return (
+ *     <DsaAuthManager 
+ *       allowServerConfig={false}  // Lock server URL
+ *     />
+ *   )
+ * }
+ * ```
  */
 
 import React, { useState } from 'react'
@@ -9,19 +87,64 @@ import './DsaAuthManager.css'
 
 export interface DsaAuthManagerProps {
   /**
-   * Callback when authentication status changes
+   * Callback function that fires whenever the authentication status changes.
+   * 
+   * @param isAuthenticated - `true` if user is logged in, `false` otherwise
+   * 
+   * @example
+   * ```tsx
+   * <DsaAuthManager 
+   *   onAuthChange={(isAuthenticated) => {
+   *     console.log('Auth status:', isAuthenticated)
+   *     // Update your app state, redirect, etc.
+   *   }}
+   * />
+   * ```
    */
   onAuthChange?: (isAuthenticated: boolean) => void
   /**
-   * Show server URL configuration in login modal
+   * Whether to show server URL configuration in the login modal.
+   * 
+   * - `true` (default): Users can enter/change the DSA server URL
+   * - `false`: Server URL is locked (must be configured programmatically via `dsaAuthStore`)
+   * 
+   * @default true
+   * 
+   * @example
+   * ```tsx
+   * // Allow users to configure server
+   * <DsaAuthManager allowServerConfig={true} />
+   * 
+   * // Lock server URL (pre-configured)
+   * <DsaAuthManager allowServerConfig={false} />
+   * ```
    */
   allowServerConfig?: boolean
   /**
-   * Custom class name for the container
+   * Custom CSS class name to apply to the component container.
+   * Useful for styling integration with your application.
+   * 
+   * @example
+   * ```tsx
+   * <DsaAuthManager className="my-custom-auth-manager" />
+   * ```
    */
   className?: string
   /**
-   * Show compact version (minimal UI)
+   * Show compact version of the component (minimal UI).
+   * Ideal for toolbars, headers, or space-constrained layouts.
+   * 
+   * Compact mode shows:
+   * - Status indicator icon
+   * - User name (if authenticated)
+   * - Login/Logout button
+   * 
+   * @default false
+   * 
+   * @example
+   * ```tsx
+   * <DsaAuthManager compact={true} />
+   * ```
    */
   compact?: boolean
 }

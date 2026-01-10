@@ -1,8 +1,10 @@
-/* FolderBrowser Styles */
+/* FolderBrowser Styles - Clean Tree View with Proper Alignment */
 .bdsa-folder-browser {
     width: 100%;
-    min-height: 200px;
+    min-height: 100px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
 }
 
 .bdsa-folder-browser__loading,
@@ -11,23 +13,24 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 40px;
+    padding: 20px;
     color: #666;
+    font-size: 13px;
 }
 
 .bdsa-folder-browser__error {
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .bdsa-folder-browser__error button {
     background-color: #007bff;
     color: white;
     border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    padding: 6px 12px;
+    border-radius: 3px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
     transition: background-color 0.2s ease;
 }
 
@@ -39,140 +42,259 @@
 .bdsa-folder-browser__collections {
     display: flex;
     flex-direction: column;
-    gap: 8px;
 }
 
 /* Collection and Folder Containers */
 .bdsa-folder-browser__collection,
 .bdsa-folder-browser__folder {
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    background: white;
+    position: relative;
 }
 
+/* Collection/Folder Headers - Compact */
 .bdsa-folder-browser__folder-header {
     display: flex;
     align-items: center;
-    padding: 12px 16px;
+    padding: 3px 8px 3px 4px;
     cursor: pointer;
     user-select: none;
-    transition: background-color 0.2s ease, border-left 0.2s ease;
-    border-bottom: 1px solid #f0f0f0;
-    border-left: 3px solid transparent;
+    transition: background-color 0.15s ease;
+    position: relative;
 }
 
 .bdsa-folder-browser__folder-header:hover {
-    background-color: #f8f9fa;
+    background-color: #f5f5f5;
 }
 
 .bdsa-folder-browser__folder-header.selected {
+    background-color: #e3f2fd;
+    border-left: 2px solid #2196f3;
+    padding-left: 2px;
+}
+
+.bdsa-folder-browser__folder-header.last-clicked {
     background-color: #bbdefb;
-    border-left-color: #2196f3;
+    border-left: 3px solid #1976d2;
+    padding-left: 1px;
 }
 
+/* Triangle icon for expand/collapse */
 .bdsa-folder-browser__folder-icon {
-    margin-right: 8px;
-    font-size: 16px;
-    transition: transform 0.2s ease;
-}
-
-.bdsa-folder-browser__folder-icon.expanded {
-    transform: rotate(0deg);
-}
-
-.bdsa-folder-browser__folder-name {
-    flex: 1;
-    font-weight: 500;
-    color: #333;
-}
-
-.bdsa-folder-browser__folder-type {
-    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+    font-size: 8px;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
     color: #666;
-    background-color: #e9ecef;
-    padding: 2px 8px;
-    border-radius: 12px;
-    margin-left: 8px;
 }
 
+.bdsa-folder-browser__folder-icon::before {
+    content: '▶';
+}
+
+.bdsa-folder-browser__folder-icon.expanded::before {
+    content: '▼';
+}
+
+/* Spacer for folders without children (maintains alignment) */
+.bdsa-folder-browser__folder-icon-spacer {
+    display: inline-flex;
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+/* Folder name */
+.bdsa-folder-browser__folder-name {
+    flex: 0 1 auto;
+    font-weight: 400;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+    padding-right: 8px;
+}
+
+/* Item count indicator */
+.bdsa-folder-browser__item-count {
+    margin-left: 4px;
+    margin-right: 8px;
+    font-size: 11px;
+    color: #888;
+    font-weight: normal;
+    flex-shrink: 0;
+}
+
+/* Load all indicator (clickable +N) */
+.bdsa-folder-browser__load-all-indicator {
+    cursor: pointer;
+    color: #2196f3;
+    font-weight: bold;
+    padding: 0 4px;
+    user-select: none;
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+.bdsa-folder-browser__load-all-indicator:hover {
+    color: #1976d2;
+    text-decoration: underline;
+}
+
+.bdsa-folder-browser__load-all-indicator.loading {
+    cursor: default;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Type badges */
+.bdsa-folder-browser__folder-type {
+    font-size: 10px;
+    color: #888;
+    background-color: #f0f0f0;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* Folder contents - indent to align child triangle with parent text */
 .bdsa-folder-browser__folder-contents {
-    padding: 8px 0;
-    background-color: #fafafa;
+    padding-left: 16px;
+    position: relative;
 }
 
-/* Resource Items (selectable) */
+/* Hierarchy line */
+.bdsa-folder-browser__folder-contents::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 0;
+    bottom: 8px;
+    width: 1px;
+    background-color: #d0d0d0;
+}
+
+/* Resource Items */
 .bdsa-folder-browser__resource-item {
     display: flex;
     align-items: center;
-    padding: 8px 16px;
+    padding: 3px 8px 3px 4px;
     cursor: pointer;
-    transition: background-color 0.2s ease;
-    border-left: 3px solid transparent;
+    transition: background-color 0.15s ease;
+    position: relative;
+}
+
+/* Horizontal connection line to parent */
+.bdsa-folder-browser__resource-item::before {
+    content: '';
+    position: absolute;
+    left: -11px;
+    top: 50%;
+    width: 7px;
+    height: 1px;
+    background-color: #d0d0d0;
 }
 
 .bdsa-folder-browser__resource-item:hover {
-    background-color: #e3f2fd;
+    background-color: #f5f5f5;
 }
 
 .bdsa-folder-browser__resource-item.selected {
-    background-color: #bbdefb;
-    border-left-color: #2196f3;
+    background-color: #e3f2fd;
+    border-left: 2px solid #2196f3;
+    padding-left: 2px;
 }
 
+/* Resource icon */
 .bdsa-folder-browser__resource-icon {
-    margin-right: 8px;
-    font-size: 14px;
+    margin-right: 6px;
+    font-size: 11px;
+    color: #666;
+    flex-shrink: 0;
+    width: 10px;
+    text-align: center;
 }
 
 .bdsa-folder-browser__resource-name {
     flex: 1;
     color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 8px;
 }
 
+/* Type badges for resources */
 .bdsa-folder-browser__resource-type {
-    font-size: 11px;
-    color: #666;
-    background-color: #e3f2fd;
-    padding: 2px 6px;
-    border-radius: 10px;
-    margin-left: 8px;
+    font-size: 9px;
+    color: #888;
+    background-color: #f0f0f0;
+    padding: 1px 5px;
+    border-radius: 6px;
+    margin-left: 4px;
+    flex-shrink: 0;
 }
 
 /* Load More Button */
 .bdsa-folder-browser__load-more {
-    padding: 8px 16px;
-    text-align: center;
+    padding: 4px 8px 4px 16px;
+    text-align: left;
 }
 
 .bdsa-folder-browser__load-more-btn {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #f5f5f5;
+    color: #666;
+    border: 1px solid #ddd;
+    padding: 4px 12px;
+    border-radius: 3px;
     cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.2s ease;
+    font-size: 11px;
+    transition: all 0.2s ease;
 }
 
 .bdsa-folder-browser__load-more-btn:hover:not(:disabled) {
-    background-color: #0056b3;
+    background-color: #e8e8e8;
+    border-color: #bbb;
+    color: #333;
 }
 
 .bdsa-folder-browser__load-more-btn:disabled {
-    background-color: #6c757d;
+    background-color: #f9f9f9;
+    color: #aaa;
     cursor: not-allowed;
     opacity: 0.6;
 }
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    .bdsa-folder-browser {
+        font-size: 12px;
+    }
+    
     .bdsa-folder-browser__folder-header {
-        padding: 10px 12px;
+        padding: 2px 6px 2px 3px;
     }
 
     .bdsa-folder-browser__resource-item {
-        padding: 6px 12px;
+        padding: 2px 6px 2px 3px;
     }
 }
 
+    .bdsa-folder-browser__folder-header {
+        padding: 2px 6px 2px 3px;
+    }
+
+    .bdsa-folder-browser__resource-item {
+        padding: 2px 6px 2px 3px;
+    }
+}

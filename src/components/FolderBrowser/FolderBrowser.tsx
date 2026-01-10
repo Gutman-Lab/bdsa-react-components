@@ -1,81 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import './FolderBrowser.css'
+import { createDebugLogger } from '../../utils/debugLog'
+import type { Collection, Folder, Item, Resource, FolderBrowserProps } from './FolderBrowser.types'
+import { preserveScrollPosition } from './FolderBrowser.utils'
+import { renderItemNodeContent } from './FolderBrowser.render'
+import { useFolderBrowserDataFetching } from './useFolderBrowserDataFetching'
 
-export interface Collection {
-    _id: string
-    name: string
-    description?: string
-    public?: boolean
-    created?: string
-    updated?: string
-    [key: string]: unknown
-}
-
-export interface Folder {
-    _id: string
-    name: string
-    description?: string
-    public?: boolean
-    created?: string
-    updated?: string
-    parentId?: string
-    parentType?: 'collection' | 'folder'
-    [key: string]: unknown
-}
-
-export interface Item {
-    _id: string
-    name: string
-    description?: string
-    folderId?: string
-    collectionId?: string
-    public?: boolean
-    created?: string
-    updated?: string
-    [key: string]: unknown
-}
-
-export type Resource = (Collection | Folder | Item) & { type: 'collection' | 'folder' | 'item' }
-
-export interface FolderBrowserProps {
-    /** Base URL for DSA API (e.g., http://bdsa.pathology.emory.edu:8080/api/v1) */
-    apiBaseUrl?: string
-    /** Custom fetch function for API requests. Useful for adding authentication headers. */
-    fetchFn?: (url: string, options?: RequestInit) => Promise<Response>
-    /** Custom headers to add to all API requests. Merged with fetchFn headers if both are provided. */
-    apiHeaders?: HeadersInit
-    /** Callback when a resource (collection or folder) is selected */
-    onResourceSelect?: (resource: Resource) => void
-    /** Callback when resource selection changes */
-    onSelectionChange?: (resource: Resource | null) => void
-    /** Show collections at the root level (default: true, ignored if rootId is provided) */
-    showCollections?: boolean
-    /** Root directory ID to start from (if provided, only shows this collection/folder and its children) */
-    rootId?: string
-    /** Type of root directory - 'collection' or 'folder' (required if rootId is provided) */
-    rootType?: 'collection' | 'folder'
-    /** Number of folders to load per page (default: 50, set to 0 to load all) */
-    foldersPerPage?: number
-    /** Start at a specific collection ID instead of showing all collections (deprecated: use rootId and rootType) */
-    startCollectionId?: string
-    /** Start at a specific folder ID (requires startCollectionId or parentFolderId) (deprecated: use rootId and rootType) */
-    startFolderId?: string
-    /** Start at a folder's subfolder (requires parentFolderId) (deprecated: use rootId and rootType) */
-    parentFolderId?: string
-    className?: string
-    /** Custom render for collections */
-    renderCollection?: (collection: Collection, isExpanded: boolean, onToggle: () => void) => React.ReactNode
-    /** Custom render for folders */
-    renderFolder?: (folder: Folder, depth: number, isExpanded: boolean, onToggle: () => void) => React.ReactNode
-    /** If true, shows items (files) within folders and collections, not just folders. Default: false */
-    showItems?: boolean
-    /** Number of items to load per page when showItems is enabled (default: 50, set to 0 to load all) */
-    itemsPerPage?: number
-    /** Callback when an item is selected (only used when showItems is true) */
-    onItemSelect?: (item: Item) => void
-    /** Custom render for items */
-    renderItem?: (item: Item, depth: number) => React.ReactNode
-}
+export type { Collection, Folder, Item, Resource, FolderBrowserProps }
 
 /**
  * FolderBrowser component for browsing DSA collections and folders.
@@ -112,519 +43,309 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
             className = '',
             renderCollection,
             renderFolder,
-            showItems = true,
+            showItems = false,
+            fetchItems, // Defaults to showItems value if not provided
             itemsPerPage = 50,
+            itemPaginationMode = 'manual',
             onItemSelect,
             renderItem,
+            itemFilter,
+            onItemsFetched,
+            showItemCount = false,
+            persistSelection = false,
+            persistSelectionKey = 'bdsa_folder_browser_selection',
+            persistExpansion = false,
+            persistExpansionKey = 'bdsa_folder_browser_expansion',
+            onApiError,
+            debug = false,
         },
         ref
     ) => {
+        // Default fetchItems to showItems if not explicitly provided
+        const shouldFetchItems = fetchItems !== undefined ? fetchItems : showItems
+
+        // Create debug logger
+        const debugLog = useMemo(() => createDebugLogger('FolderBrowser', debug), [debug])
+
         const [collections, setCollections] = useState<Collection[]>([])
         const [rootCollection, setRootCollection] = useState<Collection | null>(null)
         const [rootFolder, setRootFolder] = useState<Folder | null>(null)
         const [folders, setFolders] = useState<Record<string, Folder[]>>({})
-        const [items, setItems] = useState<Record<string, Item[]>>({}) // { [folderOrCollectionId]: Item[] }
+        const [items, setItems] = useState<Record<string, Item[]>>({}) // { [folderOrCollectionId]: Item[] } - filtered items
         // Track pagination for each folder/collection: { [id]: { offset: number, hasMore: boolean, loaded: boolean } }
         // 'loaded' flag prevents infinite loops when folder has no subfolders
         const [paginationState, setPaginationState] = useState<Record<string, { offset: number; hasMore: boolean; loaded: boolean }>>({})
-        // Track item pagination separately: { [id]: { offset: number, hasMore: boolean } }
-        const [itemPaginationState, setItemPaginationState] = useState<Record<string, { offset: number; hasMore: boolean }>>({})
-        const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set())
-        const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+        // Track item pagination separately: { [id]: { offset: number, hasMore: boolean, totalCount?: number } }
+        // totalCount is the TOTAL number of items in the folder (from API), not just loaded items
+        const [itemPaginationState, setItemPaginationState] = useState<Record<string, { offset: number; hasMore: boolean; totalCount?: number }>>({})
+
+        // Initialize expansion state from localStorage if persistExpansion is enabled
+        const [expandedCollections, setExpandedCollections] = useState<Set<string>>(() => {
+            if (persistExpansion) {
+                try {
+                    const saved = localStorage.getItem(`${persistExpansionKey}_collections`)
+                    if (saved) {
+                        const parsed = JSON.parse(saved)
+                        return new Set(parsed)
+                    }
+                } catch (error) {
+                    debugLog.warn('Failed to restore expanded collections from localStorage:', error)
+                }
+            }
+            return new Set()
+        })
+
+        const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
+            if (persistExpansion) {
+                try {
+                    const saved = localStorage.getItem(`${persistExpansionKey}_folders`)
+                    if (saved) {
+                        const parsed = JSON.parse(saved)
+                        return new Set(parsed)
+                    }
+                } catch (error) {
+                    debugLog.warn('Failed to restore expanded folders from localStorage:', error)
+                }
+            }
+            return new Set()
+        })
+
         const [selectedResource, setSelectedResource] = useState<Resource | null>(null)
         const [loading, setLoading] = useState<boolean>(false)
         const [loadingFolders, setLoadingFolders] = useState<Record<string, boolean>>({})
         const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({})
         const [error, setError] = useState<Error | null>(null)
-        
+
         // Ref to the container element for scroll position preservation
         const containerRef = useRef<HTMLDivElement | null>(null)
+        // Track if we've already restored from localStorage
+        const hasRestoredExpansion = useRef(false)
+        const hasRestoredSelection = useRef(false)
 
-        // Build fetch options helper
-        const buildFetchOptions = useCallback((): RequestInit => {
-            const options: RequestInit = {}
-            if (apiHeaders) {
-                options.headers = apiHeaders
+        // Use data fetching hook
+        const {
+            loadCollections,
+            loadFoldersForCollection,
+            loadFoldersForFolder,
+            loadItemsForFolder,
+            loadRoot,
+        } = useFolderBrowserDataFetching({
+            apiBaseUrl,
+            fetchFn,
+            apiHeaders,
+            foldersPerPage,
+            itemsPerPage,
+            shouldFetchItems,
+            itemFilter,
+            onItemsFetched,
+            onApiError,
+            startCollectionId,
+            startFolderId,
+            rootId,
+            rootType,
+            setCollections,
+            setRootCollection,
+            setRootFolder,
+            setFolders,
+            setItems,
+            setPaginationState,
+            setItemPaginationState,
+            setLoading,
+            setLoadingFolders,
+            setLoadingItems,
+            setError,
+            setExpandedCollections,
+            setExpandedFolders,
+            paginationState,
+            itemPaginationState,
+            debugLog,
+        })
+
+        // Save selected resource to localStorage when it changes
+        useEffect(() => {
+            if (!persistSelection) return
+
+            if (selectedResource) {
+                try {
+                    const toSave = {
+                        resource: selectedResource,
+                        timestamp: Date.now(),
+                    }
+                    localStorage.setItem(persistSelectionKey, JSON.stringify(toSave))
+                } catch (error) {
+                    debugLog.warn('Failed to save selection to localStorage:', error)
+                }
             }
-            return options
-        }, [apiHeaders])
+        }, [selectedResource, persistSelection, persistSelectionKey])
 
-        // Fetch collections
-        const loadCollections = useCallback(async () => {
-            if (!apiBaseUrl) {
-                setError(new Error('API base URL is required'))
-                return
-            }
+        // Restore selected resource from localStorage when persistSelection becomes true
+        useEffect(() => {
+            if (!persistSelection) return
 
-            setLoading(true)
-            setError(null)
+            // Only restore once
+            if (hasRestoredSelection.current) return
+            hasRestoredSelection.current = true
 
             try {
-                const url = `${apiBaseUrl}/collection`
-                const customFetch = fetchFn || fetch
-                const fetchOptions = buildFetchOptions()
+                const saved = localStorage.getItem(persistSelectionKey)
+                if (saved) {
+                    const parsed = JSON.parse(saved)
+                    if (parsed.resource && parsed.resource._id) {
+                        // Restore the selection
+                        // Note: We're just setting the state here. The component will need to 
+                        // handle expanding parent folders to make the selection visible.
+                        // This is a best-effort restoration - if the resource no longer exists,
+                        // it will simply be selected but not visible.
+                        setSelectedResource(parsed.resource)
 
-                const response = await customFetch(url, fetchOptions)
-
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch collections: ${response.status} ${response.statusText}`)
-                }
-
-                const data = await response.json()
-                // Handle both array and paginated response
-                const collectionsList: Collection[] = Array.isArray(data)
-                    ? data
-                    : data.items || []
-
-                setCollections(collectionsList)
-
-                // If startCollectionId is provided, expand it automatically
-                if (startCollectionId && collectionsList.some(c => c._id === startCollectionId)) {
-                    setExpandedCollections(new Set([startCollectionId]))
-                    await loadFoldersForCollection(collectionsList.find(c => c._id === startCollectionId)!)
-                }
-            } catch (err) {
-                const error = err instanceof Error ? err : new Error('Unknown error loading collections')
-                setError(error)
-                console.error('Error loading collections:', error)
-            } finally {
-                setLoading(false)
-            }
-        }, [apiBaseUrl, fetchFn, buildFetchOptions, startCollectionId])
-
-        // Fetch folders for a collection
-        const loadFoldersForCollection = useCallback(async (collection: Collection, append = false) => {
-            if (!apiBaseUrl || !collection?._id) return
-
-            // Check if already loaded (prevents infinite loops for collections with no folders)
-            let alreadyLoaded = false
-            let currentOffset = 0
-            setPaginationState(prev => {
-                const existing = prev[collection._id]
-                if (existing?.loaded && !append) {
-                    alreadyLoaded = true
-                }
-                if (append && existing) {
-                    currentOffset = existing.offset
-                }
-                return prev
-            })
-
-            // If already loaded and not appending, skip the fetch
-            if (alreadyLoaded) {
-                return
-            }
-
-            setLoadingFolders(prev => ({ ...prev, [collection._id]: true }))
-
-            try {
-                const params = new URLSearchParams({
-                    parentType: 'collection',
-                    parentId: collection._id,
-                })
-
-                // Add pagination if foldersPerPage > 0
-                if (foldersPerPage > 0) {
-                    params.append('limit', String(foldersPerPage))
-                    params.append('offset', String(currentOffset))
-                }
-
-                const url = `${apiBaseUrl}/folder?${params.toString()}`
-                const customFetch = fetchFn || fetch
-                const fetchOptions = buildFetchOptions()
-
-                const response = await customFetch(url, fetchOptions)
-
-                if (!response.ok) {
-                    console.warn(`Failed to fetch folders for collection ${collection._id}:`, response.statusText)
-                    return
-                }
-
-                const data = await response.json()
-                
-                // Handle both array and paginated response
-                let foldersList: Folder[] = []
-                let hasMore = false
-
-                if (Array.isArray(data)) {
-                    foldersList = data
-                    // If we got fewer items than the limit, there's no more
-                    hasMore = foldersPerPage > 0 && data.length === foldersPerPage
-                } else {
-                    foldersList = data.items || []
-                    hasMore = foldersPerPage > 0 && (data.total > (currentOffset + foldersList.length))
-                }
-
-                setFolders(prev => ({
-                    ...prev,
-                    [collection._id]: append 
-                        ? [...(prev[collection._id] || []), ...foldersList]
-                        : foldersList,
-                }))
-
-                // Update pagination state - mark as loaded even if empty
-                setPaginationState(prev => ({
-                    ...prev,
-                    [collection._id]: {
-                        offset: foldersPerPage > 0 ? currentOffset + foldersList.length : 0,
-                        hasMore: foldersPerPage > 0 ? hasMore : false,
-                        loaded: true, // Mark as loaded to prevent re-fetching
-                    },
-                }))
-
-                // If startFolderId is provided and this is the target collection, expand the folder
-                if (!append && startFolderId && foldersList.some(f => f._id === startFolderId)) {
-                    setExpandedFolders(prev => new Set(prev).add(startFolderId))
-                    await loadFoldersForFolder(foldersList.find(f => f._id === startFolderId)!, true)
-                }
-            } catch (err) {
-                console.error(`Error loading folders for collection ${collection._id}:`, err)
-            } finally {
-                setLoadingFolders(prev => ({ ...prev, [collection._id]: false }))
-            }
-        }, [apiBaseUrl, fetchFn, buildFetchOptions, startFolderId, foldersPerPage])
-
-        // Fetch subfolders for a folder
-        const loadFoldersForFolder = useCallback(async (folder: Folder, append = false) => {
-            if (!apiBaseUrl || !folder?._id) return
-
-            // Check if already loaded (prevents infinite loops for folders with no subfolders)
-            let alreadyLoaded = false
-            let currentOffset = 0
-            setPaginationState(prev => {
-                const existing = prev[folder._id]
-                if (existing?.loaded && !append) {
-                    alreadyLoaded = true
-                }
-                if (append && existing) {
-                    currentOffset = existing.offset
-                }
-                return prev
-            })
-
-            // If already loaded and not appending, skip the fetch
-            if (alreadyLoaded) {
-                return
-            }
-
-            setLoadingFolders(prev => ({ ...prev, [folder._id]: true }))
-
-            try {
-                const params = new URLSearchParams({
-                    parentType: 'folder',
-                    parentId: folder._id,
-                })
-
-                // Add pagination if foldersPerPage > 0
-                if (foldersPerPage > 0) {
-                    params.append('limit', String(foldersPerPage))
-                    params.append('offset', String(currentOffset))
-                }
-
-                const url = `${apiBaseUrl}/folder?${params.toString()}`
-                const customFetch = fetchFn || fetch
-                const fetchOptions = buildFetchOptions()
-
-                const response = await customFetch(url, fetchOptions)
-
-                if (!response.ok) {
-                    console.warn(`Failed to fetch subfolders for folder ${folder._id}:`, response.statusText)
-                    return
-                }
-
-                const data = await response.json()
-                
-                // Handle both array and paginated response
-                let foldersList: Folder[] = []
-                let hasMore = false
-
-                if (Array.isArray(data)) {
-                    foldersList = data
-                    // If we got fewer items than the limit, there's no more
-                    hasMore = foldersPerPage > 0 && data.length === foldersPerPage
-                } else {
-                    foldersList = data.items || []
-                    hasMore = foldersPerPage > 0 && (data.total > (currentOffset + foldersList.length))
-                }
-
-                setFolders(prev => ({
-                    ...prev,
-                    [folder._id]: append
-                        ? [...(prev[folder._id] || []), ...foldersList]
-                        : foldersList,
-                }))
-
-                // Update pagination state - mark as loaded even if empty (prevents infinite loops)
-                setPaginationState(prev => ({
-                    ...prev,
-                    [folder._id]: {
-                        offset: foldersPerPage > 0 ? currentOffset + foldersList.length : 0,
-                        hasMore: foldersPerPage > 0 ? hasMore : false,
-                        loaded: true, // Mark as loaded to prevent re-fetching empty folders
-                    },
-                }))
-            } catch (err) {
-                console.error(`Error loading subfolders for folder ${folder._id}:`, err)
-            } finally {
-                setLoadingFolders(prev => ({ ...prev, [folder._id]: false }))
-            }
-        }, [apiBaseUrl, fetchFn, buildFetchOptions, foldersPerPage])
-
-        // Fetch items for a folder (only for subfolders, not root folders)
-        const loadItemsForFolder = useCallback(async (folderId: string, folder?: Folder, append = false) => {
-            if (!apiBaseUrl || !showItems) return
-
-            // Debug: Log folder info to understand structure
-            if (folder) {
-                console.log(`[FolderBrowser] Checking folder ${folderId} (${folder.name}):`, {
-                    parentType: folder.parentType,
-                    parentId: folder.parentId,
-                    hasItems: true // Always try to fetch if showItems is enabled
-                })
-            }
-
-            // Check folder type for debugging
-            // Note: Root folders (parentType='collection') typically don't have items per DSA API
-            // But we'll attempt fetch anyway - the API will return empty if there are none
-            if (folder) {
-                if (folder.parentType === 'collection') {
-                    console.log(`[FolderBrowser] Root folder ${folderId} (${folder.name}) - attempting item fetch (typically empty, but checking anyway)`)
-                } else if (folder.parentType === 'folder') {
-                    console.log(`[FolderBrowser] Subfolder ${folderId} (${folder.name}) - fetching items`)
-                } else {
-                    console.log(`[FolderBrowser] Folder ${folderId} (${folder.name}) - parentType unknown (${folder.parentType}), attempting fetch`)
-                }
-            } else {
-                console.log(`[FolderBrowser] Folder object not provided for ${folderId} - attempting item fetch`)
-            }
-
-            const currentOffset = append && itemPaginationState[folderId]
-                ? itemPaginationState[folderId].offset
-                : 0
-
-            setLoadingItems(prev => ({ ...prev, [folderId]: true }))
-
-            try {
-                const params = new URLSearchParams()
-                // Use folderId parameter (required by API)
-                params.append('folderId', folderId)
-
-                // Add pagination if itemsPerPage > 0
-                if (itemsPerPage > 0) {
-                    params.append('limit', String(itemsPerPage))
-                    params.append('offset', String(currentOffset))
-                }
-
-                const url = `${apiBaseUrl}/item?${params.toString()}`
-                console.log(`[FolderBrowser] Fetching items from: ${url}`)
-                
-                const customFetch = fetchFn || fetch
-                const fetchOptions = buildFetchOptions()
-
-                const response = await customFetch(url, fetchOptions)
-
-                if (!response.ok) {
-                    console.warn(`[FolderBrowser] Failed to fetch items for folder ${folderId}:`, response.status, response.statusText)
-                    
-                    return
-                }
-
-                const data = await response.json()
-                console.log(`[FolderBrowser] Received response:`, data)
-                
-                // Handle both array and paginated response
-                let itemsList: Item[] = []
-                let hasMore = false
-
-                if (Array.isArray(data)) {
-                    itemsList = data
-                    hasMore = itemsPerPage > 0 && data.length === itemsPerPage
-                } else {
-                    itemsList = data.items || []
-                    hasMore = itemsPerPage > 0 && (data.total > (currentOffset + itemsList.length))
-                }
-
-                console.log(`[FolderBrowser] Parsed ${itemsList.length} items for folder ${folderId}`)
-
-                setItems(prev => ({
-                    ...prev,
-                    [folderId]: append
-                        ? [...(prev[folderId] || []), ...itemsList]
-                        : itemsList,
-                }))
-
-                // Update item pagination state
-                if (itemsPerPage > 0) {
-                    setItemPaginationState(prev => ({
-                        ...prev,
-                        [folderId]: {
-                            offset: currentOffset + itemsList.length,
-                            hasMore,
-                        },
-                    }))
-                }
-            } catch (err) {
-                console.error(`[FolderBrowser] Error loading items for folder ${folderId}:`, err)
-            } finally {
-                setLoadingItems(prev => ({ ...prev, [folderId]: false }))
-            }
-        }, [apiBaseUrl, fetchFn, buildFetchOptions, showItems, itemsPerPage, itemPaginationState])
-
-        // Load root collection or folder
-        const loadRoot = useCallback(async () => {
-            if (!apiBaseUrl || !rootId || !rootType) {
-                return
-            }
-
-            setLoading(true)
-            setError(null)
-
-            try {
-                // Try direct fetch first (some APIs support /collection/{id} or /folder/{id})
-                let url = rootType === 'collection' 
-                    ? `${apiBaseUrl}/collection/${rootId}`
-                    : `${apiBaseUrl}/folder/${rootId}`
-                
-                const customFetch = fetchFn || fetch
-                const fetchOptions = buildFetchOptions()
-
-                let response = await customFetch(url, fetchOptions)
-
-                let data: Collection | Folder | null = null
-
-                // If direct fetch fails, fall back to listing and finding by ID
-                if (!response.ok) {
-                    console.warn(`Direct fetch failed for ${rootType} ${rootId}, trying list endpoint...`)
-                    
-                    if (rootType === 'collection') {
-                        // List all collections and find the matching one
-                        const listUrl = `${apiBaseUrl}/collection`
-                        response = await customFetch(listUrl, fetchOptions)
-                        
-                        if (!response.ok) {
-                            throw new Error(`Failed to fetch collections: ${response.status} ${response.statusText}`)
-                        }
-                        
-                        const listData = await response.json()
-                        const collectionsList: Collection[] = Array.isArray(listData) ? listData : (listData.items || [])
-                        data = collectionsList.find(c => c._id === rootId) || null
-                        
-                        if (!data) {
-                            throw new Error(`Collection with ID ${rootId} not found`)
-                        }
-                    } else {
-                        // For folders, we need to search through collections and their folders
-                        // This is more complex, so we'll try a different approach
-                        // First try listing all folders (if API supports it)
-                        try {
-                            const listUrl = `${apiBaseUrl}/folder`
-                            response = await customFetch(listUrl, fetchOptions)
-                            
-                            if (response.ok) {
-                                const listData = await response.json()
-                                const foldersList: Folder[] = Array.isArray(listData) ? listData : (listData.items || [])
-                                data = foldersList.find(f => f._id === rootId) || null
-                            }
-                        } catch (listErr) {
-                            console.warn('Could not list folders directly, will need to search through collections')
-                        }
-                        
-                        // If still not found, search through collections
-                        if (!data) {
-                            const collectionsUrl = `${apiBaseUrl}/collection`
-                            const collectionsResponse = await customFetch(collectionsUrl, fetchOptions)
-                            
-                            if (!collectionsResponse.ok) {
-                                throw new Error(`Failed to fetch collections for folder search: ${collectionsResponse.status}`)
-                            }
-                            
-                            const collectionsData = await collectionsResponse.json()
-                            const collectionsList: Collection[] = Array.isArray(collectionsData) ? collectionsData : (collectionsData.items || [])
-                            
-                            // Search through each collection's folders
-                            for (const collection of collectionsList) {
-                                const foldersUrl = `${apiBaseUrl}/folder?parentType=collection&parentId=${collection._id}`
-                                const foldersResponse = await customFetch(foldersUrl, fetchOptions)
-                                
-                                if (foldersResponse.ok) {
-                                    const foldersData = await foldersResponse.json()
-                                    const foldersList: Folder[] = Array.isArray(foldersData) ? foldersData : (foldersData.items || [])
-                                    const found = foldersList.find(f => f._id === rootId)
-                                    
-                                    if (found) {
-                                        data = found
-                                        break
-                                    }
-                                    
-                                    // Recursively search subfolders (depth-first search)
-                                    const searchSubfolders = async (folder: Folder): Promise<Folder | null> => {
-                                        const subfoldersUrl = `${apiBaseUrl}/folder?parentType=folder&parentId=${folder._id}`
-                                        const subfoldersResponse = await customFetch(subfoldersUrl, fetchOptions)
-                                        
-                                        if (subfoldersResponse.ok) {
-                                            const subfoldersData = await subfoldersResponse.json()
-                                            const subfoldersList: Folder[] = Array.isArray(subfoldersData) ? subfoldersData : (subfoldersData.items || [])
-                                            
-                                            const found = subfoldersList.find(f => f._id === rootId)
-                                            if (found) return found
-                                            
-                                            for (const subfolder of subfoldersList) {
-                                                const deeper = await searchSubfolders(subfolder)
-                                                if (deeper) return deeper
-                                            }
-                                        }
-                                        return null
-                                    }
-                                    
-                                    for (const folder of foldersList) {
-                                        const found = await searchSubfolders(folder)
-                                        if (found) {
-                                            data = found
-                                            break
-                                        }
-                                    }
-                                    
-                                    if (data) break
-                                }
-                            }
-                            
-                            if (!data) {
-                                throw new Error(`Folder with ID ${rootId} not found in any collection`)
+                        // Auto-expand based on resource type (only if not using persistExpansion)
+                        if (!persistExpansion) {
+                            if (parsed.resource.type === 'collection') {
+                                setExpandedCollections(new Set([parsed.resource._id]))
+                            } else if (parsed.resource.type === 'folder') {
+                                // For folders, we'd need to know the parent path to expand correctly
+                                // For now, just expand the folder itself
+                                setExpandedFolders(new Set([parsed.resource._id]))
                             }
                         }
                     }
-                } else {
-                    data = await response.json()
                 }
-
-                if (!data) {
-                    throw new Error(`${rootType} with ID ${rootId} not found`)
-                }
-
-                if (rootType === 'collection') {
-                    const collection = data as Collection
-                    setRootCollection(collection)
-                    setExpandedCollections(new Set([rootId]))
-                    // Load folders for this root collection (auto-expand)
-                    await loadFoldersForCollection(collection)
-                    // Note: Collections can have folders, but NOT items - items are only in folders
-                } else {
-                    const folder = data as Folder
-                    setRootFolder(folder)
-                    setExpandedFolders(new Set([rootId]))
-                    // Load subfolders for this root folder (auto-expand)
-                    await loadFoldersForFolder(folder)
-                    // Note: Root folders can have subfolders, but typically don't have items
-                    // Only subfolders (parentType='folder') can have items
-                }
-            } catch (err) {
-                const error = err instanceof Error ? err : new Error(`Unknown error loading ${rootType}`)
-                setError(error)
-                console.error(`Error loading root ${rootType}:`, error)
-            } finally {
-                setLoading(false)
+            } catch (error) {
+                debugLog.warn('Failed to restore selection from localStorage:', error)
             }
-        }, [apiBaseUrl, rootId, rootType, fetchFn, buildFetchOptions, loadFoldersForCollection, loadFoldersForFolder])
+        }, [persistSelection, persistSelectionKey, persistExpansion])
+
+        // Restore expansion state when persistExpansion becomes true AND collections are loaded
+        useEffect(() => {
+            if (!persistExpansion) return
+            if (collections.length === 0 && !rootCollection) return // Wait for collections to load
+
+            // Only restore once
+            if (hasRestoredExpansion.current) return
+            hasRestoredExpansion.current = true
+
+            // Try to restore from localStorage when persistExpansion is enabled
+            try {
+                const savedCollections = localStorage.getItem(`${persistExpansionKey}_collections`)
+                const savedFolders = localStorage.getItem(`${persistExpansionKey}_folders`)
+
+                if (savedCollections) {
+                    const parsed = JSON.parse(savedCollections)
+                    if (parsed.length > 0) {
+                        setExpandedCollections(new Set(parsed))
+
+                        // Trigger API loads for each expanded collection
+                        parsed.forEach((collectionId: string) => {
+                            const collection = collections.find(c => c._id === collectionId) ||
+                                (rootCollection?._id === collectionId ? rootCollection : null)
+                            if (collection) {
+                                loadFoldersForCollection(collection)
+                            }
+                        })
+                    }
+                }
+
+                if (savedFolders) {
+                    const parsed = JSON.parse(savedFolders)
+                    if (parsed.length > 0) {
+                        setExpandedFolders(new Set(parsed))
+                        // Note: We'll trigger folder loads in a separate effect after folders are loaded
+                    }
+                }
+            } catch (error) {
+                debugLog.warn('Failed to restore expansion state:', error)
+            }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [persistExpansion, persistExpansionKey, collections, rootCollection, folders, shouldFetchItems])
+
+        // Auto-load contents for any expanded folder/collection that hasn't been loaded yet
+        useEffect(() => {
+            if (!persistExpansion) return
+
+            // Auto-load folders for expanded collections
+            expandedCollections.forEach(collectionId => {
+                // Check if we've loaded this collection's folders yet
+                const hasLoadedFolders = folders[collectionId] !== undefined || paginationState[collectionId]?.loaded
+                if (!hasLoadedFolders && !loadingFolders[collectionId]) {
+                    const collection = collections.find(c => c._id === collectionId) ||
+                        (rootCollection?._id === collectionId ? rootCollection : null)
+                    if (collection) {
+                        loadFoldersForCollection(collection)
+                    }
+                }
+            })
+
+            // Auto-load subfolders and items for expanded folders
+            expandedFolders.forEach(folderId => {
+                // Find this folder in the loaded folders
+                let folder: Folder | null = null
+                for (const folderList of Object.values(folders)) {
+                    folder = folderList.find((f: Folder) => f._id === folderId) || null
+                    if (folder) break
+                }
+
+                if (folder) {
+                    // Check if we've loaded this folder's subfolders yet
+                    const hasLoadedSubfolders = folders[folderId] !== undefined || paginationState[folderId]?.loaded
+                    if (!hasLoadedSubfolders && !loadingFolders[folderId]) {
+                        loadFoldersForFolder(folder)
+                    }
+
+                    // Check if we've loaded this folder's items yet
+                    if (showItems) {
+                        const hasLoadedItems = items[folderId] !== undefined
+                        if (!hasLoadedItems && !loadingItems[folderId]) {
+                            loadItemsForFolder(folderId, folder)
+                        }
+                    }
+                }
+            })
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [persistExpansion, expandedCollections, expandedFolders, folders, items, collections, rootCollection, shouldFetchItems, paginationState, loadingFolders, loadingItems])
+
+        // Save expanded collections to localStorage when they change
+        useEffect(() => {
+            if (!persistExpansion) return
+
+            try {
+                const array = Array.from(expandedCollections)
+                localStorage.setItem(`${persistExpansionKey}_collections`, JSON.stringify(array))
+            } catch (error) {
+                debugLog.warn('Failed to save expanded collections to localStorage:', error)
+            }
+        }, [expandedCollections, persistExpansion, persistExpansionKey])
+
+        // Save expanded folders to localStorage when they change
+        useEffect(() => {
+            if (!persistExpansion) return
+
+            try {
+                const array = Array.from(expandedFolders)
+                localStorage.setItem(`${persistExpansionKey}_folders`, JSON.stringify(array))
+            } catch (error) {
+                debugLog.warn('Failed to save expanded folders to localStorage:', error)
+            }
+        }, [expandedFolders, persistExpansion, persistExpansionKey])
+
+        // Auto-scroll to selected resource after a brief delay to let DOM update
+        useEffect(() => {
+            if (!selectedResource || !containerRef.current) return
+
+            // Small delay to ensure the DOM has updated
+            const timeoutId = setTimeout(() => {
+                const element = containerRef.current?.querySelector(
+                    `[data-resource-id="${selectedResource._id}"]`
+                )
+                if (element) {
+                    element.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center',
+                    })
+                }
+            }, 100)
+
+            return () => clearTimeout(timeoutId)
+        }, [selectedResource])
 
         // Toggle collection expansion
         const toggleCollection = useCallback(async (collection: Collection) => {
@@ -638,110 +359,75 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                 })
             } else {
                 // Preserve scroll position before expanding to prevent scroll jumping
-                const container = containerRef.current
-                let scrollContainer: HTMLElement | null = null
-                let scrollTop = 0
-                
-                // Find the scrollable parent element
-                if (container) {
-                    let element: HTMLElement | null = container.parentElement
-                    while (element && element !== document.body) {
-                        const style = window.getComputedStyle(element)
-                        const overflowY = style.overflowY || style.overflow
-                        if (overflowY === 'auto' || overflowY === 'scroll') {
-                            scrollContainer = element
-                            scrollTop = element.scrollTop
-                            break
-                        }
-                        if (element.scrollHeight > element.clientHeight && element.clientHeight > 0) {
-                            scrollContainer = element
-                            scrollTop = element.scrollTop
-                            break
-                        }
-                        element = element.parentElement
-                    }
-                }
-                
+                const { restore } = preserveScrollPosition(containerRef.current)
+
                 setExpandedCollections(prev => new Set(prev).add(collection._id))
                 await loadFoldersForCollection(collection, false)
                 // Note: Collections don't have direct items - items are in folders, so we don't fetch items here
-                
+
                 // Restore scroll position after state updates
-                if (scrollContainer) {
-                    const savedScrollTop = scrollTop
-                    requestAnimationFrame(() => {
-                        requestAnimationFrame(() => {
-                            if (scrollContainer && scrollContainer.scrollTop !== undefined) {
-                                scrollContainer.scrollTop = savedScrollTop
-                            }
-                        })
-                    })
-                }
+                restore()
             }
         }, [expandedCollections, loadFoldersForCollection])
+
+        // Track last clicked folder for visual feedback
+        const [lastClickedFolder, setLastClickedFolder] = useState<string | null>(null)
 
         // Toggle folder expansion
         const toggleFolder = useCallback(async (folder: Folder) => {
             const isExpanded = expandedFolders.has(folder._id)
 
+            // Mark this folder as the last clicked for visual feedback
+            setLastClickedFolder(folder._id)
+
+            // Find the folder element and get its position before any DOM changes
+            const container = containerRef.current
+            const folderElement = container?.querySelector(`[data-resource-id="${folder._id}"]`) as HTMLElement
+
+            // Preserve scroll position
+            const { restore } = preserveScrollPosition(container, folderElement)
+
             if (isExpanded) {
+                // Collapsing folder
                 setExpandedFolders(prev => {
                     const next = new Set(prev)
                     next.delete(folder._id)
                     return next
                 })
+
+                // After collapsing, restore the folder position
+                restore()
             } else {
-                // Preserve scroll position before expanding to prevent scroll jumping
-                const container = containerRef.current
-                let scrollContainer: HTMLElement | null = null
-                let scrollTop = 0
-                
-                // Find the scrollable parent element (typically the storybook container or a div with overflow)
-                if (container) {
-                    let element: HTMLElement | null = container.parentElement
-                    while (element && element !== document.body) {
-                        const style = window.getComputedStyle(element)
-                        const overflowY = style.overflowY || style.overflow
-                        // Check if element is scrollable
-                        if (overflowY === 'auto' || overflowY === 'scroll') {
-                            scrollContainer = element
-                            scrollTop = element.scrollTop
-                            break
-                        }
-                        // Also check if element has scrollable content even without explicit overflow
-                        if (element.scrollHeight > element.clientHeight && element.clientHeight > 0) {
-                            scrollContainer = element
-                            scrollTop = element.scrollTop
-                            break
-                        }
-                        element = element.parentElement
-                    }
-                }
-                
+                // Expanding folder
                 setExpandedFolders(prev => new Set(prev).add(folder._id))
                 await loadFoldersForFolder(folder, false)
-                // Load items if showItems is enabled
-                if (showItems) {
-                    console.log(`[FolderBrowser] Toggling folder ${folder._id} (${folder.name}) - showItems=${showItems}, calling loadItemsForFolder`)
-                    await loadItemsForFolder(folder._id, folder, false)
-                } else {
-                    console.log(`[FolderBrowser] Toggling folder ${folder._id} (${folder.name}) - showItems is FALSE, skipping item load`)
-                }
-                
-                // Restore scroll position after state updates
-                // Use double requestAnimationFrame to ensure DOM has fully updated and rendered
-                if (scrollContainer) {
-                    const savedScrollTop = scrollTop
-                    requestAnimationFrame(() => {
-                        requestAnimationFrame(() => {
-                            if (scrollContainer && scrollContainer.scrollTop !== undefined) {
-                                scrollContainer.scrollTop = savedScrollTop
+
+                // Load items if shouldFetchItems is enabled AND items haven't been loaded yet
+                if (shouldFetchItems) {
+                    const itemsAlreadyLoaded = items[folder._id] !== undefined && items[folder._id].length > 0
+                    if (!itemsAlreadyLoaded) {
+                        debugLog.log(`Toggling folder ${folder._id} (${folder.name}) - shouldFetchItems=${shouldFetchItems}, calling loadItemsForFolder`)
+                        await loadItemsForFolder(folder._id, folder, false)
+                        
+                        // If auto mode, load all remaining items
+                        if (itemPaginationMode === 'auto') {
+                            const itemState = itemPaginationState[folder._id]
+                            if (itemState?.hasMore) {
+                                debugLog.log(`Auto-loading all items for folder ${folder._id} (${folder.name})`)
+                                await loadAllItems(folder._id, folder, {} as React.MouseEvent)
                             }
-                        })
-                    })
+                        }
+                    } else {
+                        debugLog.log(`Toggling folder ${folder._id} (${folder.name}) - items already loaded, skipping fetch`)
+                    }
+                } else {
+                    debugLog.log(`Toggling folder ${folder._id} (${folder.name}) - shouldFetchItems is FALSE, skipping item load`)
                 }
+
+                // After expanding, try to keep the folder header in the same position
+                restore()
             }
-        }, [expandedFolders, loadFoldersForFolder, showItems, loadItemsForFolder])
+        }, [expandedFolders, loadFoldersForFolder, shouldFetchItems, loadItemsForFolder, items, itemPaginationMode, itemPaginationState, loadAllItems])
 
         // Handle resource selection
         const handleResourceSelect = useCallback((resource: Collection | Folder, type: 'collection' | 'folder') => {
@@ -776,25 +462,44 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
         // Render item
         const renderItemNode = useCallback((item: Item, depth: number) => {
             const isSelected = selectedResource?._id === item._id && selectedResource?.type === 'item'
+            return renderItemNodeContent({
+                item,
+                depth,
+                isSelected,
+                onItemSelect: handleItemSelect,
+                renderItem,
+            })
+        }, [selectedResource, renderItem, handleItemSelect])
 
-            if (renderItem) {
-                return renderItem(item, depth)
+        // Load all remaining items for a folder
+        const loadAllItems = useCallback(async (folderId: string, folder: Folder, event: React.MouseEvent) => {
+            event.stopPropagation() // Prevent any parent handlers (though not needed now, good practice)
+
+            if (!shouldFetchItems) {
+                return
             }
 
-            return (
-                <div key={item._id} className="bdsa-folder-browser__item" style={{ marginLeft: `${depth * 20}px` }}>
-                    <div
-                        className={`bdsa-folder-browser__folder-header ${isSelected ? 'selected' : ''}`}
-                        onClick={() => handleItemSelect(item)}
-                        onDoubleClick={() => handleItemSelect(item)}
-                    >
-                        <span className="bdsa-folder-browser__folder-icon">📄</span>
-                        <span className="bdsa-folder-browser__folder-name">{item.name}</span>
-                        <span className="bdsa-folder-browser__folder-type">Item</span>
-                    </div>
-                </div>
-            )
-        }, [selectedResource, renderItem, handleItemSelect])
+            debugLog.log(`Loading all items for folder ${folderId} (${folder.name})`)
+
+            // Keep loading until hasMore is false
+            // Use functional state updates to read the latest state
+            while (true) {
+                // Check current state using functional update to get latest value
+                let currentHasMore = false
+                setItemPaginationState(prev => {
+                    currentHasMore = prev[folderId]?.hasMore || false
+                    return prev // Don't actually update, just read
+                })
+
+                if (!currentHasMore) {
+                    break
+                }
+
+                await loadItemsForFolder(folderId, folder, true) // append = true
+            }
+
+            debugLog.log(`Finished loading all items for folder ${folderId}`)
+        }, [shouldFetchItems, loadItemsForFolder, debugLog])
 
         // Render folder recursively (must be defined before renderCollectionNode)
         const renderFolderNode = useCallback((folder: Folder, depth = 0) => {
@@ -804,39 +509,111 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
             const folderItems = showItems ? (items[folder._id] || []) : []
             const isSelected = selectedResource?._id === folder._id && selectedResource?.type === 'folder'
 
+            // Get item count from pagination state (total from API)
+            const itemCount = itemPaginationState[folder._id]?.totalCount
+            const hasMoreItems = itemPaginationState[folder._id]?.hasMore
+            const isLoadingItems = loadingItems[folder._id]
+            
+            // Calculate remaining items count for "+N" indicator
+            const loadedItemsCount = folderItems.length
+            const remainingCount = itemCount !== undefined 
+                ? Math.max(0, itemCount - loadedItemsCount)
+                : undefined
+
+            // Determine if folder should show triangle (expand/collapse indicator)
+            // Logic:
+            // - If showItems=true: Always show triangle (it controls item visibility)
+            // - If showItems=false: Only show if there are subfolders or might be more
+            const hasSubFolders = subFolders.length > 0
+            const mightHaveMoreFolders = paginationState[folder._id]?.hasMore === true
+            const hasBeenCheckedForFolders = paginationState[folder._id]?.loaded === true
+
+            // If showing items, triangle is always useful (expands/collapses items)
+            // If not showing items, only show triangle if there are subfolders or haven't checked yet
+            const hasChildren = showItems
+                ? true  // Always show triangle when items are displayed
+                : (hasSubFolders || mightHaveMoreFolders || !hasBeenCheckedForFolders)
+
             if (renderFolder) {
-                return renderFolder(folder, depth, isExpanded, () => toggleFolder(folder))
+                return renderFolder(folder, depth, isExpanded, () => toggleFolder(folder), itemCount)
             }
 
+            const isLastClicked = lastClickedFolder === folder._id
+
             return (
-                <div key={folder._id} className="bdsa-folder-browser__folder" style={{ marginLeft: `${depth * 20}px` }}>
+                <div key={folder._id} className="bdsa-folder-browser__folder">
                     <div
-                        className={`bdsa-folder-browser__folder-header ${isSelected ? 'selected' : ''}`}
-                        onClick={() => toggleFolder(folder)}
-                        onDoubleClick={() => handleResourceSelect(folder, 'folder')}
+                        className={`bdsa-folder-browser__folder-header ${isSelected ? 'selected' : ''} ${isLastClicked ? 'last-clicked' : ''}`}
+                        onClick={() => handleResourceSelect(folder, 'folder')}
+                        onDoubleClick={() => toggleFolder(folder)}
+                        data-resource-id={folder._id}
                     >
-                        <span className={`bdsa-folder-browser__folder-icon ${isExpanded ? 'expanded' : ''}`}>
-                            {isExpanded ? '📂' : '📁'}
-                        </span>
+                        {hasChildren && (
+                            <span
+                                className={`bdsa-folder-browser__folder-icon ${isExpanded ? 'expanded' : ''}`}
+                                onClick={() => toggleFolder(folder)}
+                                style={{ cursor: 'pointer' }}
+                            ></span>
+                        )}
+                        {!hasChildren && (
+                            <span className="bdsa-folder-browser__folder-icon-spacer"></span>
+                        )}
                         <span className="bdsa-folder-browser__folder-name">{folder.name}</span>
+                        {showItemCount && itemCount !== undefined && (
+                            <span className="bdsa-folder-browser__item-count">
+                                ({itemCount})
+                                {hasMoreItems && !isLoadingItems && itemPaginationMode === 'manual' && (
+                                    <span
+                                        className="bdsa-folder-browser__load-all-indicator"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            loadItemsForFolder(folder._id, folder, true)
+                                        }}
+                                        onDoubleClick={(e) => {
+                                            e.stopPropagation()
+                                            loadAllItems(folder._id, folder, e)
+                                        }}
+                                        title={remainingCount !== undefined 
+                                            ? `Click to load next page (${itemsPerPage} items), double-click to load all ${remainingCount} remaining items`
+                                            : "Click to load next page, double-click to load all items"}
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        {remainingCount !== undefined ? `+${remainingCount}` : '+'}
+                                    </span>
+                                )}
+                                {isLoadingItems && hasMoreItems && (
+                                    <span className="bdsa-folder-browser__load-all-indicator loading">
+                                        ⏳
+                                    </span>
+                                )}
+                            </span>
+                        )}
                         <span className="bdsa-folder-browser__folder-type">Folder</span>
                     </div>
 
                     {isExpanded && (
                         <div className="bdsa-folder-browser__folder-contents">
                             {/* Render subfolders */}
-                            {subFolders.map(subFolder => renderFolderNode(subFolder, depth + 1))}
+                            {subFolders.map(subFolder => (
+                                <React.Fragment key={subFolder._id}>
+                                    {renderFolderNode(subFolder, depth + 1)}
+                                </React.Fragment>
+                            ))}
                             {/* Render items in this folder if showItems is enabled */}
-                            {showItems && folderItems.map(item => renderItemNode(item, depth + 1))}
+                            {showItems && folderItems.map(item => (
+                                <React.Fragment key={item._id}>
+                                    {renderItemNode(item, depth + 1)}
+                                </React.Fragment>
+                            ))}
                             {/* Show loading indicator for items */}
                             {showItems && loadingItems[folder._id] && (
-                                <div className="bdsa-folder-browser__loading" style={{ marginLeft: `${(depth + 1) * 20}px` }}>
+                                <div className="bdsa-folder-browser__loading">
                                     <span>Loading items...</span>
                                 </div>
                             )}
                             {/* Load More button for folders if pagination is enabled and there are more folders */}
                             {foldersPerPage > 0 && paginationState[folder._id]?.hasMore && !loadingFolders[folder._id] && (
-                                <div className="bdsa-folder-browser__load-more" style={{ marginLeft: `${(depth + 1) * 20}px` }}>
+                                <div className="bdsa-folder-browser__load-more">
                                     <button
                                         className="bdsa-folder-browser__load-more-btn"
                                         onClick={() => loadFoldersForFolder(folder, true)}
@@ -847,8 +624,8 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                                 </div>
                             )}
                             {/* Load More button for items if pagination is enabled and there are more items */}
-                            {showItems && itemsPerPage > 0 && itemPaginationState[folder._id]?.hasMore && (
-                                <div className="bdsa-folder-browser__load-more" style={{ marginLeft: `${(depth + 1) * 20}px` }}>
+                            {showItems && itemsPerPage > 0 && itemPaginationState[folder._id]?.hasMore && itemPaginationMode === 'button' && (
+                                <div className="bdsa-folder-browser__load-more">
                                     <button
                                         className="bdsa-folder-browser__load-more-btn"
                                         onClick={() => loadItemsForFolder(folder._id, folder, true)}
@@ -862,7 +639,7 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                     )}
                 </div>
             )
-        }, [expandedFolders, folders, items, showItems, selectedResource, renderFolder, toggleFolder, handleResourceSelect, foldersPerPage, paginationState, loadingFolders, loadFoldersForFolder, itemsPerPage, itemPaginationState, loadingItems, loadItemsForFolder, renderItemNode])
+        }, [expandedFolders, folders, items, showItems, selectedResource, renderFolder, toggleFolder, handleResourceSelect, foldersPerPage, paginationState, loadingFolders, loadFoldersForFolder, itemsPerPage, itemPaginationMode, itemPaginationState, loadingItems, loadItemsForFolder, renderItemNode, showItemCount, lastClickedFolder, loadAllItems])
 
         // Render collection (must be defined after renderFolderNode)
         const renderCollectionNode = useCallback((collection: Collection) => {
@@ -871,20 +648,42 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
             // Note: Collections don't have direct items - items are in folders
             const isSelected = selectedResource?._id === collection._id && selectedResource?.type === 'collection'
 
+            // Collections don't have direct items, so itemCount is undefined
+            const itemCount = undefined
+
+            // Determine if collection has children (folders)
+            // Show triangle only if:
+            // 1. Has folders, OR
+            // 2. Might have more folders (pagination), OR
+            // 3. Haven't checked yet (optimistic - show triangle until we know)
+            const hasFolders = collectionFolders.length > 0
+            const mightHaveMoreFolders = paginationState[collection._id]?.hasMore === true
+            const hasBeenChecked = paginationState[collection._id]?.loaded === true
+
+            const hasChildren = hasFolders || mightHaveMoreFolders || !hasBeenChecked
+
             if (renderCollection) {
-                return renderCollection(collection, isExpanded, () => toggleCollection(collection))
+                return renderCollection(collection, isExpanded, () => toggleCollection(collection), itemCount)
             }
 
             return (
                 <div key={collection._id} className="bdsa-folder-browser__collection">
                     <div
                         className={`bdsa-folder-browser__folder-header ${isSelected ? 'selected' : ''}`}
-                        onClick={() => toggleCollection(collection)}
-                        onDoubleClick={() => handleResourceSelect(collection, 'collection')}
+                        onClick={() => handleResourceSelect(collection, 'collection')}
+                        onDoubleClick={() => toggleCollection(collection)}
+                        data-resource-id={collection._id}
                     >
-                        <span className={`bdsa-folder-browser__folder-icon ${isExpanded ? 'expanded' : ''}`}>
-                            {isExpanded ? '📂' : '📁'}
-                        </span>
+                        {hasChildren && (
+                            <span
+                                className={`bdsa-folder-browser__folder-icon ${isExpanded ? 'expanded' : ''}`}
+                                onClick={() => toggleCollection(collection)}
+                                style={{ cursor: 'pointer' }}
+                            ></span>
+                        )}
+                        {!hasChildren && (
+                            <span className="bdsa-folder-browser__folder-icon-spacer"></span>
+                        )}
                         <span className="bdsa-folder-browser__folder-name">{collection.name}</span>
                         <span className="bdsa-folder-browser__folder-type">Collection</span>
                     </div>
@@ -892,7 +691,11 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                     {isExpanded && (
                         <div className="bdsa-folder-browser__folder-contents">
                             {/* Render folders in this collection */}
-                            {collectionFolders.map(folder => renderFolderNode(folder, 1))}
+                            {collectionFolders.map(folder => (
+                                <React.Fragment key={folder._id}>
+                                    {renderFolderNode(folder, 1)}
+                                </React.Fragment>
+                            ))}
                             {/* Note: Collections don't have direct items - items are in folders */}
                             {/* Load More button for folders if pagination is enabled and there are more folders */}
                             {foldersPerPage > 0 && paginationState[collection._id]?.hasMore && !loadingFolders[collection._id] && (
@@ -913,7 +716,7 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
         }, [expandedCollections, folders, selectedResource, renderCollection, toggleCollection, handleResourceSelect, foldersPerPage, paginationState, loadingFolders, loadFoldersForCollection, renderFolderNode])
 
         return (
-            <div 
+            <div
                 ref={(node) => {
                     // Support both forwarded ref and internal ref
                     if (typeof ref === 'function') {
@@ -928,8 +731,8 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                 {loading && (
                     <div className="bdsa-folder-browser__loading">
                         <span>
-                            {rootId && rootType 
-                                ? `Loading ${rootType}...` 
+                            {rootId && rootType
+                                ? `Loading ${rootType}...`
                                 : 'Loading collections...'}
                         </span>
                     </div>
@@ -969,7 +772,11 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                                         <span>No collections found</span>
                                     </div>
                                 ) : (
-                                    collections.map(collection => renderCollectionNode(collection))
+                                    collections.map(collection => (
+                                        <React.Fragment key={collection._id}>
+                                            {renderCollectionNode(collection)}
+                                        </React.Fragment>
+                                    ))
                                 )}
                             </div>
                         )}

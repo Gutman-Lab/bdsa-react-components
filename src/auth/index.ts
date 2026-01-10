@@ -4,6 +4,8 @@
  */
 
 export { dsaAuthStore } from './DsaAuthStore'
-export { useDsaAuth } from './useDsaAuth'
+export { useDsaAuth as useDsaAuthHook } from './useDsaAuth'
+export { DsaAuthProvider, useDsaAuth, useDsaToken } from './DsaAuthProvider'
 export type { DsaAuthConfig, DsaUserInfo, DsaAuthStatus, DsaAuthResponse, DsaAuthListener } from './types'
+export type { DsaAuthContextValue, DsaAuthProviderProps } from './DsaAuthProvider'
 
