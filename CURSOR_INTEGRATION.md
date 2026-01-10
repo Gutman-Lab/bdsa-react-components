@@ -1,6 +1,6 @@
 # bdsa-react-components - CURSOR Integration Guide
 
-**Version:** 0.1.23 | **Generated:** 2026-01-10T22:19:32.023Z
+**Version:** 0.1.24 | **Generated:** 2026-01-10T22:20:17.519Z
 
 > This document provides everything Cursor needs to integrate and use the bdsa-react-components library.
 > Copy this entire document into your project's .cursorrules or docs folder.
