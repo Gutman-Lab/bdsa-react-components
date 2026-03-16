@@ -1,6 +1,6 @@
 {
     "name": "bdsa-react-components",
-    "version": "0.1.25",
+    "version": "0.2.0",
     "description": "Reusable React components for the Digital Slide Archive project",
     "type": "module",
     "main": "./dist/index.cjs",
@@ -35,7 +35,7 @@
         "build-storybook": "storybook build",
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "generate:cursor-doc": "node scripts/generate-cursor-doc.js",
-        "version": "npm run build && git add -f dist",
+        "version": "npm run build",
         "postversion": "git push && git push --tags",
         "postinstall": "patch-package"
     },
