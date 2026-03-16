@@ -1,4 +1,4 @@
-// Export all components from here
+// Components
 export { Button } from './components/Button/Button'
 export type { ButtonProps } from './components/Button/Button'
 
@@ -32,63 +32,15 @@ export type {
 export { DsaAuthManager } from './components/DsaAuthManager/DsaAuthManager'
 export type { DsaAuthManagerProps } from './components/DsaAuthManager/DsaAuthManager'
 
-// Export cache implementations
-export {
-    MemoryAnnotationCache,
-    IndexedDBAnnotationCache,
-    type AnnotationCache,
-    checkIndexedDBQuota,
-    requestPersistentStorage,
-    logQuotaInfo,
-    formatBytes,
-} from './cache'
-
-// Export authentication utilities
-export {
-    dsaAuthStore,
-    useDsaAuthHook, // Legacy hook (use useDsaAuth from DsaAuthProvider instead)
-    DsaAuthProvider, // New context provider for API key → token pattern
-    useDsaAuth, // New context hook (use within DsaAuthProvider)
-    useDsaToken, // New hook to get just the token
-    type DsaAuthConfig,
-    type DsaUserInfo,
-    type DsaAuthStatus,
-    type DsaAuthResponse,
-    type DsaAuthListener,
-    type DsaAuthContextValue,
-    type DsaAuthProviderProps,
-} from './auth'
-
-// Export Paper.js runtime patches
-export { applyPaperJsPatches } from './utils/patchOsdPaperjs'
-
-// Export item utilities
-export { hasLargeImage, filterLargeImages, isAIModel, filterAIModels, type Item } from './utils/itemUtils'
-export { createDebugLogger, type DebugLogger } from './utils/debugLog'
-
-// Export annotation format utilities
-export {
-    extractAnnotationElements,
-    detectAnnotationFormat,
-    geoJSONToDSAElements,
-    geoJSONFeatureToDSAElement,
-    isGeoJSONFeatureCollection,
-    isDSAAnnotation,
-    type DSAElement,
-} from './utils/annotationFormats'
-
-// Export thumbnail browser components
 export { FolderThumbnailBrowser } from './components/FolderThumbnailBrowser/FolderThumbnailBrowser'
 export type { FolderThumbnailBrowserProps } from './components/FolderThumbnailBrowser/FolderThumbnailBrowser'
 
 export { ThumbnailViewer, updateThumbnailOpacity, getThumbnailOpacity, clearThumbnailOpacities } from './components/ThumbnailViewer/ThumbnailViewer'
 export type { ThumbnailViewerProps } from './components/ThumbnailViewer/ThumbnailViewer'
 
-// Export basic thumbnail grid (no OpenSeadragon)
 export { ThumbnailGrid } from './components/ThumbnailGrid/ThumbnailGrid'
 export type { ThumbnailGridProps } from './components/ThumbnailGrid/ThumbnailGrid'
 
-// Export Protocol Manager components
 export { ProtocolProvider, useProtocols } from './components/ProtocolManager/ProtocolContext'
 export { ProtocolCard } from './components/ProtocolManager/ProtocolCard'
 export { ProtocolList } from './components/ProtocolManager/ProtocolList'
@@ -116,7 +68,46 @@ export type {
     ProtocolsTabProps,
 } from './components/ProtocolManager/ProtocolManager.types'
 
-// Export error handling types
+// Authentication — use DsaAuthProvider/useDsaAuth for new code; useDsaAuthHook is legacy
+export {
+    dsaAuthStore,
+    useDsaAuthHook,
+    DsaAuthProvider,
+    useDsaAuth,
+    useDsaToken,
+    type DsaAuthConfig,
+    type DsaUserInfo,
+    type DsaAuthStatus,
+    type DsaAuthResponse,
+    type DsaAuthListener,
+    type DsaAuthContextValue,
+    type DsaAuthProviderProps,
+} from './auth'
+
+// Annotation caching (IndexedDB-backed by default, memory fallback available)
+export {
+    MemoryAnnotationCache,
+    IndexedDBAnnotationCache,
+    type AnnotationCache,
+    checkIndexedDBQuota,
+    requestPersistentStorage,
+    logQuotaInfo,
+    formatBytes,
+} from './cache'
+
+// Utilities
+export { applyPaperJsPatches } from './utils/patchOsdPaperjs'
+export { hasLargeImage, filterLargeImages, isAIModel, filterAIModels, type Item } from './utils/itemUtils'
+export { createDebugLogger, type DebugLogger } from './utils/debugLog'
+export {
+    extractAnnotationElements,
+    detectAnnotationFormat,
+    geoJSONToDSAElements,
+    geoJSONFeatureToDSAElement,
+    isGeoJSONFeatureCollection,
+    isDSAAnnotation,
+    type DSAElement,
+} from './utils/annotationFormats'
 export type {
     ApiError,
     ApiErrorContext,

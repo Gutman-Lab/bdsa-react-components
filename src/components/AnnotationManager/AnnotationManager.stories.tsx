@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react-vite'
 import React, { useState, useCallback, useMemo, useRef } from 'react'
 import { AnnotationManager, type AnnotationSearchResult } from './AnnotationManager'
 import { SlideViewer, SlideImageInfo } from '../SlideViewer/SlideViewer'

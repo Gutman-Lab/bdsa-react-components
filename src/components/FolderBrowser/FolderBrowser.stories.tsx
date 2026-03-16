@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { FolderBrowser, type Resource, type ApiError } from './FolderBrowser'
 import { DsaAuthManager } from '../DsaAuthManager/DsaAuthManager'

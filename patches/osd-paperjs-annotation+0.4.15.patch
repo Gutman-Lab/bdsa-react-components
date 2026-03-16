@@ -1,5 +1,5 @@
 diff --git a/node_modules/osd-paperjs-annotation/src/js/paper-overlay.mjs b/node_modules/osd-paperjs-annotation/src/js/paper-overlay.mjs
-index 5f5aa6e..fb7937f 100644
+index 4da0f9c..d710389 100644
 --- a/node_modules/osd-paperjs-annotation/src/js/paper-overlay.mjs
 +++ b/node_modules/osd-paperjs-annotation/src/js/paper-overlay.mjs
 @@ -200,7 +200,14 @@ class PaperOverlay extends OpenSeadragon.EventSource{

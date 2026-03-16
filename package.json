@@ -33,7 +33,7 @@
         "storybook": "storybook dev -p 6006",
         "build-storybook": "storybook build",
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-"version": "npm run build",
+        "version": "npm run build",
         "postversion": "git push && git push --tags",
         "postinstall": "patch-package"
     },
@@ -49,13 +49,9 @@
         "postinstall-postinstall": "^2.1.0"
     },
     "devDependencies": {
-        "@storybook/addon-essentials": "^7.6.0",
-        "@storybook/addon-interactions": "^7.6.0",
-        "@storybook/addon-links": "^7.6.0",
-        "@storybook/blocks": "^7.6.0",
-        "@storybook/react": "^7.6.0",
-        "@storybook/react-vite": "^7.6.0",
-        "@storybook/testing-library": "^0.2.2",
+        "@storybook/addon-links": "^10.2.19",
+        "@storybook/react": "^10.2.19",
+        "@storybook/react-vite": "^10.2.19",
         "@testing-library/jest-dom": "^6.1.5",
         "@testing-library/react": "^14.1.2",
         "@testing-library/user-event": "^14.5.1",
@@ -72,15 +68,16 @@
         "eslint": "^8.55.0",
         "eslint-plugin-react-hooks": "^4.6.0",
         "eslint-plugin-react-refresh": "^0.4.5",
-        "eslint-plugin-storybook": "^0.6.15",
+        "eslint-plugin-storybook": "^10.2.19",
         "jsdom": "^23.0.1",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
-        "storybook": "^7.6.0",
+        "storybook": "^10.2.19",
         "typescript": "^5.3.3",
         "vite": "^5.0.8",
         "vite-plugin-dts": "^3.7.0",
-        "vitest": "^1.0.4"
+        "vitest": "^1.0.4",
+        "@storybook/addon-docs": "^10.2.19"
     },
     "keywords": [
         "react",

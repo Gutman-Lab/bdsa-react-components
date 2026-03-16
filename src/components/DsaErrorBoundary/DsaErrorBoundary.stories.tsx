@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { DsaErrorBoundary } from './DsaErrorBoundary'
 import { FolderBrowser } from '../FolderBrowser/FolderBrowser'
