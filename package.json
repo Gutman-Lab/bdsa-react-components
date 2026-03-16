@@ -19,7 +19,7 @@
         "patches",
         "README.md",
         "CHANGELOG.md",
-        "INTEGRATION.md"
+        "LICENSE"
     ],
     "scripts": {
         "dev": "vite",
