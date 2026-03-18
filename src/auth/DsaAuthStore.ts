@@ -179,6 +179,9 @@ class DsaAuthStore {
 
   // Configuration
   updateConfig(newConfig: Partial<DsaAuthConfig>): void {
+    if (newConfig.baseUrl) {
+      newConfig.baseUrl = newConfig.baseUrl.replace(/\/+$/, '')
+    }
     this.config = { ...this.config, ...newConfig }
     this.saveConfig()
     this.notify()
