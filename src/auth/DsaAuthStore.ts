@@ -172,7 +172,7 @@ class DsaAuthStore {
       }
     } catch (error) {
       console.error('Token validation error:', error)
-      this.logout()
+      // Network error - can't verify, but don't destroy the session
       return false
     }
   }
