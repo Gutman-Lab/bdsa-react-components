@@ -45,6 +45,7 @@
         "react-dom": "^18.0.0"
     },
     "dependencies": {
+        "lucide-react": "^0.577.0",
         "patch-package": "^8.0.1",
         "postinstall-postinstall": "^2.1.0"
     },

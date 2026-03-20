@@ -1,0 +1,126 @@
+.folder-browser {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  background-color: #fefce8;
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.folder-browser__scroll {
+  overflow: auto;
+  flex: 1;
+}
+
+.folder-browser--collapsed {
+  overflow: hidden;
+  cursor: pointer;
+  align-items: center;
+  padding-top: 0.5rem;
+  color: #555;
+}
+
+.folder-browser--collapsed:hover {
+  background-color: #fef9c3;
+}
+
+.folder-browser__resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.folder-browser__resize-handle:hover {
+  background-color: rgba(59, 130, 246, 0.25);
+}
+
+.folder-browser__header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #444;
+  border-bottom: 1px solid #ddd;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.folder-browser__empty {
+  padding: 0.5rem 1rem;
+  color: #888;
+  white-space: nowrap;
+}
+
+.folder-browser__item-folder-icon {
+  flex-shrink: 0;
+}
+
+.folder-browser__collection {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 1rem;
+  cursor: pointer;
+  user-select: none;
+  background-color: #fefce8;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.folder-browser__collection:hover {
+  background-color: #fef9c3;
+}
+
+.folder-browser__collection.selected {
+  background-color: #fef08a;
+  font-weight: 500;
+}
+
+.folder-browser__folder {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 1rem 0.35rem 0;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.folder-browser__folder:hover {
+  background-color: #fef9c3;
+}
+
+.folder-browser__item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 1rem 0.35rem 0;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.folder-browser__item:hover {
+  background-color: #fef9c3;
+}
+
+.folder-browser__item-icon {
+  flex-shrink: 0;
+  color: #666;
+}
+
+.folder-browser__node-loading {
+  padding: 0.35rem 1rem;
+  color: #888;
+  font-size: 0.8rem;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
