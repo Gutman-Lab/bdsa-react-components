@@ -12,6 +12,7 @@ interface TreeNodeProps {
   /** Called when a folder row is clicked to expand/collapse it */
   onToggle: (id: string) => void
   onItemSelect?: (item: Item) => void
+  selectedItemId?: string
 }
 
 export function TreeNode({
@@ -23,6 +24,7 @@ export function TreeNode({
   allowedExtensions = [],
   onToggle,
   onItemSelect,
+  selectedItemId,
 }: TreeNodeProps) {
   const indentStyle = { paddingLeft: `${depth * 1.25 + 0.75}rem` }
 
@@ -78,6 +80,7 @@ export function TreeNode({
               allowedExtensions={allowedExtensions}
               onToggle={onToggle}
               onItemSelect={onItemSelect}
+              selectedItemId={selectedItemId}
             />
           )}
         </div>
@@ -85,7 +88,7 @@ export function TreeNode({
       {visibleItems.map((item: Item) => (
         <div
           key={item._id}
-          className="folder-browser__item"
+          className={`folder-browser__item${item._id === selectedItemId ? ' folder-browser__item--selected' : ''}`}
           style={indentStyle}
           onClick={() => onItemSelect?.(item)}
         >
