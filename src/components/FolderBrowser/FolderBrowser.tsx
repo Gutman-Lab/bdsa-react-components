@@ -15,6 +15,7 @@ export interface FolderBrowserSyntheticData {
 
 interface FolderBrowserProps {
   onItemSelect?: (item: Item) => void
+  selectedItemId?: string
   /** Only show items whose filename extension matches this list. Empty array shows all items. */
   allowedExtensions?: string[]
   className?: string
@@ -24,7 +25,7 @@ interface FolderBrowserProps {
   syntheticData?: FolderBrowserSyntheticData
 }
 
-export function FolderBrowser({ onItemSelect, allowedExtensions = [], className = '', style, defaultWidth = 250, syntheticData }: FolderBrowserProps) {
+export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions = [], className = '', style, defaultWidth = 250, syntheticData }: FolderBrowserProps) {
   const [collections, setCollections] = useState<Collection[]>(() => syntheticData?.collections ?? [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -170,6 +171,7 @@ export function FolderBrowser({ onItemSelect, allowedExtensions = [], className 
                 allowedExtensions={allowedExtensions}
                 onToggle={id => toggleNode(id, 'folder')}
                 onItemSelect={onItemSelect}
+                selectedItemId={selectedItemId}
               />
             )}
           </div>
