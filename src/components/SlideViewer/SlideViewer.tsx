@@ -350,26 +350,34 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                 // GeoJSON FeatureCollection
                 return annotations.features
                     .map((feature: Feature) => {
-                        if (feature.geometry.type === 'Polygon') {
-                            const coords = feature.geometry.coordinates[0]
-                            if (coords.length >= 4) {
-                                const [left, top] = coords[0]
-                                const [rightX, , , bottomY] = coords[2]
-                                const width = rightX - left
-                                const height = bottomY - top
+                        if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'LineString') {
+                            const ring = feature.geometry.type === 'Polygon'
+                                ? feature.geometry.coordinates[0]
+                                : feature.geometry.coordinates
+                            const points = ring as Array<[number, number]>
+                            if (points.length < 2) return null
 
-                                return {
-                                    id: feature.id || feature.properties?.id,
-                                    left,
-                                    top,
-                                    width,
-                                    height,
-                                    color: feature.properties?.color || defaultAnnotationColor,
-                                    group: feature.properties?.group,
-                                    label: feature.properties?.label,
-                                    ...feature.properties,
-                                } as AnnotationFeature
-                            }
+                            const xs = points.map(p => p[0])
+                            const ys = points.map(p => p[1])
+                            const left = Math.min(...xs)
+                            const top = Math.min(...ys)
+                            const width = Math.max(...xs) - left
+                            const height = Math.max(...ys) - top
+
+                            return {
+                                id: feature.id || feature.properties?.id,
+                                left,
+                                top,
+                                width,
+                                height,
+                                color: (feature.properties?.lineColor as string) || (feature.properties?.color as string) || defaultAnnotationColor,
+                                fillColor: (feature.properties?.fillColor as string) || 'rgba(0,0,0,0)',
+                                group: feature.properties?.group,
+                                label: feature.properties?.label,
+                                annotationType: 'polyline' as const,
+                                points,
+                                closed: feature.geometry.type === 'Polygon',
+                            } as AnnotationFeature
                         }
                         return null
                     })

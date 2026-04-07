@@ -220,7 +220,7 @@ export function useAnnotationRendering(
                     const strokeColor = annotation.color || defaultAnnotationColor
                     rectPath.strokeColor = applyOpacity(strokeColor, annotationSpecificOpacity)
                     rectPath.strokeWidth = strokeWidth
-                    rectPath.fillColor = applyOpacity('rgba(0, 0, 0, 0)', annotationSpecificOpacity) // Transparent fill by default
+                    rectPath.fillColor = null // transparent fill
 
                     paperItem = rectPath as any
                 }
