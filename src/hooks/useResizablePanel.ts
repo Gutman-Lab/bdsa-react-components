@@ -3,6 +3,7 @@ import { useState, useRef } from 'react'
 interface UseResizablePanelOptions {
   defaultWidth?: number
   minWidth?: number
+  side?: 'left' | 'right'
 }
 
 interface UseResizablePanelResult {
@@ -20,6 +21,7 @@ interface UseResizablePanelResult {
 export function useResizablePanel({
   defaultWidth = 250,
   minWidth = 150,
+  side = 'left',
 }: UseResizablePanelOptions = {}): UseResizablePanelResult {
   const [width, setWidth] = useState(defaultWidth)
   const [collapsed, setCollapsed] = useState(false)
@@ -31,16 +33,14 @@ export function useResizablePanel({
 
     function onMouseMove(e: MouseEvent) {
       if (!dragRef.current) return
-      const delta = e.clientX - dragRef.current.startX
+      const rawDelta = e.clientX - dragRef.current.startX
+      const delta = side === 'right' ? -rawDelta : rawDelta
       // Only count as a drag after 3px of movement to distinguish from a click
       if (Math.abs(delta) > 3) dragRef.current.moved = true
       setWidth(Math.max(minWidth, dragRef.current.startWidth + delta))
     }
 
     function onMouseUp() {
-      if (dragRef.current && !dragRef.current.moved) {
-        setCollapsed(true)
-      }
       dragRef.current = null
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)

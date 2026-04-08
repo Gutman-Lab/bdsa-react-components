@@ -1,0 +1,94 @@
+.annotation-browser {
+  display: flex;
+  flex-direction: column;
+  font-size: 1rem;
+  background-color: #f8fafc;
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.annotation-browser__scroll {
+  overflow: auto;
+  flex: 1;
+}
+
+.annotation-browser--collapsed {
+  overflow: hidden;
+  align-items: center;
+  padding: 0.5rem 0;
+  color: #555;
+}
+
+.annotation-browser__collapsed-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-size: 1rem;
+  font-weight: 600;
+  color: #444;
+  white-space: nowrap;
+  margin-top: 0.75rem;
+  user-select: none;
+}
+
+.annotation-browser__resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.annotation-browser__resize-handle:hover {
+  background-color: rgba(59, 130, 246, 0.25);
+}
+
+.annotation-browser__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #444;
+  border-bottom: 1px solid #ddd;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.annotation-browser__collapse-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  color: #666;
+  border-radius: 4px;
+}
+
+.annotation-browser__collapse-btn:hover {
+  color: #222;
+  background-color: rgba(0, 0, 0, 0.07);
+}
+
+.annotation-browser__empty {
+  padding: 0.5rem 1rem;
+  color: #888;
+}
+
+.annotation-browser__section {
+  padding: 0.5rem 1rem;
+}
+
+.annotation-browser__select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.95rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #fff;
+  cursor: pointer;
+}

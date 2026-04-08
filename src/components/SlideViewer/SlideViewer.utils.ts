@@ -94,16 +94,17 @@ export function applyOpacity(color: string, opacity: number): string {
     
     // Always convert to rgba for consistent rendering, even at 100%
     if (color.startsWith('rgba(')) {
-        // Extract RGB values, ignore existing alpha
+        // Multiply existing alpha by opacity to preserve original transparency
         const match = color.match(/(\d+(?:\.\d+)?)/g)
-        if (match && match.length >= 3) {
+        if (match && match.length >= 4) {
             const r = match[0]
             const g = match[1]
             const b = match[2]
-            return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`
+            const originalAlpha = parseFloat(match[3])
+            return `rgba(${r}, ${g}, ${b}, ${originalAlpha * clampedOpacity})`
         }
     } else if (color.startsWith('rgb(')) {
-        // Extract RGB values from rgb() format
+        // No existing alpha — apply opacity directly
         const match = color.match(/(\d+(?:\.\d+)?)/g)
         if (match && match.length >= 3) {
             const r = match[0]

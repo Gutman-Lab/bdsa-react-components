@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaperOverlay, AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { FeatureCollection, Feature } from 'geojson'
+import OpenSeadragon from 'openseadragon'
 import type { Viewer as OpenSeadragonViewer } from 'openseadragon'
 import { IndexedDBAnnotationCache } from '../../cache'
 import { applyPaperJsPatches } from '../../utils/patchOsdPaperjs'
@@ -57,6 +58,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             onApiError,
             overlayTileSources = [],
             debug = false,
+            showInfoBar = false,
         },
         ref
     ) => {
@@ -350,26 +352,34 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                 // GeoJSON FeatureCollection
                 return annotations.features
                     .map((feature: Feature) => {
-                        if (feature.geometry.type === 'Polygon') {
-                            const coords = feature.geometry.coordinates[0]
-                            if (coords.length >= 4) {
-                                const [left, top] = coords[0]
-                                const [rightX, , , bottomY] = coords[2]
-                                const width = rightX - left
-                                const height = bottomY - top
+                        if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'LineString') {
+                            const ring = feature.geometry.type === 'Polygon'
+                                ? feature.geometry.coordinates[0]
+                                : feature.geometry.coordinates
+                            const points = ring as Array<[number, number]>
+                            if (points.length < 2) return null
 
-                                return {
-                                    id: feature.id || feature.properties?.id,
-                                    left,
-                                    top,
-                                    width,
-                                    height,
-                                    color: feature.properties?.color || defaultAnnotationColor,
-                                    group: feature.properties?.group,
-                                    label: feature.properties?.label,
-                                    ...feature.properties,
-                                } as AnnotationFeature
-                            }
+                            const xs = points.map(p => p[0])
+                            const ys = points.map(p => p[1])
+                            const left = Math.min(...xs)
+                            const top = Math.min(...ys)
+                            const width = Math.max(...xs) - left
+                            const height = Math.max(...ys) - top
+
+                            return {
+                                id: feature.id || feature.properties?.id,
+                                left,
+                                top,
+                                width,
+                                height,
+                                color: (feature.properties?.lineColor as string) || (feature.properties?.color as string) || defaultAnnotationColor,
+                                fillColor: (feature.properties?.fillColor as string) || 'rgba(0,0,0,0)',
+                                group: feature.properties?.group,
+                                label: feature.properties?.label,
+                                annotationType: 'polyline' as const,
+                                points,
+                                closed: feature.geometry.type === 'Polygon',
+                            } as AnnotationFeature
                         }
                         return null
                     })
@@ -509,6 +519,38 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             }
         }, [annotationInfoConfig])
 
+        // Info bar state: mouse image coordinates and current zoom level
+        const [mouseImagePos, setMouseImagePos] = useState<{ x: number; y: number } | null>(null)
+        const [currentZoom, setCurrentZoom] = useState<number | null>(null)
+
+        useEffect(() => {
+            if (!viewer || !showInfoBar) return
+
+            // Use OSD's own MouseTracker — same approach as the archive app.
+            // Native DOM listeners don't work because the Paper.js canvas overlay
+            // intercepts pointer events before they reach viewer.canvas.
+            const mouseTracker = new (OpenSeadragon as any).MouseTracker({
+                element: (viewer as any).canvas,
+                moveHandler: (event: any) => {
+                    try {
+                        const pt = (viewer.viewport as any).viewerElementToImageCoordinates(event.position)
+                        setMouseImagePos({ x: Math.round(pt.x), y: Math.round(pt.y) })
+                    } catch (_) {}
+                },
+                exitHandler: () => setMouseImagePos(null),
+            })
+            mouseTracker.setTracking(true)
+
+            const handleZoom = (event: any) => setCurrentZoom(Math.round(event.zoom * 10) / 10)
+            try { setCurrentZoom(Math.round(viewer.viewport.getZoom() * 10) / 10) } catch (_) {}
+            viewer.addHandler('zoom', handleZoom)
+
+            return () => {
+                mouseTracker.destroy()
+                viewer.removeHandler('zoom', handleZoom)
+            }
+        }, [viewer, showInfoBar])
+
         const containerStyle: React.CSSProperties = {
             width: typeof width === 'number' ? `${width}px` : width,
             height: typeof height === 'number' ? `${height}px` : height,
@@ -520,7 +562,32 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                 className={`bdsa-slide-viewer ${className}`}
                 style={containerStyle}
             >
-                <div ref={containerRef} className="bdsa-slide-viewer__container" />
+                <div className="bdsa-slide-viewer__viewer-area">
+                    {showInfoBar && (
+                        <div className="bdsa-slide-viewer__info-bar">
+                            <div className="bdsa-slide-viewer__info-bar-left">
+                                <span className="bdsa-slide-viewer__mouse-coords">
+                                    X: {mouseImagePos ? mouseImagePos.x : '--'}&nbsp;&nbsp;Y: {mouseImagePos ? mouseImagePos.y : '--'}
+                                </span>
+                                <span className="bdsa-slide-viewer__zoom-display">
+                                    {currentZoom !== null ? `${currentZoom}x` : '--'}
+                                </span>
+                            </div>
+                            <div className="bdsa-slide-viewer__zoom-buttons">
+                                {[1, 5, 10, 20].map(level => (
+                                    <button
+                                        key={level}
+                                        className="bdsa-slide-viewer__zoom-btn"
+                                        onClick={() => viewer?.viewport.zoomTo(level)}
+                                    >
+                                        {level}x
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    <div ref={containerRef} className="bdsa-slide-viewer__container" />
+                </div>
                 {(showAnnotationInfo || showAnnotationControls) && (
                     <div className="bdsa-slide-viewer__sidebar">
                         {showAnnotationControls && (
