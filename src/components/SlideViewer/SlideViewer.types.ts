@@ -396,6 +396,8 @@ export interface SlideViewerProps {
     overlayTileSources?: OverlayTileSource[]
     /** If true, enables debug logging to console. Default: false */
     debug?: boolean
+    /** Show a toolbar above the viewer with mouse coordinates, current zoom, and preset zoom buttons (1x/5x/10x/20x). Default: false */
+    showInfoBar?: boolean
 }
 
 

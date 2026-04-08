@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Network, Folder, FolderLock, Play, ChevronRight } from 'lucide-react'
+import { Network, Folder, FolderLock, Play, ChevronLeft, ChevronRight } from 'lucide-react'
 import { dsaAuthStore } from '../../auth/DsaAuthStore'
 import { useResizablePanel } from '../../hooks/useResizablePanel'
 import { TreeNode } from './TreeNode'
@@ -115,11 +115,12 @@ export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions 
     return (
       <div
         className={`folder-browser folder-browser--collapsed ${className}`}
-        style={{ ...style, width: '28px', minWidth: '28px' }}
-        onClick={() => setCollapsed(false)}
-        title="Expand panel"
+        style={{ ...style, width: '36px', minWidth: '36px' }}
       >
-        <ChevronRight size={16} />
+        <button className="folder-browser__collapse-btn" onClick={() => setCollapsed(false)} title="Expand panel">
+          <ChevronRight size={22} />
+        </button>
+        <span className="folder-browser__collapsed-label">Folder Browser</span>
       </div>
     )
   }
@@ -130,8 +131,13 @@ export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions 
       style={{ ...style, width: `${width}px`, minWidth: `${width}px` }}
     >
       <div className="folder-browser__header">
-        <Network size={16} />
-        Collections
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <Network size={16} />
+          Collections
+        </div>
+        <button className="folder-browser__collapse-btn" onClick={() => setCollapsed(true)} title="Collapse panel">
+          <ChevronLeft size={22} />
+        </button>
       </div>
       <div className="folder-browser__scroll">
         {loading && <div className="folder-browser__empty">Loading...</div>}

@@ -80,6 +80,9 @@ export function useSlideViewerInitialization(
                     crossOriginPolicy: 'Anonymous',
                     autoHideControls: false,
                     debugMode: false,
+                    // Allow zooming out very far (matches archive app behavior)
+                    minZoomImageRatio: 0.01,
+                    maxZoomPixelRatio: 16,
                     // Enable navigation controls by default
                     showNavigator: true,
                     showZoomControl: true,

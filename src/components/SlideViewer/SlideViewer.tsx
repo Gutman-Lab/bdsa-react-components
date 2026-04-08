@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaperOverlay, AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { FeatureCollection, Feature } from 'geojson'
+import OpenSeadragon from 'openseadragon'
 import type { Viewer as OpenSeadragonViewer } from 'openseadragon'
 import { IndexedDBAnnotationCache } from '../../cache'
 import { applyPaperJsPatches } from '../../utils/patchOsdPaperjs'
@@ -57,6 +58,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             onApiError,
             overlayTileSources = [],
             debug = false,
+            showInfoBar = false,
         },
         ref
     ) => {
@@ -517,6 +519,38 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             }
         }, [annotationInfoConfig])
 
+        // Info bar state: mouse image coordinates and current zoom level
+        const [mouseImagePos, setMouseImagePos] = useState<{ x: number; y: number } | null>(null)
+        const [currentZoom, setCurrentZoom] = useState<number | null>(null)
+
+        useEffect(() => {
+            if (!viewer || !showInfoBar) return
+
+            // Use OSD's own MouseTracker — same approach as the archive app.
+            // Native DOM listeners don't work because the Paper.js canvas overlay
+            // intercepts pointer events before they reach viewer.canvas.
+            const mouseTracker = new (OpenSeadragon as any).MouseTracker({
+                element: (viewer as any).canvas,
+                moveHandler: (event: any) => {
+                    try {
+                        const pt = (viewer.viewport as any).viewerElementToImageCoordinates(event.position)
+                        setMouseImagePos({ x: Math.round(pt.x), y: Math.round(pt.y) })
+                    } catch (_) {}
+                },
+                exitHandler: () => setMouseImagePos(null),
+            })
+            mouseTracker.setTracking(true)
+
+            const handleZoom = (event: any) => setCurrentZoom(Math.round(event.zoom * 10) / 10)
+            try { setCurrentZoom(Math.round(viewer.viewport.getZoom() * 10) / 10) } catch (_) {}
+            viewer.addHandler('zoom', handleZoom)
+
+            return () => {
+                mouseTracker.destroy()
+                viewer.removeHandler('zoom', handleZoom)
+            }
+        }, [viewer, showInfoBar])
+
         const containerStyle: React.CSSProperties = {
             width: typeof width === 'number' ? `${width}px` : width,
             height: typeof height === 'number' ? `${height}px` : height,
@@ -528,7 +562,32 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                 className={`bdsa-slide-viewer ${className}`}
                 style={containerStyle}
             >
-                <div ref={containerRef} className="bdsa-slide-viewer__container" />
+                <div className="bdsa-slide-viewer__viewer-area">
+                    {showInfoBar && (
+                        <div className="bdsa-slide-viewer__info-bar">
+                            <div className="bdsa-slide-viewer__info-bar-left">
+                                <span className="bdsa-slide-viewer__mouse-coords">
+                                    X: {mouseImagePos ? mouseImagePos.x : '--'}&nbsp;&nbsp;Y: {mouseImagePos ? mouseImagePos.y : '--'}
+                                </span>
+                                <span className="bdsa-slide-viewer__zoom-display">
+                                    {currentZoom !== null ? `${currentZoom}x` : '--'}
+                                </span>
+                            </div>
+                            <div className="bdsa-slide-viewer__zoom-buttons">
+                                {[1, 5, 10, 20].map(level => (
+                                    <button
+                                        key={level}
+                                        className="bdsa-slide-viewer__zoom-btn"
+                                        onClick={() => viewer?.viewport.zoomTo(level)}
+                                    >
+                                        {level}x
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    <div ref={containerRef} className="bdsa-slide-viewer__container" />
+                </div>
                 {(showAnnotationInfo || showAnnotationControls) && (
                     <div className="bdsa-slide-viewer__sidebar">
                         {showAnnotationControls && (
