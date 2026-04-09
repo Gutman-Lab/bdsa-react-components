@@ -4,6 +4,7 @@ import { SlideViewer } from '../SlideViewer/SlideViewer'
 import type {
     AnnotationEditorProps,
     EditorMode,
+    WorkflowMode,
     LocalAnnotationDocument,
     LocalAnnotationElement,
 } from './AnnotationEditor.types'
@@ -85,6 +86,7 @@ export function AnnotationEditor({
 }: AnnotationEditorProps) {
     const [selectedRoiIndex, setSelectedRoiIndex] = useState<number>(-1)
     const [markComplete, setMarkComplete] = useState(false)
+    const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('edit-rois')
     const [activeMode, setActiveMode] = useState<EditorMode | null>(null)
     const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
     // DSA document ID — null until saved/loaded for the first time
@@ -92,12 +94,23 @@ export function AnnotationEditor({
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
     const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
     const [isLoadingAnnotation, setIsLoadingAnnotation] = useState(false)
+    // Fixed-size ROI placement
+    const [fixedSizeEnabled, setFixedSizeEnabled] = useState(false)
+    const [fixedWidth, setFixedWidth] = useState(() => config.roiSettings?.width ?? 1000)
+    const [fixedHeight, setFixedHeight] = useState(() => config.roiSettings?.height ?? 1000)
 
     // The AnnotationToolkit instance provided by SlideViewer
     const [toolkit, setToolkit] = useState<AnnotationToolkit | null>(null)
 
     // The annotation document held in memory (not yet pushed to DSA)
     const [localDocument, setLocalDocument] = useState<LocalAnnotationDocument | null>(null)
+
+    // Annotation type selector
+    const annotationTypes = config.annotationTypes ?? []
+    const [selectedTypeIndex, setSelectedTypeIndex] = useState(0)
+    const selectedTypeIndexRef = useRef(0)
+    // Tracks whether the add-labels drawing loop is still active
+    const addLabelsActiveRef = useRef(false)
 
     // Paper.js item for the ROI currently being placed or edited (not yet committed)
     const pendingRoiItemRef = useRef<any>(null)
@@ -109,6 +122,9 @@ export function AnnotationEditor({
     const originalSegmentsRef = useRef<{ x: number; y: number }[] | null>(null)
     // Label of a newly finished ROI so we can auto-select it in the dropdown
     const pendingSelectLabelRef = useRef<string | null>(null)
+    // Refs to always-current values for use inside event-handler closures
+    const localDocumentRef = useRef<LocalAnnotationDocument | null>(localDocument)
+    const addRoiRef = useRef<(left: number, top: number, width: number, height: number) => void>(null as any)
 
     // ── Register tools once when toolkit is ready ─────────────────────────
     useEffect(() => {
@@ -298,12 +314,159 @@ export function AnnotationEditor({
                           elements: [newElement],
                       }
 
-                console.log('Local annotation document:', JSON.stringify(doc, null, 2))
                 return doc
             })
         },
         [config]
     )
+
+    // Keep refs current so event-handler closures always see the latest values
+    useEffect(() => { localDocumentRef.current = localDocument }, [localDocument])
+    useEffect(() => { addRoiRef.current = addRoi }, [addRoi])
+    useEffect(() => { selectedTypeIndexRef.current = selectedTypeIndex }, [selectedTypeIndex])
+
+    // ── Q / W keyboard shortcuts to cycle annotation types ────────────────
+    useEffect(() => {
+        if (annotationTypes.length === 0) return
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const tag = (e.target as HTMLElement)?.tagName?.toUpperCase()
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+            if (e.key.toLowerCase() === 'q') {
+                e.preventDefault()
+                setSelectedTypeIndex(prev => (prev - 1 + annotationTypes.length) % annotationTypes.length)
+            } else if (e.key.toLowerCase() === 'w') {
+                e.preventDefault()
+                setSelectedTypeIndex(prev => (prev + 1) % annotationTypes.length)
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [annotationTypes.length])
+
+    // ── Update placeholder color when selected type changes (no restart) ──
+    // This is intentionally separate from the drawing effect so that Q/W
+    // never deactivates the tool mid-draw.
+    useEffect(() => {
+        if (!toolkit || workflowMode !== 'add-labels') return
+        const types = config.annotationTypes ?? []
+        const annotationType = types[selectedTypeIndex]
+        if (!annotationType) return
+        const paperScope = (toolkit as any).project?.paperScope
+        if (!paperScope) return
+        // findSelectedNewItem returns the placeholder (uninitialized item).
+        // During a drag it will be null (already initialized), which is fine —
+        // we apply the correct color in onItemCreated instead.
+        const placeholder = paperScope.findSelectedNewItem?.()
+        if (placeholder) {
+            try { placeholder.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+        }
+    }, [toolkit, workflowMode, selectedTypeIndex, config])
+
+    // ── Continuous annotation drawing in add-labels mode ─────────────────
+    // selectedTypeIndex is intentionally NOT a dependency — type changes must
+    // not restart the tool (which would interrupt an in-progress drag).
+    // The current type is always read from selectedTypeIndexRef inside callbacks.
+    useEffect(() => {
+        if (!toolkit || workflowMode !== 'add-labels') {
+            addLabelsActiveRef.current = false
+            return
+        }
+        const types = config.annotationTypes ?? []
+        if (types.length === 0) return
+
+        const rectTool = (toolkit as any).getTool('rectangle')
+        const defaultTool = (toolkit as any).getTool('default')
+        if (!rectTool || !defaultTool) return
+
+        addLabelsActiveRef.current = true
+
+        const getPaperScope = () => (toolkit as any).project?.paperScope
+
+        const getStyle = (idx: number) => {
+            const t = types[idx]
+            if (!t) return null
+            return {
+                strokeColor: normalizeCssColor(t.color),
+                rescale: { strokeWidth: t.strokeWidth ?? 2 },
+            }
+        }
+
+        const reactivate = () => {
+            const style = getStyle(selectedTypeIndexRef.current)
+            if (!style) return
+            // Remove any stale placeholder so activate creates a fresh one
+            // with the correct style for the current type.
+            const stale = getPaperScope()?.findSelectedNewItem?.()
+            if (stale) stale.remove()
+            rectTool.deactivate(true)
+            rectTool.activate({ createNewItem: true, style })
+        }
+
+        const onItemCreated = (payload: any) => {
+            const item = payload?.item
+            if (!item) return
+
+            const b = item.bounds
+            const typeIdx = selectedTypeIndexRef.current
+            const annotationType = types[typeIdx]
+
+            if (b && b.width >= 5 && b.height >= 5 && annotationType) {
+                // Correct the visual color — placeholder may have been a stale type.
+                try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+
+                setLocalDocument(prev => {
+                    const elements = prev?.elements ?? []
+                    const newElement: LocalAnnotationElement = {
+                        type: 'rectangle',
+                        group: annotationType.name,
+                        label: { value: annotationType.name },
+                        center: [
+                            Math.round(b.x + b.width / 2),
+                            Math.round(b.y + b.height / 2),
+                            0,
+                        ],
+                        width: Math.round(b.width),
+                        height: Math.round(b.height),
+                        rotation: 0,
+                        lineColor: normalizeCssColor(annotationType.color),
+                        lineWidth: annotationType.strokeWidth ?? 2,
+                        fillColor: 'rgba(0,0,0,0.05)',
+                    }
+                    return prev
+                        ? { ...prev, elements: [...elements, newElement] }
+                        : {
+                              name: config.annotationDocumentName,
+                              description: config.annotationDescription ?? '',
+                              elements: [newElement],
+                          }
+                })
+            } else {
+                item.remove()
+            }
+
+            // activate() is a no-op when _active=true — must deactivate first.
+            // Defer past onMouseUp so the tool finishes its own cleanup.
+            setTimeout(() => {
+                if (!addLabelsActiveRef.current) return
+                if (item?.selected) item.deselect(true)
+                reactivate()
+            }, 0)
+        }
+
+        rectTool.addEventListener('item-created', onItemCreated)
+        const initialStyle = getStyle(selectedTypeIndexRef.current)
+        if (initialStyle) rectTool.activate({ createNewItem: true, style: initialStyle })
+
+        return () => {
+            addLabelsActiveRef.current = false
+            rectTool.removeEventListener('item-created', onItemCreated)
+            // Remove any undrawn placeholder so it doesn't pollute the next session
+            const stale = getPaperScope()?.findSelectedNewItem?.()
+            if (stale) stale.remove()
+            defaultTool.activate()
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [toolkit, workflowMode, config])
 
     // ── Finish / cancel an in-progress ROI placement or edit ─────────────
     const finishEditingRoi = useCallback(() => {
@@ -562,6 +725,8 @@ export function AnnotationEditor({
     // ── Activate / deactivate RectangleTool based on mode ────────────────
     useEffect(() => {
         if (!toolkit) return
+        // add-labels mode controls the tool in its own effect
+        if (workflowMode === 'add-labels') return
 
         const rectTool = (toolkit as any).getTool('rectangle')
         const defaultTool = (toolkit as any).getTool('default')
@@ -588,10 +753,34 @@ export function AnnotationEditor({
         const onItemCreated = (payload: any) => {
             const item = payload?.item
             if (!item) return
-            // Store ref and switch to editing mode — do NOT commit to localDocument yet
-            pendingRoiItemRef.current = item
-            setActiveMode('drawing-roi')
-            // No _ensureNewItemForTool: we don't want continuous drawing
+
+            if (fixedSizeEnabled) {
+                // Fixed-size: click point becomes the top-left corner of the ROI.
+                // Commit immediately — no "Finish editing" step needed.
+                const left = item.position.x
+                const top = item.position.y
+                const innerPath = item.children?.[0] || item
+                if (innerPath?.segments?.length >= 4) {
+                    // Segment order: [topLeft, topRight, bottomRight, bottomLeft]
+                    innerPath.segments[0].point.set(left, top)
+                    innerPath.segments[1].point.set(left + fixedWidth, top)
+                    innerPath.segments[2].point.set(left + fixedWidth, top + fixedHeight)
+                    innerPath.segments[3].point.set(left, top + fixedHeight)
+                }
+                const labelBase = roi.label ?? 'roi'
+                pendingSelectLabelRef.current = computeNextRoiLabel(
+                    localDocumentRef.current?.elements ?? [],
+                    labelBase
+                )
+                addRoiRef.current(left, top, fixedWidth, fixedHeight)
+                roiItemsRef.current.push(item)
+                pendingRoiItemRef.current = null
+                setActiveMode(null)
+            } else {
+                // Normal: store ref and switch to editing mode — commit on "Finish editing"
+                pendingRoiItemRef.current = item
+                setActiveMode('drawing-roi')
+            }
         }
 
         rectTool.addEventListener('item-created', onItemCreated)
@@ -602,7 +791,7 @@ export function AnnotationEditor({
             // Intentionally NOT activating defaultTool here: when transitioning
             // to 'drawing-roi' we keep the rect tool alive for move/resize.
         }
-    }, [toolkit, activeMode, config])
+    }, [toolkit, activeMode, workflowMode, config, fixedSizeEnabled, fixedWidth, fixedHeight])
 
     // ── Auto-select the newly finished ROI in the dropdown ───────────────
     useEffect(() => {
@@ -670,64 +859,129 @@ export function AnnotationEditor({
                         />
                         Mark Complete
                     </label>
+
+                    <select
+                        className="annotation-editor__roi-select"
+                        value={workflowMode}
+                        onChange={e => { setWorkflowMode(e.target.value as WorkflowMode); e.target.blur() }}
+                    >
+                        <option value="edit-rois">Edit ROIs</option>
+                        <option value="add-labels">Add Labels</option>
+                        <option value="review">Review</option>
+                    </select>
                 </div>
 
                 <div className="annotation-editor__toolbar-divider" />
 
-                {/* Mode buttons */}
-                <div className="annotation-editor__mode-group">
-                    {activeMode === 'drawing-roi' ? (
-                        <>
-                            <button
-                                className="annotation-editor__mode-btn annotation-editor__mode-btn--finish"
-                                onClick={finishEditingRoi}
-                                title="Accept the drawn ROI and save it"
-                            >
-                                Finish editing
-                            </button>
-                            <button
-                                className="annotation-editor__mode-btn annotation-editor__mode-btn--danger annotation-editor__mode-btn--cancel"
-                                onClick={cancelPendingRoi}
-                                title="Discard the drawn ROI"
-                            >
-                                Cancel
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <button
-                                className={`annotation-editor__mode-btn${activeMode === 'add-roi' ? ' annotation-editor__mode-btn--active' : ''}`}
-                                onClick={() => {
-                                    if (activeMode === 'add-roi') {
-                                        setActiveMode(null)
-                                    } else {
-                                        setSelectedRoiIndex(-1)
-                                        setActiveMode('add-roi')
-                                    }
-                                }}
-                                title="Draw a new ROI rectangle on the slide"
-                            >
-                                Add ROI
-                            </button>
-                            <button
-                                className="annotation-editor__mode-btn"
-                                onClick={startEditActiveRoi}
-                                disabled={selectedRoiIndex < 0}
-                                title="Edit the currently selected ROI"
-                            >
-                                Edit Active ROI
-                            </button>
-                            <button
-                                className="annotation-editor__mode-btn annotation-editor__mode-btn--danger"
-                                onClick={deleteActiveRoi}
-                                disabled={selectedRoiIndex < 0}
-                                title="Delete the currently selected ROI"
-                            >
-                                Delete Active ROI
-                            </button>
-                        </>
-                    )}
-                </div>
+                {/* Annotation type selector — visible in Add Labels workflow */}
+                {workflowMode === 'add-labels' && annotationTypes.length > 0 && (
+                    <div className="annotation-editor__mode-group">
+                        <span className="annotation-editor__roi-label">Type:</span>
+                        <span
+                            className="annotation-editor__type-swatch"
+                            style={{ backgroundColor: annotationTypes[selectedTypeIndex]?.color ?? 'transparent' }}
+                        />
+                        <select
+                            className="annotation-editor__roi-select"
+                            value={selectedTypeIndex}
+                            onChange={e => { setSelectedTypeIndex(Number(e.target.value)); e.target.blur() }}
+                        >
+                            {annotationTypes.map((t, i) => (
+                                <option key={i} value={i}>{t.name}</option>
+                            ))}
+                        </select>
+                        <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>Q / W to cycle</span>
+                    </div>
+                )}
+
+                {/* Mode buttons — only visible in Edit ROIs workflow */}
+                {workflowMode === 'edit-rois' && (
+                    <div className="annotation-editor__mode-group">
+                        {activeMode === 'drawing-roi' ? (
+                            <>
+                                <button
+                                    className="annotation-editor__mode-btn annotation-editor__mode-btn--finish"
+                                    onClick={finishEditingRoi}
+                                    title="Accept the drawn ROI and save it"
+                                >
+                                    Finish editing
+                                </button>
+                                <button
+                                    className="annotation-editor__mode-btn annotation-editor__mode-btn--danger annotation-editor__mode-btn--cancel"
+                                    onClick={cancelPendingRoi}
+                                    title="Discard the drawn ROI"
+                                >
+                                    Cancel
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                {/* Fixed-size controls */}
+                                <label className="annotation-editor__checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={fixedSizeEnabled}
+                                        onChange={e => setFixedSizeEnabled(e.target.checked)}
+                                    />
+                                    Fixed size
+                                </label>
+                                {fixedSizeEnabled && (
+                                    <>
+                                        <span className="annotation-editor__dim-label">W:</span>
+                                        <input
+                                            className="annotation-editor__dim-input"
+                                            type="number"
+                                            min={1}
+                                            value={fixedWidth}
+                                            onChange={e => setFixedWidth(Math.max(1, Number(e.target.value)))}
+                                            title="Fixed ROI width in image pixels"
+                                        />
+                                        <span className="annotation-editor__dim-label">H:</span>
+                                        <input
+                                            className="annotation-editor__dim-input"
+                                            type="number"
+                                            min={1}
+                                            value={fixedHeight}
+                                            onChange={e => setFixedHeight(Math.max(1, Number(e.target.value)))}
+                                            title="Fixed ROI height in image pixels"
+                                        />
+                                    </>
+                                )}
+
+                                <button
+                                    className={`annotation-editor__mode-btn${activeMode === 'add-roi' ? ' annotation-editor__mode-btn--active' : ''}`}
+                                    onClick={() => {
+                                        if (activeMode === 'add-roi') {
+                                            setActiveMode(null)
+                                        } else {
+                                            setSelectedRoiIndex(-1)
+                                            setActiveMode('add-roi')
+                                        }
+                                    }}
+                                    title={fixedSizeEnabled ? 'Click on slide to place a fixed-size ROI' : 'Draw a new ROI rectangle on the slide'}
+                                >
+                                    Add ROI
+                                </button>
+                                <button
+                                    className="annotation-editor__mode-btn"
+                                    onClick={startEditActiveRoi}
+                                    disabled={selectedRoiIndex < 0}
+                                    title="Edit the currently selected ROI"
+                                >
+                                    Edit Active ROI
+                                </button>
+                                <button
+                                    className="annotation-editor__mode-btn annotation-editor__mode-btn--danger"
+                                    onClick={deleteActiveRoi}
+                                    disabled={selectedRoiIndex < 0}
+                                    title="Delete the currently selected ROI"
+                                >
+                                    Delete Active ROI
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
 
                 {/* Spacer pushes save button to the far right */}
                 <div style={{ flex: 1 }} />

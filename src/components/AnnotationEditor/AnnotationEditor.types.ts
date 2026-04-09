@@ -25,6 +25,10 @@ export interface RoiSettings {
     strokeWidth?: number
     /** Fill opacity for ROI rectangles (0-1). Default: 0.05 */
     fillOpacity?: number
+    /** Default width in image pixels for fixed-size ROI placement. Default: 1000 */
+    width?: number
+    /** Default height in image pixels for fixed-size ROI placement. Default: 1000 */
+    height?: number
 }
 
 // ── Local annotation document (DSA-compatible structure, stored in memory) ──
@@ -77,6 +81,8 @@ export interface AnnotationEditorConfig {
 }
 
 export type EditorMode = 'add-roi' | 'drawing-roi' | 'edit-roi' | 'delete-roi'
+
+export type WorkflowMode = 'edit-rois' | 'add-labels' | 'review'
 
 export interface AnnotationEditorProps {
     /** Image to display in the viewer */
