@@ -1,4 +1,5 @@
 .annotation-editor {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -142,12 +143,102 @@
   background-color: #b91c1c;
 }
 
+/* Finish-editing button (green) */
+
+.annotation-editor__mode-btn--finish {
+  background-color: #166534;
+  border-color: #14532d;
+  color: #bbf7d0;
+}
+
+.annotation-editor__mode-btn--finish:hover {
+  background-color: #15803d;
+  border-color: #166534;
+  color: #dcfce7;
+}
+
+/* Cancel button — always shown in active-danger style */
+
+.annotation-editor__mode-btn--cancel {
+  background-color: #dc2626;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
+.annotation-editor__mode-btn--cancel:hover {
+  background-color: #b91c1c;
+}
+
+/* Save button */
+
+.annotation-editor__mode-btn--save {
+  background-color: #166534;
+  border-color: #14532d;
+  color: #bbf7d0;
+}
+
+.annotation-editor__mode-btn--save:hover:not(:disabled) {
+  background-color: #15803d;
+  border-color: #166534;
+  color: #dcfce7;
+}
+
+.annotation-editor__mode-btn--save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.annotation-editor__mode-btn--save--saved {
+  background-color: #15803d;
+  border-color: #166534;
+  color: #dcfce7;
+}
+
+.annotation-editor__mode-btn--save--error {
+  background-color: #dc2626;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
 /* ── Viewer area ─────────────────────────────────────────── */
 
 .annotation-editor__viewer {
   flex: 1;
   min-height: 0;
   min-width: 0;
+}
+
+/* ── Save notification toast ────────────────────────────── */
+
+.annotation-editor__toast {
+  position: absolute;
+  top: 52px; /* just below the toolbar */
+  right: 16px;
+  z-index: 900;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  animation: annotation-editor-toast-in 0.15s ease;
+}
+
+@keyframes annotation-editor-toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.annotation-editor__toast--success {
+  background-color: #166534;
+  color: #dcfce7;
+  border: 1px solid #15803d;
+}
+
+.annotation-editor__toast--error {
+  background-color: #7f1d1d;
+  color: #fecaca;
+  border: 1px solid #991b1b;
 }
 
 /* ── Duplicate-document warning modal ───────────────────── */

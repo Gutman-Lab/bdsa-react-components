@@ -30,6 +30,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             annotationIds = [],
             apiBaseUrl,
             onViewerReady,
+            onToolkitReady,
             onAnnotationClick,
             onViewportChange,
             defaultAnnotationColor = '#ff0000',
@@ -244,7 +245,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         const safeDrawPaperView = useCallback((paperScope: InstanceType<typeof PaperOverlay>['paperScope']): void => {
             if (!isMountedRef.current) return
             if (!isPaperJsReady(paperScope)) {
-                console.warn('Paper.js not fully initialized, skipping draw operation')
+                debugLog.log('Paper.js not fully initialized, skipping draw operation')
                 return
             }
             try {
@@ -275,6 +276,16 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         useEffect(() => {
             onViewerReadyRef.current = onViewerReady
         }, [onViewerReady])
+
+        const onToolkitReadyRef = useRef(onToolkitReady)
+        useEffect(() => {
+            onToolkitReadyRef.current = onToolkitReady
+        }, [onToolkitReady])
+        useEffect(() => {
+            if (toolkit && onToolkitReadyRef.current) {
+                onToolkitReadyRef.current(toolkit)
+            }
+        }, [toolkit])
 
         const onAnnotationClickRef = useRef(onAnnotationClick)
         useEffect(() => {
@@ -537,7 +548,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
                         setMouseImagePos({ x: Math.round(pt.x), y: Math.round(pt.y) })
                     } catch (_) {}
                 },
-                exitHandler: () => setMouseImagePos(null),
+                leaveHandler: () => setMouseImagePos(null),
             })
             mouseTracker.setTracking(true)
 

@@ -4,7 +4,7 @@ import type { ApiErrorHandler } from '../../utils/apiErrorHandling'
 export interface AnnotationType {
     /** Display name for this annotation type */
     name: string
-    /** Stroke color (CSS color string) */
+    /** Stroke color — must be hex (#rrggbb / #rrggbbaa) or rgb()/rgba() format. Named colors (e.g. "red") are not accepted by DSA. */
     color: string
     /** Stroke width in pixels. Default: 1 */
     strokeWidth?: number
@@ -17,12 +17,36 @@ export interface AnnotationType {
 }
 
 export interface RoiSettings {
-    /** Stroke color for ROI rectangles. Default: 'orange' */
+    /** Base label for ROIs — sequential numbers are appended (e.g. "region" → "region1", "region2"). Default: 'roi' */
+    label?: string
+    /** Stroke color for ROI rectangles — must be hex (#rrggbb) or rgb()/rgba() format. Default: '#ffa500' */
     color?: string
     /** Stroke width for ROI rectangles. Default: 2 */
     strokeWidth?: number
     /** Fill opacity for ROI rectangles (0-1). Default: 0.05 */
     fillOpacity?: number
+}
+
+// ── Local annotation document (DSA-compatible structure, stored in memory) ──
+
+export interface LocalAnnotationElement {
+    type: 'rectangle'
+    group: string
+    label: { value: string }
+    /** [cx, cy, 0] — center of the rectangle in image pixel coordinates */
+    center: [number, number, number]
+    width: number
+    height: number
+    rotation: number
+    lineColor: string
+    lineWidth: number
+    fillColor: string
+}
+
+export interface LocalAnnotationDocument {
+    name: string
+    description: string
+    elements: LocalAnnotationElement[]
 }
 
 export interface HotkeySettings {
@@ -52,7 +76,7 @@ export interface AnnotationEditorConfig {
     viewerOptions?: Record<string, unknown>
 }
 
-export type EditorMode = 'add-roi' | 'edit-roi' | 'delete-roi'
+export type EditorMode = 'add-roi' | 'drawing-roi' | 'edit-roi' | 'delete-roi'
 
 export interface AnnotationEditorProps {
     /** Image to display in the viewer */

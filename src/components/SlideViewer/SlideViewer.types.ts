@@ -1,5 +1,6 @@
 import type { FeatureCollection } from 'geojson'
 import type { Viewer as OpenSeadragonViewer, Options as OpenSeadragonOptions } from 'openseadragon'
+import type { AnnotationToolkit } from 'osd-paperjs-annotation'
 import type React from 'react'
 import type { ApiErrorHandler } from '../../utils/apiErrorHandling'
 
@@ -254,6 +255,8 @@ export interface SlideViewerProps {
     apiBaseUrl?: string
     /** Callback when viewer is ready */
     onViewerReady?: (viewer: OpenSeadragonViewer) => void
+    /** Callback when the AnnotationToolkit is ready (fired once after toolkit is initialized) */
+    onToolkitReady?: (toolkit: AnnotationToolkit) => void
     /** Callback when annotation is clicked */
     onAnnotationClick?: (annotation: AnnotationFeature) => void
     /** Default stroke color for annotations */
