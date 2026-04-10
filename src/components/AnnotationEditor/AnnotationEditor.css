@@ -44,6 +44,14 @@
   white-space: nowrap;
 }
 
+.annotation-editor__review-counter {
+  font-size: 12px;
+  color: #cbd5e1;
+  min-width: 70px;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .annotation-editor__roi-select {
   padding: 3px 24px 3px 8px;
   font-size: 12px;

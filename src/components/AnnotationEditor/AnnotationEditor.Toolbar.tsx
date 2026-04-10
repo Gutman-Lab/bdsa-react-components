@@ -34,6 +34,15 @@ export interface ToolbarProps {
     startEditActiveRoi: () => void
     deleteActiveRoi: () => void
 
+    // Review mode
+    reviewItemIndex: number
+    reviewItemCount: number
+    reviewNextItem: () => void
+    reviewPreviousItem: () => void
+    reviewSelectedTypeIndex: number
+    onReviewTypeChange: (typeIndex: number) => void
+    startReviewEditShape: () => void
+
     // Save / loading
     isLoadingAnnotation: boolean
     saveStatus: 'idle' | 'saving' | 'saved' | 'error'
@@ -53,6 +62,8 @@ export function AnnotationEditorToolbar({
     fixedWidth, setFixedWidth,
     fixedHeight, setFixedHeight,
     finishEditingRoi, cancelPendingRoi, startEditActiveRoi, deleteActiveRoi,
+    reviewItemIndex, reviewItemCount, reviewNextItem, reviewPreviousItem,
+    reviewSelectedTypeIndex, onReviewTypeChange, startReviewEditShape,
     isLoadingAnnotation, saveStatus, saveAnnotation, canSave,
 }: ToolbarProps) {
     return (
@@ -103,8 +114,8 @@ export function AnnotationEditorToolbar({
 
             <div className="annotation-editor__toolbar-divider" />
 
-            {/* Add Labels: shape-edit buttons (while editing an existing label) */}
-            {workflowMode === 'add-labels' && isEditingLabel && (
+            {/* Add Labels / Review: shape-edit buttons (while editing an existing label shape) */}
+            {(workflowMode === 'add-labels' || workflowMode === 'review') && isEditingLabel && (
                 <div className="annotation-editor__mode-group">
                     <button
                         className="annotation-editor__mode-btn annotation-editor__mode-btn--finish"
@@ -119,6 +130,57 @@ export function AnnotationEditorToolbar({
                         title="Discard shape changes"
                     >
                         Cancel
+                    </button>
+                </div>
+            )}
+
+            {/* Review mode: cycle through label boxes in the selected ROI */}
+            {workflowMode === 'review' && !isEditingLabel && (
+                <div className="annotation-editor__mode-group">
+                    <button
+                        className="annotation-editor__mode-btn"
+                        onClick={reviewPreviousItem}
+                        disabled={reviewItemCount === 0}
+                        title="Previous label box (hotkey: N)"
+                    >
+                        &#8249;
+                    </button>
+                    <span className="annotation-editor__review-counter">
+                        {reviewItemIndex >= 0
+                            ? `${reviewItemIndex + 1} of ${reviewItemCount}`
+                            : `— of ${reviewItemCount}`}
+                    </span>
+                    <button
+                        className="annotation-editor__mode-btn"
+                        onClick={reviewNextItem}
+                        disabled={reviewItemCount === 0}
+                        title="Next label box (hotkey: M)"
+                    >
+                        &#8250;
+                    </button>
+                    <span
+                        className="annotation-editor__type-swatch"
+                        style={{ backgroundColor: annotationTypes[reviewSelectedTypeIndex]?.color ?? 'transparent', opacity: reviewItemIndex < 0 ? 0.3 : 1 }}
+                    />
+                    <select
+                        className="annotation-editor__roi-select"
+                        value={reviewSelectedTypeIndex}
+                        disabled={reviewItemIndex < 0}
+                        onChange={e => { onReviewTypeChange(Number(e.target.value)); e.target.blur() }}
+                        title="Change the type of the focused label box (Q / W to cycle)"
+                    >
+                        {annotationTypes.map((t, i) => (
+                            <option key={i} value={i}>{t.name}</option>
+                        ))}
+                    </select>
+                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>Q / W to cycle</span>
+                    <button
+                        className="annotation-editor__mode-btn"
+                        onClick={startReviewEditShape}
+                        disabled={reviewItemIndex < 0}
+                        title="Edit the shape of the focused label box"
+                    >
+                        Edit Shape
                     </button>
                 </div>
             )}

@@ -85,6 +85,15 @@ export function AnnotationEditor({
     // Stored as-is from the server and appended to save payloads to prevent data loss.
     const foreignElementsRef = useRef<any[]>([])
 
+    // Review mode — index into reviewItems[] for the focused label box (-1 = none)
+    const [reviewItemIndex, setReviewItemIndex] = useState(-1)
+    const reviewItemIndexRef = useRef(-1)
+    const changeReviewItemTypeRef = useRef<(typeIndex: number) => void>(() => {})
+    // Stable ref so workflowMode is readable inside finishEditingLabel / cancelEditingLabel
+    // without adding toolkit to their dependency arrays.
+    const workflowModeRef = useRef<WorkflowMode>('edit-rois')
+    const toolkitRef = useRef<AnnotationToolkit | null>(null)
+
     // Paper.js item for the ROI currently being placed or edited (not yet committed)
     const pendingRoiItemRef = useRef<any>(null)
     // Committed paper.js items, one per ROI in localDocument order
@@ -309,6 +318,29 @@ export function AnnotationEditor({
             })
     }, [localDocument])
 
+    // ── Review mode: list of label items in the selected ROI ─────────────
+    // Each entry has the Paper.js item and the index into localDocument.elements.
+    // labelItemsRef is read here; it stays in sync because localDocument is a dep.
+    const reviewItems = useMemo(() => {
+        if (workflowMode !== 'review' || selectedRoiIndex < 0 || !localDocument) return []
+        const roiLabel = rois[selectedRoiIndex]?.label
+        if (!roiLabel) return []
+        const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+        const result: { item: any; docIdx: number }[] = []
+        let labelCount = 0
+        for (let i = 0; i < localDocument.elements.length; i++) {
+            const el = localDocument.elements[i]
+            if (knownTypeNames.has(el.group)) {
+                if (el.user?.roiLabel === roiLabel) {
+                    result.push({ item: labelItemsRef.current[labelCount], docIdx: i })
+                }
+                labelCount++
+            }
+        }
+        return result
+    }, [workflowMode, selectedRoiIndex, rois, localDocument, config.annotationTypes])
+
+
     // ── Add an ROI element to the local document ──────────────────────────
     const addRoi = useCallback(
         (left: number, top: number, width: number, height: number) => {
@@ -357,6 +389,9 @@ export function AnnotationEditor({
     useEffect(() => { selectedTypeIndexRef.current = selectedTypeIndex }, [selectedTypeIndex])
     useEffect(() => { selectedRoiLabelRef.current = rois[selectedRoiIndex]?.label ?? null }, [selectedRoiIndex, rois])
     useEffect(() => { labelFixedSizeEnabledRef.current = labelFixedSizeEnabled }, [labelFixedSizeEnabled])
+    useEffect(() => { workflowModeRef.current = workflowMode }, [workflowMode])
+    useEffect(() => { toolkitRef.current = toolkit }, [toolkit])
+    useEffect(() => { reviewItemIndexRef.current = reviewItemIndex }, [reviewItemIndex])
 
     // ── Q / W keyboard shortcuts to cycle annotation types ────────────────
     useEffect(() => {
@@ -366,10 +401,14 @@ export function AnnotationEditor({
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
             if (e.key.toLowerCase() === 'q') {
                 e.preventDefault()
-                setSelectedTypeIndex(prev => (prev - 1 + annotationTypes.length) % annotationTypes.length)
+                const next = (selectedTypeIndexRef.current - 1 + annotationTypes.length) % annotationTypes.length
+                setSelectedTypeIndex(next)
+                if (workflowModeRef.current === 'review') changeReviewItemTypeRef.current(next)
             } else if (e.key.toLowerCase() === 'w') {
                 e.preventDefault()
-                setSelectedTypeIndex(prev => (prev + 1) % annotationTypes.length)
+                const next = (selectedTypeIndexRef.current + 1) % annotationTypes.length
+                setSelectedTypeIndex(next)
+                if (workflowModeRef.current === 'review') changeReviewItemTypeRef.current(next)
             }
         }
         window.addEventListener('keydown', handleKeyDown)
@@ -545,6 +584,17 @@ export function AnnotationEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toolkit, workflowMode, config])
 
+    // ── Review mode: activate default tool and configure the reactivate hook ─
+    useEffect(() => {
+        if (!toolkit || workflowMode !== 'review') return
+        const defaultTool = (toolkit as any).getTool('default')
+        defaultTool?.activate()
+        // After finishing/canceling a label shape edit in review mode, return to
+        // the default tool (not the rect-draw loop that add-labels mode uses).
+        reactivateLabelDrawingRef.current = () => { defaultTool?.activate() }
+        return () => { reactivateLabelDrawingRef.current = () => {} }
+    }, [toolkit, workflowMode])
+
     // ── Finish / cancel an in-progress ROI placement or edit ─────────────
     const finishEditingRoi = useCallback(() => {
         const item = pendingRoiItemRef.current
@@ -683,9 +733,9 @@ export function AnnotationEditor({
         setSelectedRoiIndex(-1)
     }, [selectedRoiIndex, rois])
 
-    // ── Right-click context menu for label items (add-labels mode) ───────
+    // ── Right-click context menu for label items (add-labels + review mode) ─
     useEffect(() => {
-        if (!toolkit || workflowMode !== 'add-labels') return
+        if (!toolkit || (workflowMode !== 'add-labels' && workflowMode !== 'review')) return
         const viewer = (toolkit as any).viewer
         if (!viewer) return
         // Use tk.paperScope directly (same as archive: this.tk.paperScope)
@@ -774,6 +824,9 @@ export function AnnotationEditor({
         if (docIdx < 0) { setContextMenu(null); return }
 
         try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+
+        // Sync the toolbar type dropdown regardless of which mode triggered this
+        setSelectedTypeIndex(typeIndex)
 
         setLocalDocument(prev => {
             if (!prev) return prev
@@ -864,6 +917,117 @@ export function AnnotationEditor({
         setIsEditingLabel(false)
         reactivateLabelDrawingRef.current()
     }, [])
+
+    // ── Review mode: navigate to a specific item by index ────────────────
+    const goToReviewItem = useCallback((idx: number) => {
+        if (idx < 0 || idx >= reviewItems.length) return
+        const { item, docIdx } = reviewItems[idx]
+        setReviewItemIndex(idx)
+        // Sync the type selector to the focused item's current type
+        const group = localDocument?.elements[docIdx]?.group
+        if (group) {
+            const typeIdx = config.annotationTypes.findIndex(t => t.name === group)
+            if (typeIdx >= 0) setSelectedTypeIndex(typeIdx)
+        }
+        if (!item) return
+        // Pan viewport to center on the item (archive pattern)
+        const viewer = toolkitRef.current ? (toolkitRef.current as any).viewer : null
+        if (viewer && item.position) {
+            const tiledImage = item.layer?.tiledImage
+            if (tiledImage) {
+                const vp = tiledImage.imageToViewportCoordinates(item.position.x, item.position.y)
+                viewer.viewport.panTo(vp, true)
+            }
+        }
+    }, [reviewItems, localDocument, config.annotationTypes])
+
+    // Auto-select first item when entering review mode or switching ROIs
+    useEffect(() => {
+        if (workflowMode !== 'review') { setReviewItemIndex(-1); return }
+        if (reviewItems.length > 0) goToReviewItem(0)
+        else setReviewItemIndex(-1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedRoiIndex, workflowMode])
+
+    // Navigate to the correct item after a deletion in review mode.
+    // prevReviewLengthRef is reset to -1 on ROI/mode changes so this effect
+    // ignores the first fire after a switch (auto-navigate-to-0 handles that).
+    const prevReviewLengthRef = useRef(-1)
+    useEffect(() => { prevReviewLengthRef.current = -1 }, [selectedRoiIndex, workflowMode])
+    useEffect(() => {
+        if (workflowMode !== 'review') return
+        const prevLen = prevReviewLengthRef.current
+        prevReviewLengthRef.current = reviewItems.length
+        if (prevLen === -1) return // just switched ROI/mode — handled elsewhere
+        if (reviewItems.length >= prevLen) return // type change or addition — no nav needed
+        // Deletion: stay at same index (now points at next item), or last if at end
+        if (reviewItems.length === 0) { setReviewItemIndex(-1); return }
+        goToReviewItem(Math.min(reviewItemIndexRef.current, reviewItems.length - 1))
+    }, [reviewItems, workflowMode, goToReviewItem])
+
+    const reviewNextItem = useCallback(() => {
+        if (reviewItems.length === 0) return
+        const cur = reviewItemIndexRef.current
+        goToReviewItem(cur < 0 ? 0 : (cur + 1) % reviewItems.length)
+    }, [reviewItems, goToReviewItem])
+
+    const reviewPreviousItem = useCallback(() => {
+        if (reviewItems.length === 0) return
+        const cur = reviewItemIndexRef.current
+        goToReviewItem(cur < 0 ? reviewItems.length - 1 : (cur - 1 + reviewItems.length) % reviewItems.length)
+    }, [reviewItems, goToReviewItem])
+
+    const startReviewEditShape = useCallback(() => {
+        if (!toolkit || reviewItemIndex < 0 || reviewItemIndex >= reviewItems.length) return
+        const { item, docIdx } = reviewItems[reviewItemIndex]
+        if (!item) return
+        const rect = item.children?.[0] || item
+        const originalSegments = rect.segments?.map((s: any) => ({ x: s.point.x, y: s.point.y })) ?? []
+        editingLabelRef.current = { item, docElementIndex: docIdx, originalSegments }
+        setIsEditingLabel(true)
+        item.select()
+        const rectTool = (toolkit as any).getTool('rectangle')
+        if (rectTool) rectTool.activate()
+    }, [toolkit, reviewItemIndex, reviewItems])
+
+    const changeReviewItemType = useCallback((typeIndex: number) => {
+        if (reviewItemIndexRef.current < 0 || reviewItemIndexRef.current >= reviewItems.length) return
+        const { item, docIdx } = reviewItems[reviewItemIndexRef.current]
+        const annotationType = config.annotationTypes[typeIndex]
+        if (!annotationType) return
+        try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+        setSelectedTypeIndex(typeIndex)
+        setLocalDocument(prev => {
+            if (!prev) return prev
+            const elements = [...prev.elements]
+            elements[docIdx] = {
+                ...elements[docIdx],
+                group: annotationType.name,
+                label: { value: annotationType.name },
+                lineColor: normalizeCssColor(annotationType.color),
+                lineWidth: annotationType.strokeWidth ?? 2,
+            }
+            return { ...prev, elements }
+        })
+    }, [reviewItems, config.annotationTypes])
+
+    useEffect(() => { changeReviewItemTypeRef.current = changeReviewItemType }, [changeReviewItemType])
+
+    // ── Review mode hotkeys (reviewNext / reviewPrevious from config) ─────
+    useEffect(() => {
+        if (workflowMode !== 'review') return
+        const hotkeys = config.hotkeys ?? {}
+        const nextKey = (hotkeys.reviewNext ?? 'm').toLowerCase()
+        const prevKey = (hotkeys.reviewPrevious ?? 'n').toLowerCase()
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const tag = (e.target as HTMLElement)?.tagName?.toUpperCase()
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+            if (e.key.toLowerCase() === nextKey) { e.preventDefault(); reviewNextItem() }
+            else if (e.key.toLowerCase() === prevKey) { e.preventDefault(); reviewPreviousItem() }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [workflowMode, config.hotkeys, reviewNextItem, reviewPreviousItem])
 
     // ── Save localDocument to DSA ─────────────────────────────────────────
     const notify = useCallback(
@@ -1149,6 +1313,13 @@ export function AnnotationEditor({
                 cancelPendingRoi={cancelPendingRoi}
                 startEditActiveRoi={startEditActiveRoi}
                 deleteActiveRoi={deleteActiveRoi}
+                reviewItemIndex={reviewItemIndex}
+                reviewItemCount={reviewItems.length}
+                reviewNextItem={reviewNextItem}
+                reviewPreviousItem={reviewPreviousItem}
+                reviewSelectedTypeIndex={selectedTypeIndex}
+                onReviewTypeChange={changeReviewItemType}
+                startReviewEditShape={startReviewEditShape}
                 isLoadingAnnotation={isLoadingAnnotation}
                 saveStatus={saveStatus}
                 saveAnnotation={() => { void saveAnnotation() }}
