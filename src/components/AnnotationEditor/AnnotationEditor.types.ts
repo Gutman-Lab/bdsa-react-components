@@ -45,6 +45,8 @@ export interface LocalAnnotationElement {
     lineColor: string
     lineWidth: number
     fillColor: string
+    /** Arbitrary custom data passed through to DSA's element `user` field */
+    user?: Record<string, unknown>
 }
 
 export interface LocalAnnotationDocument {

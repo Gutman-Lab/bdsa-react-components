@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import OpenSeadragon from 'openseadragon'
 import type { AnnotationToolkit } from 'osd-paperjs-annotation'
 import { SlideViewer } from '../SlideViewer/SlideViewer'
 import type {
@@ -8,61 +9,11 @@ import type {
     LocalAnnotationDocument,
     LocalAnnotationElement,
 } from './AnnotationEditor.types'
+import { normalizeCssColor, resolveItemId, computeNextRoiLabel } from './AnnotationEditor.utils'
+import { AnnotationEditorToolbar } from './AnnotationEditor.Toolbar'
+import { AnnotationEditorOverlays } from './AnnotationEditor.Overlays'
 import { createApiError } from '../../utils/apiErrorHandling'
 import './AnnotationEditor.css'
-
-/**
- * Converts any CSS color string to a format accepted by DSA's schema
- * (#rrggbb, #rrggbbaa, rgb(...), rgba(...)).
- * Named colors (e.g. "black", "orange") are resolved via an offscreen canvas.
- */
-function normalizeCssColor(color: string): string {
-    if (/^#[0-9a-fA-F]{3,8}$/.test(color)) return color
-    if (/^rgba?\(/.test(color)) return color
-    try {
-        const canvas = document.createElement('canvas')
-        canvas.width = canvas.height = 1
-        const ctx = canvas.getContext('2d')!
-        ctx.fillStyle = color
-        ctx.fillRect(0, 0, 1, 1)
-        const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data
-        if (a === 255) {
-            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-        }
-        return `rgba(${r},${g},${b},${(a / 255).toFixed(3)})`
-    } catch {
-        return color
-    }
-}
-
-/**
- * Extracts the DSA item ID from imageInfo.
- * Supports explicit imageId or parses from a DZI URL like /api/v1/item/{id}/tiles/dzi.dzi
- */
-function resolveItemId(imageInfo: AnnotationEditorProps['imageInfo']): string | null {
-    if (imageInfo.imageId != null) return String(imageInfo.imageId)
-    if (imageInfo.dziUrl) {
-        const m = imageInfo.dziUrl.match(/\/item\/([^/]+)\//)
-        return m ? m[1] : null
-    }
-    return null
-}
-
-/** Returns the lowest positive integer not already used as a label suffix. */
-function computeNextRoiLabel(elements: LocalAnnotationElement[], labelBase: string): string {
-    const usedNumbers = new Set(
-        elements
-            .filter(e => e.group === 'ROI')
-            .map(e => {
-                const m = e.label.value.match(new RegExp(`^${labelBase}(\\d+)$`))
-                return m ? parseInt(m[1], 10) : null
-            })
-            .filter((n): n is number => n !== null)
-    )
-    let next = 1
-    while (usedNumbers.has(next)) next++
-    return `${labelBase}${next}`
-}
 
 /**
  * AnnotationEditor — wraps SlideViewer and adds a protocol-driven toolbar for
@@ -109,8 +60,30 @@ export function AnnotationEditor({
     const annotationTypes = config.annotationTypes ?? []
     const [selectedTypeIndex, setSelectedTypeIndex] = useState(0)
     const selectedTypeIndexRef = useRef(0)
+    // Stable ref to the label of the currently selected ROI — stamped onto new label elements
+    const selectedRoiLabelRef = useRef<string | null>(null)
+    // Fixed-size label placement
+    const [labelFixedSizeEnabled, setLabelFixedSizeEnabled] = useState(false)
+    const labelFixedSizeEnabledRef = useRef(false)
     // Tracks whether the add-labels drawing loop is still active
     const addLabelsActiveRef = useRef(false)
+    // Paper.js item refs for label elements — parallel to the ordered label elements in localDocument
+    const labelItemsRef = useRef<any[]>([])
+    // Right-click context menu for label items in add-labels mode
+    const [contextMenu, setContextMenu] = useState<{
+        x: number; y: number; itemIdx: number; item: any
+    } | null>(null)
+    // State for editing an existing label's shape via the context menu
+    const [isEditingLabel, setIsEditingLabel] = useState(false)
+    const editingLabelRef = useRef<{
+        item: any; docElementIndex: number
+        originalSegments: { x: number; y: number }[]
+    } | null>(null)
+    // Exposed so finishEditingLabel / cancelEditingLabel can resume the drawing loop
+    const reactivateLabelDrawingRef = useRef<() => void>(() => {})
+    // Raw DSA element objects that don't belong to ROI or any known annotation type.
+    // Stored as-is from the server and appended to save payloads to prevent data loss.
+    const foreignElementsRef = useRef<any[]>([])
 
     // Paper.js item for the ROI currently being placed or edited (not yet committed)
     const pendingRoiItemRef = useRef<any>(null)
@@ -183,8 +156,17 @@ export function AnnotationEditor({
                 const docFull: any = await docRes.json()
                 if (cancelled) return
 
-                // 4. Convert DSA elements to LocalAnnotationElement[]
-                const elements: LocalAnnotationElement[] = (docFull.annotation?.elements ?? []).map(
+                // 4. Partition DSA elements into known (ROI / annotation types) and foreign.
+                // Foreign elements are preserved verbatim so save never strips them.
+                const knownGroups = new Set([
+                    'ROI',
+                    ...config.annotationTypes.map(t => t.name),
+                ])
+                const rawElements: any[] = docFull.annotation?.elements ?? []
+                const knownRaw = rawElements.filter(el => knownGroups.has(el.group ?? ''))
+                foreignElementsRef.current = rawElements.filter(el => !knownGroups.has(el.group ?? ''))
+
+                const elements: LocalAnnotationElement[] = knownRaw.map(
                     (el: any): LocalAnnotationElement => ({
                         type: 'rectangle',
                         group: el.group ?? '',
@@ -198,6 +180,7 @@ export function AnnotationEditor({
                         lineColor: normalizeCssColor(el.lineColor ?? '#ffa500'),
                         lineWidth: el.lineWidth ?? 1,
                         fillColor: normalizeCssColor(el.fillColor ?? 'rgba(0,0,0,0.05)'),
+                        ...(el.user != null ? { user: el.user } : {}),
                     })
                 )
 
@@ -244,6 +227,54 @@ export function AnnotationEditor({
                     if (groups.length > 0) {
                         roiItemsRef.current = Array.from(groups[groups.length - 1].children)
                     }
+                }
+
+                // 7. Render known annotation-type elements (label boxes) on canvas.
+                // These are rendered for visual context but not tracked in roiItemsRef.
+                // Foreign elements (unrecognized group names) are intentionally skipped —
+                // they stay in localDocument for preservation on save but are not rendered.
+                const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+                const labelElements = elements.filter(e => knownTypeNames.has(e.group))
+                if (labelElements.length > 0) {
+                    const labelCollection = {
+                        type: 'FeatureCollection',
+                        label: `${config.annotationDocumentName} - Labels`,
+                        features: labelElements.map(el => ({
+                            type: 'Feature',
+                            geometry: {
+                                type: 'Point',
+                                coordinates: [el.center[0], el.center[1]],
+                                properties: {
+                                    subtype: 'Rectangle',
+                                    width: el.width,
+                                    height: el.height,
+                                    angle: el.rotation,
+                                },
+                            },
+                            properties: {
+                                label: el.label.value,
+                                strokeColor: el.lineColor,
+                                strokeWidth: el.lineWidth,
+                                fillColor: el.fillColor,
+                                rescale: { strokeWidth: el.lineWidth },
+                            },
+                        })),
+                        properties: {},
+                    }
+                    ;(toolkit as any).loadGeoJSON([labelCollection], false)
+
+                    // Capture Paper.js item refs for label elements (last loaded feature group)
+                    const allGroups = (toolkit as any).getFeatureCollectionGroups()
+                    if (allGroups.length > 0) {
+                        labelItemsRef.current = Array.from(allGroups[allGroups.length - 1].children)
+                    }
+                }
+
+                // 8. Auto-select the first ROI. This triggers the canvas-sync effect
+                // which calls fitBounds — that viewport change also forces Paper.js to
+                // render, solving the "annotations invisible until zoom" bug.
+                if (roiElements.length > 0) {
+                    setSelectedRoiIndex(0)
                 }
             } catch (err) {
                 if (cancelled) return
@@ -324,6 +355,8 @@ export function AnnotationEditor({
     useEffect(() => { localDocumentRef.current = localDocument }, [localDocument])
     useEffect(() => { addRoiRef.current = addRoi }, [addRoi])
     useEffect(() => { selectedTypeIndexRef.current = selectedTypeIndex }, [selectedTypeIndex])
+    useEffect(() => { selectedRoiLabelRef.current = rois[selectedRoiIndex]?.label ?? null }, [selectedRoiIndex, rois])
+    useEffect(() => { labelFixedSizeEnabledRef.current = labelFixedSizeEnabled }, [labelFixedSizeEnabled])
 
     // ── Q / W keyboard shortcuts to cycle annotation types ────────────────
     useEffect(() => {
@@ -402,46 +435,90 @@ export function AnnotationEditor({
             rectTool.activate({ createNewItem: true, style })
         }
 
+        // Expose reactivate so finishEditingLabel / cancelEditingLabel can resume drawing
+        reactivateLabelDrawingRef.current = reactivate
+
         const onItemCreated = (payload: any) => {
             const item = payload?.item
             if (!item) return
+            // Don't create new items while editing an existing label's shape
+            if (editingLabelRef.current) return
 
-            const b = item.bounds
             const typeIdx = selectedTypeIndexRef.current
             const annotationType = types[typeIdx]
 
-            if (b && b.width >= 5 && b.height >= 5 && annotationType) {
-                // Correct the visual color — placeholder may have been a stale type.
-                try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+            if (!annotationType) { item.remove(); return }
 
+            // Apply fixed-size if enabled: click point → top-left, reshape to type defaults
+            if (labelFixedSizeEnabledRef.current) {
+                const fw = annotationType.defaultWidth
+                const fh = annotationType.defaultHeight
+                const left = item.position.x
+                const top = item.position.y
+                const innerPath = item.children?.[0] || item
+                if (innerPath?.segments?.length >= 4) {
+                    innerPath.segments[0].point.set(left, top)
+                    innerPath.segments[1].point.set(left + fw, top)
+                    innerPath.segments[2].point.set(left + fw, top + fh)
+                    innerPath.segments[3].point.set(left, top + fh)
+                }
+                try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
                 setLocalDocument(prev => {
                     const elements = prev?.elements ?? []
                     const newElement: LocalAnnotationElement = {
                         type: 'rectangle',
                         group: annotationType.name,
                         label: { value: annotationType.name },
-                        center: [
-                            Math.round(b.x + b.width / 2),
-                            Math.round(b.y + b.height / 2),
-                            0,
-                        ],
-                        width: Math.round(b.width),
-                        height: Math.round(b.height),
+                        center: [Math.round(left + fw / 2), Math.round(top + fh / 2), 0],
+                        width: fw,
+                        height: fh,
                         rotation: 0,
                         lineColor: normalizeCssColor(annotationType.color),
                         lineWidth: annotationType.strokeWidth ?? 2,
                         fillColor: 'rgba(0,0,0,0.05)',
+                        ...(selectedRoiLabelRef.current != null ? { user: { roiLabel: selectedRoiLabelRef.current } } : {}),
                     }
                     return prev
                         ? { ...prev, elements: [...elements, newElement] }
-                        : {
-                              name: config.annotationDocumentName,
-                              description: config.annotationDescription ?? '',
-                              elements: [newElement],
-                          }
+                        : { name: config.annotationDocumentName, description: config.annotationDescription ?? '', elements: [newElement] }
                 })
+                labelItemsRef.current.push(item)
             } else {
-                item.remove()
+                const b = item.bounds
+                if (b && b.width >= 5 && b.height >= 5) {
+                    // Correct the visual color — placeholder may have been a stale type.
+                    try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+                    setLocalDocument(prev => {
+                        const elements = prev?.elements ?? []
+                        const newElement: LocalAnnotationElement = {
+                            type: 'rectangle',
+                            group: annotationType.name,
+                            label: { value: annotationType.name },
+                            center: [
+                                Math.round(b.x + b.width / 2),
+                                Math.round(b.y + b.height / 2),
+                                0,
+                            ],
+                            width: Math.round(b.width),
+                            height: Math.round(b.height),
+                            rotation: 0,
+                            lineColor: normalizeCssColor(annotationType.color),
+                            lineWidth: annotationType.strokeWidth ?? 2,
+                            fillColor: 'rgba(0,0,0,0.05)',
+                            ...(selectedRoiLabelRef.current != null ? { user: { roiLabel: selectedRoiLabelRef.current } } : {}),
+                        }
+                        return prev
+                            ? { ...prev, elements: [...elements, newElement] }
+                            : {
+                                  name: config.annotationDocumentName,
+                                  description: config.annotationDescription ?? '',
+                                  elements: [newElement],
+                              }
+                    })
+                    labelItemsRef.current.push(item)
+                } else {
+                    item.remove()
+                }
             }
 
             // activate() is a no-op when _active=true — must deactivate first.
@@ -606,6 +683,188 @@ export function AnnotationEditor({
         setSelectedRoiIndex(-1)
     }, [selectedRoiIndex, rois])
 
+    // ── Right-click context menu for label items (add-labels mode) ───────
+    useEffect(() => {
+        if (!toolkit || workflowMode !== 'add-labels') return
+        const viewer = (toolkit as any).viewer
+        if (!viewer) return
+        // Use tk.paperScope directly (same as archive: this.tk.paperScope)
+        const paperScope = (toolkit as any).paperScope
+        if (!paperScope) return
+        // The Paper.js canvas sits on top of OSD's canvas and intercepts all pointer
+        // events, so OSD's canvas-contextmenu never fires. We must listen on the
+        // overlay canvas element directly — exactly how the archive app does it.
+        const overlayCanvas: HTMLElement | undefined = (toolkit as any).overlay?.canvas()
+        if (!overlayCanvas) return
+
+        const handleContextMenu = (event: MouseEvent) => {
+            event.preventDefault()
+
+            // Convert canvas-relative coords → image pixel coords (archive pattern)
+            const rect = overlayCanvas.getBoundingClientRect()
+            const x = event.clientX - rect.left
+            const y = event.clientY - rect.top
+            const imageCoords = viewer.viewport.viewerElementToImageCoordinates(
+                new (OpenSeadragon as any).Point(x, y)
+            )
+            const point = new paperScope.Point(imageCoords.x, imageCoords.y)
+
+            // Use bounds-based hit detection — paper.js project.hitTest is unreliable
+            // here because items have near-transparent fills and the project traversal
+            // has quirks. Iterating labelItemsRef with bounds.contains() is direct and reliable.
+            let hitItem: any = null
+            let itemIdx = -1
+            for (let i = labelItemsRef.current.length - 1; i >= 0; i--) {
+                const it = labelItemsRef.current[i]
+                if (it?.bounds?.contains(point)) {
+                    hitItem = it
+                    itemIdx = i
+                    break
+                }
+            }
+            if (itemIdx < 0) { setContextMenu(null); return }
+
+            setContextMenu({ x: event.clientX, y: event.clientY, itemIdx, item: hitItem })
+        }
+
+        overlayCanvas.addEventListener('contextmenu', handleContextMenu)
+        return () => overlayCanvas.removeEventListener('contextmenu', handleContextMenu)
+    }, [toolkit, workflowMode])
+
+    // Dismiss context menu on click-outside or Escape
+    useEffect(() => {
+        if (!contextMenu) return
+        const handleMouseDown = (e: MouseEvent) => {
+            const menu = document.querySelector('.annotation-editor__context-menu')
+            if (menu && menu.contains(e.target as Node)) return
+            setContextMenu(null)
+        }
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setContextMenu(null)
+        }
+        document.addEventListener('mousedown', handleMouseDown)
+        document.addEventListener('keydown', handleKeyDown)
+        return () => {
+            document.removeEventListener('mousedown', handleMouseDown)
+            document.removeEventListener('keydown', handleKeyDown)
+        }
+    }, [contextMenu])
+
+    // Helper: given an item's index in labelItemsRef, find its index in localDocument.elements
+    const findLabelDocIndex = useCallback((itemIdx: number): number => {
+        if (!localDocument) return -1
+        const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+        let count = 0
+        for (let i = 0; i < localDocument.elements.length; i++) {
+            if (knownTypeNames.has(localDocument.elements[i].group)) {
+                if (count === itemIdx) return i
+                count++
+            }
+        }
+        return -1
+    }, [localDocument, config.annotationTypes])
+
+    const handleContextMenuChangeType = useCallback((typeIndex: number) => {
+        if (!contextMenu) return
+        const { itemIdx, item } = contextMenu
+        const annotationType = config.annotationTypes[typeIndex]
+        if (!annotationType) return
+
+        const docIdx = findLabelDocIndex(itemIdx)
+        if (docIdx < 0) { setContextMenu(null); return }
+
+        try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+
+        setLocalDocument(prev => {
+            if (!prev) return prev
+            const elements = [...prev.elements]
+            elements[docIdx] = {
+                ...elements[docIdx],
+                group: annotationType.name,
+                label: { value: annotationType.name },
+                lineColor: normalizeCssColor(annotationType.color),
+                lineWidth: annotationType.strokeWidth ?? 2,
+            }
+            return { ...prev, elements }
+        })
+        setContextMenu(null)
+    }, [contextMenu, config.annotationTypes, findLabelDocIndex])
+
+    const handleContextMenuEditShape = useCallback(() => {
+        if (!contextMenu || !toolkit) return
+        const { itemIdx, item } = contextMenu
+        const docIdx = findLabelDocIndex(itemIdx)
+        if (docIdx < 0) { setContextMenu(null); return }
+
+        const rect = item.children?.[0] || item
+        const originalSegments = rect.segments?.map((s: any) => ({ x: s.point.x, y: s.point.y })) ?? []
+        editingLabelRef.current = { item, docElementIndex: docIdx, originalSegments }
+        setIsEditingLabel(true)
+        setContextMenu(null)
+
+        item.select()
+        const rectTool = (toolkit as any).getTool('rectangle')
+        if (rectTool) rectTool.activate()
+    }, [contextMenu, toolkit, findLabelDocIndex])
+
+    const handleContextMenuDelete = useCallback(() => {
+        if (!contextMenu) return
+        const { itemIdx, item } = contextMenu
+        const docIdx = findLabelDocIndex(itemIdx)
+        if (docIdx < 0) { setContextMenu(null); return }
+
+        item.remove()
+        labelItemsRef.current.splice(itemIdx, 1)
+        setLocalDocument(prev => {
+            if (!prev) return prev
+            return { ...prev, elements: prev.elements.filter((_, i) => i !== docIdx) }
+        })
+        setContextMenu(null)
+    }, [contextMenu, findLabelDocIndex])
+
+    const finishEditingLabel = useCallback(() => {
+        const editInfo = editingLabelRef.current
+        if (!editInfo) return
+        const { item, docElementIndex, originalSegments } = editInfo
+        const b = item.bounds
+
+        if (b && b.width >= 5 && b.height >= 5) {
+            setLocalDocument(prev => {
+                if (!prev) return prev
+                const elements = [...prev.elements]
+                elements[docElementIndex] = {
+                    ...elements[docElementIndex],
+                    center: [Math.round(b.x + b.width / 2), Math.round(b.y + b.height / 2), 0] as [number, number, number],
+                    width: Math.round(b.width),
+                    height: Math.round(b.height),
+                }
+                return { ...prev, elements }
+            })
+        } else {
+            const rect = item.children?.[0] || item
+            originalSegments.forEach((pt, i) => rect.segments[i].point.set(pt.x, pt.y))
+        }
+
+        item.deselect(true)
+        editingLabelRef.current = null
+        setIsEditingLabel(false)
+        reactivateLabelDrawingRef.current()
+    }, [])
+
+    const cancelEditingLabel = useCallback(() => {
+        const editInfo = editingLabelRef.current
+        if (!editInfo) return
+        const { item, originalSegments } = editInfo
+
+        const rect = item.children?.[0] || item
+        originalSegments.forEach((pt, i) => rect.segments[i].point.set(pt.x, pt.y))
+
+        item.deselect(true)
+        editingLabelRef.current = null
+        setIsEditingLabel(false)
+        reactivateLabelDrawingRef.current()
+    }, [])
+
     // ── Save localDocument to DSA ─────────────────────────────────────────
     const notify = useCallback(
         (type: 'success' | 'error', message: string, durationMs: number) => {
@@ -650,11 +909,13 @@ export function AnnotationEditor({
         }
         if (authToken) headers['Girder-Token'] = authToken
 
-        // The annotation object sent in both calls (no wrapper for PUT, wrapped for POST)
+        // The annotation object sent in both calls (no wrapper for PUT, wrapped for POST).
+        // Foreign elements (unrecognized group names) are appended verbatim so they
+        // are never lost when this app saves back to DSA.
         const annotationObject = {
             name: localDocument.name,
             description: localDocument.description,
-            elements: localDocument.elements,
+            elements: [...localDocument.elements, ...foreignElementsRef.current],
         }
 
         const doFetch = fetchFn ?? fetch
@@ -803,6 +1064,34 @@ export function AnnotationEditor({
         }
     }, [rois])
 
+    // ── Zoom viewer to fit an ROI using its image-pixel coordinates ───────
+    // Reads from localDocumentRef (not localDocument state) so this callback is
+    // stable across localDocument updates (e.g. when label boxes are drawn).
+    const zoomToRoiByIndex = useCallback((roiIndex: number) => {
+        if (!toolkit) return
+        const viewer = (toolkit as any).viewer
+        if (!viewer?.viewport) return
+        let roiCount = 0
+        const el = localDocumentRef.current?.elements.find(e => {
+            if (e.group !== 'ROI') return false
+            return roiCount++ === roiIndex
+        })
+        if (!el) return
+        const pad = 0.1
+        const x = el.center[0] - el.width / 2 - el.width * pad
+        const y = el.center[1] - el.height / 2 - el.height * pad
+        const w = el.width * (1 + 2 * pad)
+        const h = el.height * (1 + 2 * pad)
+        const rect = new (OpenSeadragon as any).Rect(x, y, w, h)
+        const vpRect = viewer.viewport.imageToViewportRectangle(rect)
+        viewer.viewport.fitBounds(vpRect)
+    }, [toolkit])
+
+    // Tracks which selectedRoiIndex value we last zoomed to — so drawing label
+    // boxes (which updates rois/localDocument but not selectedRoiIndex) never
+    // triggers an unwanted re-center.
+    const zoomedForRoiIndexRef = useRef(-2)
+
     // ── Sync canvas selection highlight with the dropdown ─────────────────
     useEffect(() => {
         // Don't interfere while the user is placing a new ROI or editing one
@@ -812,208 +1101,60 @@ export function AnnotationEditor({
             const roi = rois[selectedRoiIndex]
             if (roi) {
                 const item = roiItemsRef.current[roi.roiIndex]
-                // select() automatically deselects all other items first
-                if (item) item.select()
+                if (item) {
+                    item.select()
+                    // Only zoom when the selected ROI actually changed, not when
+                    // localDocument changed (e.g. a label box was drawn/deleted).
+                    if (selectedRoiIndex !== zoomedForRoiIndexRef.current) {
+                        zoomedForRoiIndexRef.current = selectedRoiIndex
+                        zoomToRoiByIndex(roi.roiIndex)
+                    }
+                }
             }
         } else {
-            // Deselect all committed items
+            zoomedForRoiIndexRef.current = -1
             roiItemsRef.current.forEach(item => {
                 if (item) item.deselect(true)
             })
         }
-    }, [toolkit, selectedRoiIndex, activeMode, rois])
+    }, [toolkit, selectedRoiIndex, activeMode, rois, zoomToRoiByIndex])
 
     return (
         <div className={`annotation-editor ${className}`} style={style}>
-            {/* ── Toolbar ─────────────────────────────────────────── */}
-            <div className="annotation-editor__toolbar">
-                {/* ROI selector */}
-                <div className="annotation-editor__toolbar-group">
-                    <span className="annotation-editor__roi-label">ROI:</span>
-                    <select
-                        className="annotation-editor__roi-select"
-                        value={selectedRoiIndex}
-                        onChange={e => setSelectedRoiIndex(Number(e.target.value))}
-                        disabled={rois.length === 0}
-                    >
-                        {rois.length === 0 ? (
-                            <option value={-1}>— no ROIs loaded —</option>
-                        ) : (
-                            <>
-                                <option value={-1}>Unselect ROI</option>
-                                {rois.map((roi, i) => (
-                                    <option key={i} value={i}>
-                                        {roi.label}
-                                    </option>
-                                ))}
-                            </>
-                        )}
-                    </select>
+            <AnnotationEditorToolbar
+                rois={rois}
+                selectedRoiIndex={selectedRoiIndex}
+                setSelectedRoiIndex={setSelectedRoiIndex}
+                markComplete={markComplete}
+                setMarkComplete={setMarkComplete}
+                workflowMode={workflowMode}
+                setWorkflowMode={setWorkflowMode}
+                isEditingLabel={isEditingLabel}
+                finishEditingLabel={finishEditingLabel}
+                cancelEditingLabel={cancelEditingLabel}
+                labelFixedSizeEnabled={labelFixedSizeEnabled}
+                setLabelFixedSizeEnabled={setLabelFixedSizeEnabled}
+                annotationTypes={annotationTypes}
+                selectedTypeIndex={selectedTypeIndex}
+                setSelectedTypeIndex={setSelectedTypeIndex}
+                activeMode={activeMode}
+                setActiveMode={setActiveMode}
+                fixedSizeEnabled={fixedSizeEnabled}
+                setFixedSizeEnabled={setFixedSizeEnabled}
+                fixedWidth={fixedWidth}
+                setFixedWidth={setFixedWidth}
+                fixedHeight={fixedHeight}
+                setFixedHeight={setFixedHeight}
+                finishEditingRoi={finishEditingRoi}
+                cancelPendingRoi={cancelPendingRoi}
+                startEditActiveRoi={startEditActiveRoi}
+                deleteActiveRoi={deleteActiveRoi}
+                isLoadingAnnotation={isLoadingAnnotation}
+                saveStatus={saveStatus}
+                saveAnnotation={() => { void saveAnnotation() }}
+                canSave={resolveItemId(imageInfo) !== null || localDocument !== null}
+            />
 
-                    <label className="annotation-editor__checkbox-label">
-                        <input
-                            type="checkbox"
-                            checked={markComplete}
-                            onChange={e => setMarkComplete(e.target.checked)}
-                            disabled={selectedRoiIndex < 0}
-                        />
-                        Mark Complete
-                    </label>
-
-                    <select
-                        className="annotation-editor__roi-select"
-                        value={workflowMode}
-                        onChange={e => { setWorkflowMode(e.target.value as WorkflowMode); e.target.blur() }}
-                    >
-                        <option value="edit-rois">Edit ROIs</option>
-                        <option value="add-labels">Add Labels</option>
-                        <option value="review">Review</option>
-                    </select>
-                </div>
-
-                <div className="annotation-editor__toolbar-divider" />
-
-                {/* Annotation type selector — visible in Add Labels workflow */}
-                {workflowMode === 'add-labels' && annotationTypes.length > 0 && (
-                    <div className="annotation-editor__mode-group">
-                        <span className="annotation-editor__roi-label">Type:</span>
-                        <span
-                            className="annotation-editor__type-swatch"
-                            style={{ backgroundColor: annotationTypes[selectedTypeIndex]?.color ?? 'transparent' }}
-                        />
-                        <select
-                            className="annotation-editor__roi-select"
-                            value={selectedTypeIndex}
-                            onChange={e => { setSelectedTypeIndex(Number(e.target.value)); e.target.blur() }}
-                        >
-                            {annotationTypes.map((t, i) => (
-                                <option key={i} value={i}>{t.name}</option>
-                            ))}
-                        </select>
-                        <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>Q / W to cycle</span>
-                    </div>
-                )}
-
-                {/* Mode buttons — only visible in Edit ROIs workflow */}
-                {workflowMode === 'edit-rois' && (
-                    <div className="annotation-editor__mode-group">
-                        {activeMode === 'drawing-roi' ? (
-                            <>
-                                <button
-                                    className="annotation-editor__mode-btn annotation-editor__mode-btn--finish"
-                                    onClick={finishEditingRoi}
-                                    title="Accept the drawn ROI and save it"
-                                >
-                                    Finish editing
-                                </button>
-                                <button
-                                    className="annotation-editor__mode-btn annotation-editor__mode-btn--danger annotation-editor__mode-btn--cancel"
-                                    onClick={cancelPendingRoi}
-                                    title="Discard the drawn ROI"
-                                >
-                                    Cancel
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                {/* Fixed-size controls */}
-                                <label className="annotation-editor__checkbox-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={fixedSizeEnabled}
-                                        onChange={e => setFixedSizeEnabled(e.target.checked)}
-                                    />
-                                    Fixed size
-                                </label>
-                                {fixedSizeEnabled && (
-                                    <>
-                                        <span className="annotation-editor__dim-label">W:</span>
-                                        <input
-                                            className="annotation-editor__dim-input"
-                                            type="number"
-                                            min={1}
-                                            value={fixedWidth}
-                                            onChange={e => setFixedWidth(Math.max(1, Number(e.target.value)))}
-                                            title="Fixed ROI width in image pixels"
-                                        />
-                                        <span className="annotation-editor__dim-label">H:</span>
-                                        <input
-                                            className="annotation-editor__dim-input"
-                                            type="number"
-                                            min={1}
-                                            value={fixedHeight}
-                                            onChange={e => setFixedHeight(Math.max(1, Number(e.target.value)))}
-                                            title="Fixed ROI height in image pixels"
-                                        />
-                                    </>
-                                )}
-
-                                <button
-                                    className={`annotation-editor__mode-btn${activeMode === 'add-roi' ? ' annotation-editor__mode-btn--active' : ''}`}
-                                    onClick={() => {
-                                        if (activeMode === 'add-roi') {
-                                            setActiveMode(null)
-                                        } else {
-                                            setSelectedRoiIndex(-1)
-                                            setActiveMode('add-roi')
-                                        }
-                                    }}
-                                    title={fixedSizeEnabled ? 'Click on slide to place a fixed-size ROI' : 'Draw a new ROI rectangle on the slide'}
-                                >
-                                    Add ROI
-                                </button>
-                                <button
-                                    className="annotation-editor__mode-btn"
-                                    onClick={startEditActiveRoi}
-                                    disabled={selectedRoiIndex < 0}
-                                    title="Edit the currently selected ROI"
-                                >
-                                    Edit Active ROI
-                                </button>
-                                <button
-                                    className="annotation-editor__mode-btn annotation-editor__mode-btn--danger"
-                                    onClick={deleteActiveRoi}
-                                    disabled={selectedRoiIndex < 0}
-                                    title="Delete the currently selected ROI"
-                                >
-                                    Delete Active ROI
-                                </button>
-                            </>
-                        )}
-                    </div>
-                )}
-
-                {/* Spacer pushes save button to the far right */}
-                <div style={{ flex: 1 }} />
-
-                {/* Loading indicator */}
-                {isLoadingAnnotation && (
-                    <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
-                        Loading annotations…
-                    </span>
-                )}
-
-                {/* Save button */}
-                <button
-                    className={`annotation-editor__mode-btn annotation-editor__mode-btn--save${saveStatus === 'error' ? ' annotation-editor__mode-btn--save--error' : saveStatus === 'saved' ? ' annotation-editor__mode-btn--save--saved' : ''}`}
-                    onClick={() => { void saveAnnotation() }}
-                    disabled={
-                        saveStatus === 'saving' ||
-                        (resolveItemId(imageInfo) === null && !localDocument)
-                    }
-                    title="Save annotations to DSA"
-                >
-                    {saveStatus === 'saving'
-                        ? 'Saving…'
-                        : saveStatus === 'saved'
-                          ? 'Saved ✓'
-                          : saveStatus === 'error'
-                            ? 'Save failed'
-                            : 'Save'}
-                </button>
-            </div>
-
-            {/* ── SlideViewer ──────────────────────────────────────── */}
             <div className="annotation-editor__viewer">
                 <SlideViewer
                     imageInfo={imageInfo}
@@ -1032,41 +1173,17 @@ export function AnnotationEditor({
                 />
             </div>
 
-            {/* ── Save notification toast ──────────────────────────── */}
-            {notification && (
-                <div className={`annotation-editor__toast annotation-editor__toast--${notification.type}`}>
-                    {notification.message}
-                </div>
-            )}
-
-            {/* ── Duplicate document warning ───────────────────────── */}
-            {showDuplicateWarning && (
-                <div className="annotation-editor__modal-backdrop">
-                    <div className="annotation-editor__modal" role="dialog" aria-modal="true">
-                        <div className="annotation-editor__modal-title">
-                            <span className="annotation-editor__modal-icon">⚠️</span>
-                            Multiple annotation documents found
-                        </div>
-                        <div className="annotation-editor__modal-body">
-                            More than one annotation document named{' '}
-                            <strong>"{config.annotationDocumentName}"</strong> was found on the
-                            server.
-                            <br />
-                            <br />
-                            The first document has been loaded. Please remove the duplicate(s) on
-                            the DSA server to avoid data conflicts.
-                        </div>
-                        <div className="annotation-editor__modal-footer">
-                            <button
-                                className="annotation-editor__modal-ok-btn"
-                                onClick={() => setShowDuplicateWarning(false)}
-                            >
-                                OK
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <AnnotationEditorOverlays
+                contextMenu={contextMenu}
+                annotationTypes={annotationTypes}
+                handleContextMenuChangeType={handleContextMenuChangeType}
+                handleContextMenuEditShape={handleContextMenuEditShape}
+                handleContextMenuDelete={handleContextMenuDelete}
+                notification={notification}
+                showDuplicateWarning={showDuplicateWarning}
+                setShowDuplicateWarning={setShowDuplicateWarning}
+                annotationDocumentName={config.annotationDocumentName}
+            />
         </div>
     )
 }

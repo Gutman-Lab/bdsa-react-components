@@ -349,3 +349,56 @@
 .annotation-editor__modal-ok-btn:hover {
   background-color: #1d4ed8;
 }
+
+/* ── Label right-click context menu ─────────────────────── */
+
+.annotation-editor__context-menu {
+  position: fixed;
+  z-index: 1100;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  padding: 4px 0;
+  min-width: 160px;
+  user-select: none;
+}
+
+.annotation-editor__context-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: #1e293b;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.annotation-editor__context-menu__item:hover {
+  background-color: #f1f5f9;
+}
+
+.annotation-editor__context-menu__item--danger {
+  color: #dc2626;
+}
+
+.annotation-editor__context-menu__item--danger:hover {
+  background-color: #fef2f2;
+}
+
+.annotation-editor__context-menu__arrow {
+  color: #64748b;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.annotation-editor__context-menu__divider {
+  height: 1px;
+  background-color: #e2e8f0;
+  margin: 4px 0;
+}
