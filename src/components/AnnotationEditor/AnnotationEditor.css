@@ -251,6 +251,53 @@
   flex-shrink: 0;
 }
 
+/* ROI progress tracker */
+
+.annotation-editor__roi-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #475569;
+  background-color: #0f172a;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #94a3b8;
+  letter-spacing: 0.01em;
+}
+
+.annotation-editor__roi-progress__count {
+  font-weight: 700;
+  font-size: 12px;
+  color: #cbd5e1;
+  background: #334155;
+  padding: 1px 8px;
+  border-radius: 999px;
+  min-width: 44px;
+  text-align: center;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.annotation-editor__roi-progress--partial {
+  border-color: #92400e;
+}
+
+.annotation-editor__roi-progress--partial .annotation-editor__roi-progress__count {
+  background: #92400e;
+  color: #fef3c7;
+}
+
+.annotation-editor__roi-progress--complete {
+  border-color: #166534;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.35);
+}
+
+.annotation-editor__roi-progress--complete .annotation-editor__roi-progress__count {
+  background: #166534;
+  color: #bbf7d0;
+}
+
 /* ── Viewer area ─────────────────────────────────────────── */
 
 .annotation-editor__viewer {

@@ -1,5 +1,7 @@
-import { Folder, FolderLock, Play, FileText } from 'lucide-react'
-import type { FolderItem, Item, NodeChildren } from './types'
+import { Folder, FolderLock, Play } from 'lucide-react'
+import type { FolderItem, NodeChildren } from './types'
+import { ItemRow } from '../../utils/dsaBrowserUtils'
+import type { Item } from '../../utils/dsaBrowserUtils'
 
 interface TreeNodeProps {
   parentId: string
@@ -86,15 +88,13 @@ export function TreeNode({
         </div>
       ))}
       {visibleItems.map((item: Item) => (
-        <div
+        <ItemRow
           key={item._id}
-          className={`folder-browser__item${item._id === selectedItemId ? ' folder-browser__item--selected' : ''}`}
+          item={item}
+          selectedItemId={selectedItemId}
+          onItemSelect={onItemSelect}
           style={indentStyle}
-          onClick={() => onItemSelect?.(item)}
-        >
-          <FileText size={14} className="folder-browser__item-icon" />
-          <span>{item.name}</span>
-        </div>
+        />
       ))}
     </>
   )

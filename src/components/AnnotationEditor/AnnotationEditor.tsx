@@ -318,6 +318,11 @@ export function AnnotationEditor({
             })
     }, [localDocument])
 
+    const roiCompletedCount = useMemo(() => {
+        if (!localDocument) return 0
+        return localDocument.elements.filter(e => e.group === 'ROI' && e.user?.complete === true).length
+    }, [localDocument])
+
     // ── Review mode: list of label items in the selected ROI ─────────────
     // Each entry has the Paper.js item and the index into localDocument.elements.
     // labelItemsRef is read here; it stays in sync because localDocument is a dep.
@@ -1283,6 +1288,55 @@ export function AnnotationEditor({
         }
     }, [toolkit, selectedRoiIndex, activeMode, rois, zoomToRoiByIndex])
 
+    // ── Sync markComplete checkbox from the selected ROI's user data ──────
+    useEffect(() => {
+        if (selectedRoiIndex < 0 || !localDocument) {
+            setMarkComplete(false)
+            return
+        }
+        const roi = rois[selectedRoiIndex]
+        if (!roi) { setMarkComplete(false); return }
+        const roiEl = localDocument.elements.filter(e => e.group === 'ROI')[roi.roiIndex]
+        setMarkComplete(!!(roiEl?.user?.complete))
+    }, [selectedRoiIndex, rois, localDocument])
+
+    // ── Apply / remove the "complete" state on the selected ROI ──────────
+    const handleMarkComplete = useCallback((v: boolean) => {
+        setMarkComplete(v)
+        if (selectedRoiIndex < 0) return
+        const roi = rois[selectedRoiIndex]
+        if (!roi) return
+
+        const completedColor = '#22c55e'
+        const defaultColor = normalizeCssColor(config.roiSettings?.color ?? '#ffa500')
+
+        // Update the Paper.js item stroke color immediately
+        const item = roiItemsRef.current[roi.roiIndex]
+        if (item) {
+            try { item.strokeColor = v ? completedColor : defaultColor } catch { /* ignore */ }
+        }
+
+        // Update lineColor and user.complete in localDocument
+        setLocalDocument(prev => {
+            if (!prev) return prev
+            const roiEls = prev.elements.filter(e => e.group === 'ROI')
+            const roiEl = roiEls[roi.roiIndex]
+            if (!roiEl) return prev
+            const newUser = v
+                ? { ...(roiEl.user ?? {}), complete: true }
+                : Object.fromEntries(Object.entries(roiEl.user ?? {}).filter(([k]) => k !== 'complete'))
+            const updatedEl: LocalAnnotationElement = {
+                ...roiEl,
+                lineColor: v ? completedColor : defaultColor,
+                ...(Object.keys(newUser).length > 0 ? { user: newUser } : { user: undefined }),
+            }
+            return {
+                ...prev,
+                elements: prev.elements.map(e => (e === roiEl ? updatedEl : e)),
+            }
+        })
+    }, [selectedRoiIndex, rois, config])
+
     return (
         <div className={`annotation-editor ${className}`} style={style}>
             <AnnotationEditorToolbar
@@ -1290,7 +1344,9 @@ export function AnnotationEditor({
                 selectedRoiIndex={selectedRoiIndex}
                 setSelectedRoiIndex={setSelectedRoiIndex}
                 markComplete={markComplete}
-                setMarkComplete={setMarkComplete}
+                setMarkComplete={handleMarkComplete}
+                roiCompletedCount={roiCompletedCount}
+                roiTotal={rois.length}
                 workflowMode={workflowMode}
                 setWorkflowMode={setWorkflowMode}
                 isEditingLabel={isEditingLabel}
