@@ -43,6 +43,10 @@ export interface ToolbarProps {
     onReviewTypeChange: (typeIndex: number) => void
     startReviewEditShape: () => void
 
+    // Show info toggle
+    showInfo: boolean
+    setShowInfo: (v: boolean) => void
+
     // ROI progress
     roiCompletedCount: number
     roiTotal: number
@@ -68,6 +72,7 @@ export function AnnotationEditorToolbar({
     finishEditingRoi, cancelPendingRoi, startEditActiveRoi, deleteActiveRoi,
     reviewItemIndex, reviewItemCount, reviewNextItem, reviewPreviousItem,
     reviewSelectedTypeIndex, onReviewTypeChange, startReviewEditShape,
+    showInfo, setShowInfo,
     roiCompletedCount, roiTotal,
     isLoadingAnnotation, saveStatus, saveAnnotation, canSave,
 }: ToolbarProps) {
@@ -328,6 +333,14 @@ export function AnnotationEditorToolbar({
 
             {/* Spacer pushes save button to the far right */}
             <div style={{ flex: 1 }} />
+
+            <button
+                className={`annotation-editor__mode-btn${showInfo ? ' annotation-editor__mode-btn--active' : ''}`}
+                onClick={() => setShowInfo(!showInfo)}
+                title="Hover over elements to see their info"
+            >
+                Show Info
+            </button>
 
             {roiTotal > 0 && (() => {
                 const mod = roiCompletedCount === 0

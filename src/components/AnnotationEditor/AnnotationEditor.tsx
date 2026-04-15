@@ -75,6 +75,13 @@ export function AnnotationEditor({
     } | null>(null)
     // State for editing an existing label's shape via the context menu
     const [isEditingLabel, setIsEditingLabel] = useState(false)
+    const [showInfo, setShowInfo] = useState(false)
+    const showInfoRef = useRef(false)
+    const [hoverInfo, setHoverInfo] = useState<{
+        x: number; y: number
+        element: LocalAnnotationElement
+        roiElement?: LocalAnnotationElement
+    } | null>(null)
     const editingLabelRef = useRef<{
         item: any; docElementIndex: number
         originalSegments: { x: number; y: number }[]
@@ -397,6 +404,101 @@ export function AnnotationEditor({
     useEffect(() => { workflowModeRef.current = workflowMode }, [workflowMode])
     useEffect(() => { toolkitRef.current = toolkit }, [toolkit])
     useEffect(() => { reviewItemIndexRef.current = reviewItemIndex }, [reviewItemIndex])
+    useEffect(() => { showInfoRef.current = showInfo }, [showInfo])
+
+    // ── Map a hit Paper.js item back to a LocalAnnotationElement ─────────
+    const findElementForHitItem = useCallback((hitItem: any): LocalAnnotationElement | null => {
+        if (!hitItem || !localDocumentRef.current) return null
+        let current: any = hitItem
+        while (current) {
+            const roiIdx = roiItemsRef.current.indexOf(current)
+            if (roiIdx >= 0) {
+                const roiEls = localDocumentRef.current.elements.filter(e => e.group === 'ROI')
+                return roiEls[roiIdx] ?? null
+            }
+            const labelIdx = labelItemsRef.current.indexOf(current)
+            if (labelIdx >= 0) {
+                const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+                const labelEls = localDocumentRef.current.elements.filter(e => knownTypeNames.has(e.group))
+                return labelEls[labelIdx] ?? null
+            }
+            current = current.parent
+        }
+        return null
+    }, [config.annotationTypes])
+
+    // ── Show-info hover: hit-test canvas on mousemove ─────────────────────
+    useEffect(() => {
+        if (!toolkit || !showInfo) {
+            setHoverInfo(null)
+            return
+        }
+        // toolkit.paperScope is the correct path (not toolkit.project?.paperScope)
+        const paperScope = (toolkit as any).paperScope
+        if (!paperScope) return
+        const canvas = paperScope.view?.element as HTMLCanvasElement | null
+        if (!canvas) return
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const rect = canvas.getBoundingClientRect()
+            let projectPoint: any
+            try {
+                projectPoint = paperScope.view.viewToProject(
+                    new (paperScope.Point)(e.clientX - rect.left, e.clientY - rect.top)
+                )
+            } catch { return }
+
+            // Scale tolerance by zoom (same as SelectTool in osd-paperjs-annotation)
+            const tolerance = 5 / (paperScope.view.zoom ?? 1)
+
+            // Stroke/edge hits via hitTestAll
+            const strokeHits: any[] = paperScope.project.hitTestAll(projectPoint, {
+                fill: true, stroke: true, tolerance,
+                match: (i: any) => i.item.isGeoJSONFeature || i.item.parent?.isGeoJSONFeature,
+            })
+
+            // Interior containment check on all feature items — handles zero/no-fill
+            // (Paper.js fill hit-test skips items with null or zero-alpha fillColor)
+            const allFeatures: any[] = paperScope.project.getItems({
+                match: (item: any) => item.isGeoJSONFeature,
+            })
+            const containedFeatures = allFeatures.filter((item: any) => {
+                try { return item.contains(projectPoint) } catch { return false }
+            })
+
+            const allHitItems = new Set<any>([
+                ...strokeHits.map((h: any) => h.item),
+                ...containedFeatures,
+            ])
+            if (!allHitItems.size) { setHoverInfo(null); return }
+
+            const elements = [...allHitItems]
+                .map(item => findElementForHitItem(item))
+                .filter(Boolean) as LocalAnnotationElement[]
+
+            // Prefer label box as primary; ROI as secondary context
+            const labelEl = elements.find(e => e.group !== 'ROI')
+            const roiEl = elements.find(e => e.group === 'ROI')
+            const primary = labelEl ?? roiEl
+            if (!primary) { setHoverInfo(null); return }
+
+            setHoverInfo({
+                x: e.clientX, y: e.clientY,
+                element: primary,
+                roiElement: labelEl ? roiEl : undefined,
+            })
+        }
+
+        const handleMouseLeave = () => setHoverInfo(null)
+
+        canvas.addEventListener('mousemove', handleMouseMove)
+        canvas.addEventListener('mouseleave', handleMouseLeave)
+        return () => {
+            canvas.removeEventListener('mousemove', handleMouseMove)
+            canvas.removeEventListener('mouseleave', handleMouseLeave)
+            setHoverInfo(null)
+        }
+    }, [toolkit, showInfo, findElementForHitItem])
 
     // ── Q / W keyboard shortcuts to cycle annotation types ────────────────
     useEffect(() => {
@@ -1402,6 +1504,8 @@ export function AnnotationEditor({
                 reviewSelectedTypeIndex={selectedTypeIndex}
                 onReviewTypeChange={changeReviewItemType}
                 startReviewEditShape={startReviewEditShape}
+                showInfo={showInfo}
+                setShowInfo={setShowInfo}
                 isLoadingAnnotation={isLoadingAnnotation}
                 saveStatus={saveStatus}
                 saveAnnotation={() => { void saveAnnotation() }}
@@ -1436,6 +1540,7 @@ export function AnnotationEditor({
                 showDuplicateWarning={showDuplicateWarning}
                 setShowDuplicateWarning={setShowDuplicateWarning}
                 annotationDocumentName={config.annotationDocumentName}
+                hoverInfo={hoverInfo}
             />
         </div>
     )
