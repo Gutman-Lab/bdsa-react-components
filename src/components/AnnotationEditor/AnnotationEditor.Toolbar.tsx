@@ -141,7 +141,7 @@ export function AnnotationEditorToolbar({
                         className="annotation-editor__mode-btn"
                         onClick={reviewPreviousItem}
                         disabled={reviewItemCount === 0}
-                        title="Previous label box (hotkey: N)"
+                        title="Previous label box (← / N)"
                     >
                         &#8249;
                     </button>
@@ -154,7 +154,7 @@ export function AnnotationEditorToolbar({
                         className="annotation-editor__mode-btn"
                         onClick={reviewNextItem}
                         disabled={reviewItemCount === 0}
-                        title="Next label box (hotkey: M)"
+                        title="Next label box (→ / M)"
                     >
                         &#8250;
                     </button>

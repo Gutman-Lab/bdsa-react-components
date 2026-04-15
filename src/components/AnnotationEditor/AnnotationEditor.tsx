@@ -1022,8 +1022,8 @@ export function AnnotationEditor({
         const handleKeyDown = (e: KeyboardEvent) => {
             const tag = (e.target as HTMLElement)?.tagName?.toUpperCase()
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-            if (e.key.toLowerCase() === nextKey) { e.preventDefault(); reviewNextItem() }
-            else if (e.key.toLowerCase() === prevKey) { e.preventDefault(); reviewPreviousItem() }
+            if (e.key.toLowerCase() === nextKey || e.key === 'ArrowRight') { e.preventDefault(); reviewNextItem() }
+            else if (e.key.toLowerCase() === prevKey || e.key === 'ArrowLeft') { e.preventDefault(); reviewPreviousItem() }
         }
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
