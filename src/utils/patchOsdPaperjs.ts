@@ -15,12 +15,14 @@ export function applyPaperJsPatches() {
     // Try to apply patches immediately
     const tryApplyPatches = () => {
         try {
-            // Check if Paper.js View is available
-            if (!paper || !(paper as any).View || !(paper as any).View.prototype) {
+            // Resolve the actual Paper.js scope — `import * as paper` may wrap the
+            // PaperScope instance under `.default` depending on the bundler/ESM interop.
+            const paperLib = (paper as any).default ?? paper
+            if (!paperLib?.View?.prototype) {
                 return false
             }
 
-            const ViewProto = (paper as any).View.prototype
+            const ViewProto = paperLib.View.prototype
 
             // Patch getBounds - THE CORE ISSUE
             const originalGetBounds = ViewProto.getBounds
@@ -61,7 +63,7 @@ export function applyPaperJsPatches() {
                 }
             }
 
-            // Patch _handleMouseEvent
+            // Patch _handleMouseEvent (may not exist in all Paper.js versions)
             if (ViewProto._handleMouseEvent) {
                 const originalHandleMouseEvent = ViewProto._handleMouseEvent
                 ViewProto._handleMouseEvent = function(this: any, ...args: any[]) {

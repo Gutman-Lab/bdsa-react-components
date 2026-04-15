@@ -1,0 +1,412 @@
+.annotation-editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #fff;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────── */
+
+.annotation-editor__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  background-color: #1e293b;
+  color: #f1f5f9;
+  font-size: 13px;
+  flex-shrink: 0;
+  user-select: none;
+  border-bottom: 1px solid #0f172a;
+}
+
+.annotation-editor__toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.annotation-editor__toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background-color: #475569;
+  flex-shrink: 0;
+}
+
+/* ROI select */
+
+.annotation-editor__roi-label {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.annotation-editor__review-counter {
+  font-size: 12px;
+  color: #cbd5e1;
+  min-width: 70px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.annotation-editor__roi-select {
+  padding: 3px 24px 3px 8px;
+  font-size: 12px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background-color: #334155;
+  color: #f1f5f9;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  min-width: 160px;
+}
+
+.annotation-editor__roi-select:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.annotation-editor__roi-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mark complete checkbox */
+
+.annotation-editor__checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #cbd5e1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.annotation-editor__checkbox-label input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+}
+
+/* Fixed-size dimension label + input */
+
+.annotation-editor__dim-label {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.annotation-editor__dim-input {
+  width: 68px;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background-color: #334155;
+  color: #f1f5f9;
+  text-align: right;
+  /* hide the browser spin arrows */
+  -moz-appearance: textfield;
+}
+
+.annotation-editor__dim-input::-webkit-outer-spin-button,
+.annotation-editor__dim-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.annotation-editor__dim-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+/* Mode buttons (radio-style toggle group) */
+
+.annotation-editor__mode-group {
+  display: flex;
+  gap: 4px;
+}
+
+.annotation-editor__mode-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background-color: #334155;
+  color: #cbd5e1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.annotation-editor__mode-btn:hover {
+  background-color: #3d5068;
+  color: #f1f5f9;
+}
+
+.annotation-editor__mode-btn--active {
+  background-color: #2563eb;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.annotation-editor__mode-btn--active:hover {
+  background-color: #1d4ed8;
+}
+
+.annotation-editor__mode-btn--danger {
+  border-color: #475569;
+}
+
+.annotation-editor__mode-btn--danger:hover {
+  background-color: #7f1d1d;
+  border-color: #991b1b;
+  color: #fecaca;
+}
+
+.annotation-editor__mode-btn--danger.annotation-editor__mode-btn--active {
+  background-color: #dc2626;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
+.annotation-editor__mode-btn--danger.annotation-editor__mode-btn--active:hover {
+  background-color: #b91c1c;
+}
+
+/* Finish-editing button (green) */
+
+.annotation-editor__mode-btn--finish {
+  background-color: #166534;
+  border-color: #14532d;
+  color: #bbf7d0;
+}
+
+.annotation-editor__mode-btn--finish:hover {
+  background-color: #15803d;
+  border-color: #166534;
+  color: #dcfce7;
+}
+
+/* Cancel button — always shown in active-danger style */
+
+.annotation-editor__mode-btn--cancel {
+  background-color: #dc2626;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
+.annotation-editor__mode-btn--cancel:hover {
+  background-color: #b91c1c;
+}
+
+/* Save button */
+
+.annotation-editor__mode-btn--save {
+  background-color: #166534;
+  border-color: #14532d;
+  color: #bbf7d0;
+}
+
+.annotation-editor__mode-btn--save:hover:not(:disabled) {
+  background-color: #15803d;
+  border-color: #166534;
+  color: #dcfce7;
+}
+
+.annotation-editor__mode-btn--save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.annotation-editor__mode-btn--save--saved {
+  background-color: #15803d;
+  border-color: #166534;
+  color: #dcfce7;
+}
+
+.annotation-editor__mode-btn--save--error {
+  background-color: #dc2626;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
+/* Annotation type color swatch */
+
+.annotation-editor__type-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+/* ── Viewer area ─────────────────────────────────────────── */
+
+.annotation-editor__viewer {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ── Save notification toast ────────────────────────────── */
+
+.annotation-editor__toast {
+  position: absolute;
+  top: 52px; /* just below the toolbar */
+  right: 16px;
+  z-index: 900;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  animation: annotation-editor-toast-in 0.15s ease;
+}
+
+@keyframes annotation-editor-toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.annotation-editor__toast--success {
+  background-color: #166534;
+  color: #dcfce7;
+  border: 1px solid #15803d;
+}
+
+.annotation-editor__toast--error {
+  background-color: #7f1d1d;
+  color: #fecaca;
+  border: 1px solid #991b1b;
+}
+
+/* ── Duplicate-document warning modal ───────────────────── */
+
+.annotation-editor__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.annotation-editor__modal {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  padding: 24px 28px;
+  max-width: 420px;
+  width: 90%;
+}
+
+.annotation-editor__modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 12px;
+}
+
+.annotation-editor__modal-icon {
+  font-size: 20px;
+}
+
+.annotation-editor__modal-body {
+  font-size: 13px;
+  color: #444;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.annotation-editor__modal-body strong {
+  color: #1e293b;
+}
+
+.annotation-editor__modal-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.annotation-editor__modal-ok-btn {
+  padding: 6px 20px;
+  font-size: 13px;
+  border: none;
+  border-radius: 4px;
+  background-color: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.annotation-editor__modal-ok-btn:hover {
+  background-color: #1d4ed8;
+}
+
+/* ── Label right-click context menu ─────────────────────── */
+
+.annotation-editor__context-menu {
+  position: fixed;
+  z-index: 1100;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  padding: 4px 0;
+  min-width: 160px;
+  user-select: none;
+}
+
+.annotation-editor__context-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: #1e293b;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.annotation-editor__context-menu__item:hover {
+  background-color: #f1f5f9;
+}
+
+.annotation-editor__context-menu__item--danger {
+  color: #dc2626;
+}
+
+.annotation-editor__context-menu__item--danger:hover {
+  background-color: #fef2f2;
+}
+
+.annotation-editor__context-menu__arrow {
+  color: #64748b;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.annotation-editor__context-menu__divider {
+  height: 1px;
+  background-color: #e2e8f0;
+  margin: 4px 0;
+}

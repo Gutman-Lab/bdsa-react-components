@@ -262,7 +262,7 @@ export function useAnnotationRendering(
                     renderedDocumentIds.add(lookupId)
                     debugLog.log(`SlideViewer: Added documentId '${lookupId}' to renderedDocumentIds. Set now has:`, Array.from(renderedDocumentIds))
                 } else {
-                    console.warn(`SlideViewer: Cannot track document ID - lookupId is undefined for annotation id=${annotation.id}`)
+                    debugLog.log(`SlideViewer: Cannot track document ID - lookupId is undefined for annotation id=${annotation.id}`)
                 }
             } catch (e) {
                 console.error(`Error rendering annotation ${annotation.id}:`, e, annotation)
@@ -291,7 +291,7 @@ export function useAnnotationRendering(
                 })
             }, 100)
         } else {
-            console.warn(`SlideViewer: Not calling onAnnotationReady - callback is ${onAnnotationReady ? '' : 'not '}defined, renderedDocumentIds has ${renderedDocumentIds.size} items`)
+            debugLog.log(`SlideViewer: Not calling onAnnotationReady - callback is ${onAnnotationReady ? '' : 'not '}defined, renderedDocumentIds has ${renderedDocumentIds.size} items`)
         }
     }, [
         viewer,
