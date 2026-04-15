@@ -1120,11 +1120,27 @@ export function AnnotationEditor({
 
             // On first save, capture the returned _id for future PUTs
             if (!annotationDocumentId) {
-                const saved: unknown = await res.json()
-                const id = Array.isArray(saved)
-                    ? (saved[0] as Record<string, string>)?._id
-                    : (saved as Record<string, string>)?._id
-                if (id) setAnnotationDocumentId(id)
+                let newId: string | undefined
+                try {
+                    const saved: unknown = await res.json()
+                    // DSA may return the annotation as a single object or an array
+                    const candidate = Array.isArray(saved) ? (saved[0] as any) : (saved as any)
+                    newId = candidate?._id ?? candidate?.annotation?._id
+                } catch { /* body not JSON or already consumed */ }
+
+                // Fallback: re-list annotations and find by document name
+                if (!newId) {
+                    try {
+                        const listRes = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, { headers })
+                        if (listRes.ok) {
+                            const list: any[] = await listRes.json()
+                            const match = list.find((a: any) => a.annotation?.name === localDocument.name)
+                            newId = match?._id
+                        }
+                    } catch { /* ignore */ }
+                }
+
+                if (newId) setAnnotationDocumentId(newId)
             }
 
             setSaveStatus('saved')
@@ -1271,12 +1287,22 @@ export function AnnotationEditor({
             if (roi) {
                 const item = roiItemsRef.current[roi.roiIndex]
                 if (item) {
-                    item.select()
+                    // In add-labels mode, selecting a Paper.js item hands control to
+                    // the rectangle tool's "modify" mode and breaks the drawing loop.
+                    // Skip select() — just pan to the ROI and reactivate drawing.
+                    if (workflowMode !== 'add-labels') {
+                        item.select()
+                    }
                     // Only zoom when the selected ROI actually changed, not when
                     // localDocument changed (e.g. a label box was drawn/deleted).
                     if (selectedRoiIndex !== zoomedForRoiIndexRef.current) {
                         zoomedForRoiIndexRef.current = selectedRoiIndex
                         zoomToRoiByIndex(roi.roiIndex)
+                        // Reactivate the drawing loop after panning so the tool
+                        // is ready to draw in the new ROI immediately.
+                        if (workflowMode === 'add-labels') {
+                            reactivateLabelDrawingRef.current()
+                        }
                     }
                 }
             }
@@ -1286,7 +1312,7 @@ export function AnnotationEditor({
                 if (item) item.deselect(true)
             })
         }
-    }, [toolkit, selectedRoiIndex, activeMode, rois, zoomToRoiByIndex])
+    }, [toolkit, selectedRoiIndex, activeMode, workflowMode, rois, zoomToRoiByIndex])
 
     // ── Sync markComplete checkbox from the selected ROI's user data ──────
     useEffect(() => {
