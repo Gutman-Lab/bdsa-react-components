@@ -43,6 +43,10 @@ export interface ToolbarProps {
     onReviewTypeChange: (typeIndex: number) => void
     startReviewEditShape: () => void
 
+    // ROI progress
+    roiCompletedCount: number
+    roiTotal: number
+
     // Save / loading
     isLoadingAnnotation: boolean
     saveStatus: 'idle' | 'saving' | 'saved' | 'error'
@@ -64,6 +68,7 @@ export function AnnotationEditorToolbar({
     finishEditingRoi, cancelPendingRoi, startEditActiveRoi, deleteActiveRoi,
     reviewItemIndex, reviewItemCount, reviewNextItem, reviewPreviousItem,
     reviewSelectedTypeIndex, onReviewTypeChange, startReviewEditShape,
+    roiCompletedCount, roiTotal,
     isLoadingAnnotation, saveStatus, saveAnnotation, canSave,
 }: ToolbarProps) {
     return (
@@ -323,6 +328,22 @@ export function AnnotationEditorToolbar({
 
             {/* Spacer pushes save button to the far right */}
             <div style={{ flex: 1 }} />
+
+            {roiTotal > 0 && (() => {
+                const mod = roiCompletedCount === 0
+                    ? ''
+                    : roiCompletedCount === roiTotal
+                        ? ' annotation-editor__roi-progress--complete'
+                        : ' annotation-editor__roi-progress--partial'
+                return (
+                    <div className={`annotation-editor__roi-progress${mod}`}>
+                        ROI Progress
+                        <span className="annotation-editor__roi-progress__count">
+                            {roiCompletedCount}&thinsp;/&thinsp;{roiTotal}
+                        </span>
+                    </div>
+                )
+            })()}
 
             {isLoadingAnnotation && (
                 <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>

@@ -4,7 +4,7 @@ import { dsaAuthStore } from '../../auth/DsaAuthStore'
 import { useResizablePanel } from '../../hooks/useResizablePanel'
 import { TreeNode } from './TreeNode'
 import type { Collection, FolderItem, Item, NodeChildren } from './types'
-import './FolderBrowser.css'
+import '../../styles/browserPanel.css'
 
 /** Bypass API calls and drive the component with static data (for tests / Storybook). */
 export interface FolderBrowserSyntheticData {
