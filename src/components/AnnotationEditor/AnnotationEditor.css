@@ -452,6 +452,59 @@
   flex-shrink: 0;
 }
 
+/* ── Show-info hover tooltip ─────────────────────────────── */
+
+.annotation-editor__info-tooltip {
+  position: fixed;
+  z-index: 1200;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  padding: 10px 14px;
+  min-width: 200px;
+  max-width: 320px;
+  pointer-events: none;
+  color: #f1f5f9;
+  font-size: 12px;
+}
+
+.annotation-editor__info-tooltip__type {
+  font-weight: 600;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  text-transform: lowercase;
+}
+
+.annotation-editor__info-tooltip__table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.annotation-editor__info-tooltip__table td {
+  padding: 2px 0;
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.annotation-editor__info-tooltip__table td:first-child {
+  color: #94a3b8;
+  padding-right: 14px;
+  white-space: nowrap;
+}
+
+.annotation-editor__info-tooltip__table td:last-child {
+  color: #f1f5f9;
+  word-break: break-all;
+}
+
+.annotation-editor__info-tooltip__divider {
+  height: 1px;
+  background-color: #475569;
+  margin: 8px 0;
+}
+
 .annotation-editor__context-menu__divider {
   height: 1px;
   background-color: #e2e8f0;
