@@ -45,6 +45,9 @@ export function AnnotationEditor({
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
     const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
     const [isLoadingAnnotation, setIsLoadingAnnotation] = useState(false)
+    // Confidence filter mode
+    const [confidenceThreshold, setConfidenceThreshold] = useState(0)
+
     // Fixed-size ROI placement
     const [fixedSizeEnabled, setFixedSizeEnabled] = useState(false)
     const [fixedWidth, setFixedWidth] = useState(() => config.roiSettings?.width ?? 1000)
@@ -499,6 +502,40 @@ export function AnnotationEditor({
             setHoverInfo(null)
         }
     }, [toolkit, showInfo, findElementForHitItem])
+
+    // ── Confidence filter counts ──────────────────────────────────────────
+    const filterCounts = useMemo(() => {
+        if (!localDocument) return { showing: 0, total: 0 }
+        const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+        const labelElements = localDocument.elements.filter(e => knownTypeNames.has(e.group))
+        const total = labelElements.length
+        const showing = labelElements.filter(el => {
+            const raw = el.user?.confidence
+            const conf = (typeof raw === 'number' && isFinite(raw)) ? raw : -1
+            return conf >= confidenceThreshold
+        }).length
+        return { showing, total }
+    }, [localDocument, config.annotationTypes, confidenceThreshold])
+
+    // ── Confidence filter: show/hide label items by threshold ────────────
+    // Runs whenever we enter/leave filter mode or the slider moves.
+    // On exit, restores full opacity for all label items.
+    useEffect(() => {
+        if (!localDocument) return
+        const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+        const labelElements = localDocument.elements.filter(e => knownTypeNames.has(e.group))
+
+        labelItemsRef.current.forEach((item, idx) => {
+            if (!item) return
+            if (workflowMode === 'filter') {
+                const raw = labelElements[idx]?.user?.confidence
+                const conf = (typeof raw === 'number' && isFinite(raw)) ? raw : -1
+                item.opacity = conf >= confidenceThreshold ? 1 : 0.08
+            } else {
+                item.opacity = 1
+            }
+        })
+    }, [workflowMode, confidenceThreshold, localDocument, config.annotationTypes])
 
     // ── Q / W keyboard shortcuts to cycle annotation types ────────────────
     useEffect(() => {
@@ -1506,6 +1543,10 @@ export function AnnotationEditor({
                 startReviewEditShape={startReviewEditShape}
                 showInfo={showInfo}
                 setShowInfo={setShowInfo}
+                confidenceThreshold={confidenceThreshold}
+                setConfidenceThreshold={setConfidenceThreshold}
+                filterVisibleCount={filterCounts.showing}
+                filterTotalCount={filterCounts.total}
                 isLoadingAnnotation={isLoadingAnnotation}
                 saveStatus={saveStatus}
                 saveAnnotation={() => { void saveAnnotation() }}

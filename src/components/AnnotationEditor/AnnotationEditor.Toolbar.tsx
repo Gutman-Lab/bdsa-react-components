@@ -47,6 +47,12 @@ export interface ToolbarProps {
     showInfo: boolean
     setShowInfo: (v: boolean) => void
 
+    // Confidence filter mode
+    confidenceThreshold: number
+    setConfidenceThreshold: (v: number) => void
+    filterVisibleCount: number
+    filterTotalCount: number
+
     // ROI progress
     roiCompletedCount: number
     roiTotal: number
@@ -73,6 +79,7 @@ export function AnnotationEditorToolbar({
     reviewItemIndex, reviewItemCount, reviewNextItem, reviewPreviousItem,
     reviewSelectedTypeIndex, onReviewTypeChange, startReviewEditShape,
     showInfo, setShowInfo,
+    confidenceThreshold, setConfidenceThreshold, filterVisibleCount, filterTotalCount,
     roiCompletedCount, roiTotal,
     isLoadingAnnotation, saveStatus, saveAnnotation, canSave,
 }: ToolbarProps) {
@@ -119,6 +126,7 @@ export function AnnotationEditorToolbar({
                     <option value="edit-rois">Edit ROIs</option>
                     <option value="add-labels">Add Labels</option>
                     <option value="review">Review</option>
+                    <option value="filter">Filter</option>
                 </select>
             </div>
 
@@ -244,6 +252,32 @@ export function AnnotationEditorToolbar({
                 </div>
             )}
 
+            {/* Filter mode: confidence threshold slider */}
+            {workflowMode === 'filter' && (
+                <div className="annotation-editor__mode-group annotation-editor__filter-group">
+                    <span className="annotation-editor__roi-label">Confidence ≥</span>
+                    <input
+                        className="annotation-editor__confidence-slider"
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={confidenceThreshold}
+                        onChange={e => setConfidenceThreshold(Number(e.target.value))}
+                        title="Hide boxes with confidence below this threshold"
+                    />
+                    <span className="annotation-editor__confidence-value">
+                        {Math.round(confidenceThreshold * 100)}%
+                    </span>
+                    <div className="annotation-editor__filter-count">
+                        Showing
+                        <span className="annotation-editor__filter-count__num">
+                            {filterVisibleCount}&thinsp;/&thinsp;{filterTotalCount}
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* Edit ROIs: mode buttons */}
             {workflowMode === 'edit-rois' && (
                 <div className="annotation-editor__mode-group">
@@ -331,53 +365,52 @@ export function AnnotationEditorToolbar({
                 </div>
             )}
 
-            {/* Spacer pushes save button to the far right */}
-            <div style={{ flex: 1 }} />
+            <div className="annotation-editor__toolbar-right">
+                <button
+                    className={`annotation-editor__mode-btn${showInfo ? ' annotation-editor__mode-btn--active' : ''}`}
+                    onClick={() => setShowInfo(!showInfo)}
+                    title="Hover over elements to see their info"
+                >
+                    Show Info
+                </button>
 
-            <button
-                className={`annotation-editor__mode-btn${showInfo ? ' annotation-editor__mode-btn--active' : ''}`}
-                onClick={() => setShowInfo(!showInfo)}
-                title="Hover over elements to see their info"
-            >
-                Show Info
-            </button>
+                {roiTotal > 0 && (() => {
+                    const mod = roiCompletedCount === 0
+                        ? ''
+                        : roiCompletedCount === roiTotal
+                            ? ' annotation-editor__roi-progress--complete'
+                            : ' annotation-editor__roi-progress--partial'
+                    return (
+                        <div className={`annotation-editor__roi-progress${mod}`}>
+                            ROI Progress
+                            <span className="annotation-editor__roi-progress__count">
+                                {roiCompletedCount}&thinsp;/&thinsp;{roiTotal}
+                            </span>
+                        </div>
+                    )
+                })()}
 
-            {roiTotal > 0 && (() => {
-                const mod = roiCompletedCount === 0
-                    ? ''
-                    : roiCompletedCount === roiTotal
-                        ? ' annotation-editor__roi-progress--complete'
-                        : ' annotation-editor__roi-progress--partial'
-                return (
-                    <div className={`annotation-editor__roi-progress${mod}`}>
-                        ROI Progress
-                        <span className="annotation-editor__roi-progress__count">
-                            {roiCompletedCount}&thinsp;/&thinsp;{roiTotal}
-                        </span>
-                    </div>
-                )
-            })()}
+                {isLoadingAnnotation && (
+                    <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+                        Loading annotations…
+                    </span>
+                )}
 
-            {isLoadingAnnotation && (
-                <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
-                    Loading annotations…
-                </span>
-            )}
-
-            <button
-                className={`annotation-editor__mode-btn annotation-editor__mode-btn--save${saveStatus === 'error' ? ' annotation-editor__mode-btn--save--error' : saveStatus === 'saved' ? ' annotation-editor__mode-btn--save--saved' : ''}`}
-                onClick={saveAnnotation}
-                disabled={saveStatus === 'saving' || !canSave}
-                title="Save annotations to DSA"
-            >
-                {saveStatus === 'saving'
-                    ? 'Saving…'
-                    : saveStatus === 'saved'
-                      ? 'Saved ✓'
-                      : saveStatus === 'error'
-                        ? 'Save failed'
-                        : 'Save'}
-            </button>
+                <button
+                    className={`annotation-editor__mode-btn annotation-editor__mode-btn--save${saveStatus === 'error' ? ' annotation-editor__mode-btn--save--error' : saveStatus === 'saved' ? ' annotation-editor__mode-btn--save--saved' : ''}`}
+                    onClick={saveAnnotation}
+                    disabled={saveStatus === 'saving' || !canSave}
+                    title="Save annotations to DSA"
+                >
+                    {saveStatus === 'saving'
+                        ? 'Saving…'
+                        : saveStatus === 'saved'
+                          ? 'Saved ✓'
+                          : saveStatus === 'error'
+                            ? 'Save failed'
+                            : 'Save'}
+                </button>
+            </div>
         </div>
     )
 }
