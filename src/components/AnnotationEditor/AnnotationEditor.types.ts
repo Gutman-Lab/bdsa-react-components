@@ -84,7 +84,7 @@ export interface AnnotationEditorConfig {
 
 export type EditorMode = 'add-roi' | 'drawing-roi' | 'edit-roi' | 'delete-roi'
 
-export type WorkflowMode = 'edit-rois' | 'add-labels' | 'review'
+export type WorkflowMode = 'edit-rois' | 'add-labels' | 'review' | 'filter'
 
 export interface AnnotationEditorProps {
     /** Image to display in the viewer */
