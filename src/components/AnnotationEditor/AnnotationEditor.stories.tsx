@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { FeatureCollection } from 'geojson'
 import type { SlideImageInfo } from '../SlideViewer/SlideViewer.types'
 import { DsaAuthManager } from '../DsaAuthManager/DsaAuthManager'
 import { AnnotationEditor } from './AnnotationEditor'
@@ -46,6 +47,45 @@ const exampleConfig: AnnotationEditorConfig = {
     },
 }
 
+/** Two axis-aligned boxes in image space (YOLO-style export) */
+const yoloStyleSample: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+        {
+            type: 'Feature',
+            properties: { class_name: 'Positive', confidence: 0.91 },
+            geometry: {
+                type: 'Polygon',
+                coordinates: [
+                    [
+                        [1200, 800],
+                        [1800, 800],
+                        [1800, 1400],
+                        [1200, 1400],
+                        [1200, 800],
+                    ],
+                ],
+            },
+        },
+        {
+            type: 'Feature',
+            properties: { class_name: 'Negative' },
+            geometry: {
+                type: 'Polygon',
+                coordinates: [
+                    [
+                        [2200, 2000],
+                        [2800, 2000],
+                        [2800, 2600],
+                        [2200, 2600],
+                        [2200, 2000],
+                    ],
+                ],
+            },
+        },
+    ],
+}
+
 const meta = {
     title: 'Components/AnnotationEditor',
     component: AnnotationEditor,
@@ -54,7 +94,7 @@ const meta = {
         docs: {
             description: {
                 component:
-                    'Protocol-driven ROI and label editing on top of SlideViewer. Requires network access to the DSA host in `imageInfo` / `apiBaseUrl` (or configure `DsaAuthManager` and omit overrides).',
+                    'Protocol-driven ROI and label editing on top of SlideViewer. Requires network access to the DSA host in `imageInfo` / `apiBaseUrl` (or configure `DsaAuthManager` and omit overrides). **Default** and **WithDsaAuthManager** are the standard DSA load/save workflow. **GeoJsonInputAndExport** is a separate, opt-in story (inline GeoJSON + export) and does not change how those work.',
             },
         },
     },
@@ -112,6 +152,35 @@ export const WithDsaAuthManager: Story = {
             description: {
                 story:
                     'Use the auth bar to set the same server as in `imageInfo` / `apiBaseUrl`, then log in. You can later omit `apiBaseUrl` so the editor uses only `dsaAuthStore` (via SlideViewer).',
+            },
+        },
+    },
+}
+
+/**
+ * **Alternate mode (does not affect Default / DSA):** pass `initialGeoJson` + `geoJsonExportMode` to hydrate from
+ * server/ML output and export edited GeoJSON. Open the console to see `onGeoJsonExport` output.
+ */
+export const GeoJsonInputAndExport: Story = {
+    args: {
+        imageInfo: exampleImageInfo,
+        config: exampleConfig,
+        apiBaseUrl: exampleApiBaseUrl,
+        initialGeoJson: yoloStyleSample,
+        geoJsonImportOptions: { importMode: 'class-from-properties', classProperty: 'class_name' },
+        geoJsonExportMode: true,
+        onGeoJsonExport: (fc) => { console.info('[AnnotationEditor story] exported FeatureCollection', fc) },
+    },
+    render: (args) => (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <AnnotationEditor {...args} />
+        </div>
+    ),
+    parameters: {
+        docs: {
+            description: {
+                story:
+                    'Skips DSA annotation load because `initialGeoJson` is set. Tiles still use `apiBaseUrl` for the slide. For URL-based GeoJSON, set `initialGeoJsonUrl` instead and omit `initialGeoJson`.',
             },
         },
     },

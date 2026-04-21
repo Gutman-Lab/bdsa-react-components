@@ -1,5 +1,7 @@
+import type { FeatureCollection } from 'geojson'
 import type { SlideImageInfo } from '../SlideViewer/SlideViewer.types'
 import type { ApiErrorHandler } from '../../utils/apiErrorHandling'
+import type { FeatureCollectionToLocalOptions } from './annotationGeoJson'
 
 export interface AnnotationType {
     /** Display name for this annotation type */
@@ -111,4 +113,33 @@ export interface AnnotationEditorProps {
     onApiError?: ApiErrorHandler
     /** Passed to SlideViewer. Use `true` in Storybook iframes so OSD initializes when not intersecting. */
     disableVisibilityCheck?: boolean
+
+    // ── GeoJSON / YOLO-style workflow (optional; DSA path unchanged if omitted) ──
+    /**
+     * **Opt-in only.** If you do not set `initialGeoJson`, `initialGeoJsonUrl`, or `skipDsaAnnotationLoad`,
+     * the editor uses the same DSA list/fetch and save flow as before.
+     *
+     * When set, the editor does not load an annotation from DSA; it hydrates from this GeoJSON
+     * (e.g. YOLO predictions). Coordinates are assumed to be image pixel space matching `imageInfo`.
+     */
+    initialGeoJson?: FeatureCollection
+    /**
+     * Fetch GeoJSON from this URL (e.g. `/predictions.geojson` from your YOLO service).
+     * Ignored if `initialGeoJson` is provided.
+     */
+    initialGeoJsonUrl?: string
+    /** How each feature maps to editor groups (ROI vs label types). */
+    geoJsonImportOptions?: FeatureCollectionToLocalOptions
+    /**
+     * When true, the main save action calls `onGeoJsonExport` with a FeatureCollection
+     * instead of POST/PUT to DSA. `apiBaseUrl` is not required in this mode.
+     */
+    geoJsonExportMode?: boolean
+    /** Called with a FeatureCollection when the user saves in `geoJsonExportMode`. */
+    onGeoJsonExport?: (collection: FeatureCollection) => void
+    /**
+     * When true, never loads annotations from DSA (use with `initialGeoJson` / URL, or a blank canvas
+     * with `geoJsonExportMode` only).
+     */
+    skipDsaAnnotationLoad?: boolean
 }

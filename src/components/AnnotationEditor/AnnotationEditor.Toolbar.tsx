@@ -62,6 +62,12 @@ export interface ToolbarProps {
     saveStatus: 'idle' | 'saving' | 'saved' | 'error'
     saveAnnotation: () => void
     canSave: boolean
+    /** Default: "Save" */
+    saveIdleLabel?: string
+    /** Default: "Saving…" (GeoJSON: use "Exporting…") */
+    saveSavingLabel?: string
+    /** Tooltip on the save button. Default: "Save annotations to DSA" */
+    saveButtonTitle?: string
 }
 
 export function AnnotationEditorToolbar({
@@ -82,6 +88,9 @@ export function AnnotationEditorToolbar({
     confidenceThreshold, setConfidenceThreshold, filterVisibleCount, filterTotalCount,
     roiCompletedCount, roiTotal,
     isLoadingAnnotation, saveStatus, saveAnnotation, canSave,
+    saveIdleLabel = 'Save',
+    saveSavingLabel = 'Saving…',
+    saveButtonTitle = 'Save annotations to DSA',
 }: ToolbarProps) {
     return (
         <div className="annotation-editor__toolbar">
@@ -400,15 +409,15 @@ export function AnnotationEditorToolbar({
                     className={`annotation-editor__mode-btn annotation-editor__mode-btn--save${saveStatus === 'error' ? ' annotation-editor__mode-btn--save--error' : saveStatus === 'saved' ? ' annotation-editor__mode-btn--save--saved' : ''}`}
                     onClick={saveAnnotation}
                     disabled={saveStatus === 'saving' || !canSave}
-                    title="Save annotations to DSA"
+                    title={saveButtonTitle}
                 >
                     {saveStatus === 'saving'
-                        ? 'Saving…'
+                        ? saveSavingLabel
                         : saveStatus === 'saved'
                           ? 'Saved ✓'
                           : saveStatus === 'error'
                             ? 'Save failed'
-                            : 'Save'}
+                            : saveIdleLabel}
                 </button>
             </div>
         </div>

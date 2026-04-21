@@ -35,4 +35,10 @@ export type { SlideViewerProps } from './components/SlideViewer/SlideViewer.type
 export { AnnotationBrowser } from './components/AnnotationBrowser/AnnotationBrowser'
 export { AnnotationEditor } from './components/AnnotationEditor/AnnotationEditor'
 export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationType, RoiSettings, HotkeySettings, EditorMode } from './components/AnnotationEditor/AnnotationEditor.types'
+export {
+    localDocumentToFeatureCollection,
+    featureCollectionToLocalDocument,
+    loadLocalElementsOntoAnnotationToolkit,
+} from './components/AnnotationEditor/annotationGeoJson'
+export type { FeatureCollectionToLocalOptions, LoadLocalElementsOptions } from './components/AnnotationEditor/annotationGeoJson'
 export type { DsaAuthStatus, DsaAuthConfig, DsaUserInfo } from './auth/types'

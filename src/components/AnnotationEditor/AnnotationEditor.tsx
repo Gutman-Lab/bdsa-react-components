@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import type { FeatureCollection } from 'geojson'
 import OpenSeadragon from 'openseadragon'
 import type { AnnotationToolkit } from 'osd-paperjs-annotation'
 import { SlideViewer } from '../SlideViewer/SlideViewer'
@@ -9,6 +10,11 @@ import type {
     LocalAnnotationDocument,
     LocalAnnotationElement,
 } from './AnnotationEditor.types'
+import {
+    featureCollectionToLocalDocument,
+    localDocumentToFeatureCollection,
+    loadLocalElementsOntoAnnotationToolkit,
+} from './annotationGeoJson'
 import { normalizeCssColor, resolveItemId, computeNextRoiLabel } from './AnnotationEditor.utils'
 import { AnnotationEditorToolbar } from './AnnotationEditor.Toolbar'
 import { AnnotationEditorOverlays } from './AnnotationEditor.Overlays'
@@ -35,6 +41,12 @@ export function AnnotationEditor({
     style,
     onApiError,
     disableVisibilityCheck,
+    initialGeoJson,
+    initialGeoJsonUrl,
+    geoJsonImportOptions,
+    geoJsonExportMode = false,
+    onGeoJsonExport,
+    skipDsaAnnotationLoad = false,
 }: AnnotationEditorProps) {
     const [selectedRoiIndex, setSelectedRoiIndex] = useState<number>(-1)
     const [markComplete, setMarkComplete] = useState(false)
@@ -96,6 +108,10 @@ export function AnnotationEditor({
     // Stored as-is from the server and appended to save payloads to prevent data loss.
     const foreignElementsRef = useRef<any[]>([])
 
+    const [fetchedGeoJson, setFetchedGeoJson] = useState<FeatureCollection | null>(null)
+    /** De-dupe GeoJSON → canvas hydration (e.g. React Strict Mode). */
+    const lastGeoApplyKeyRef = useRef<string | null>(null)
+
     // Review mode — index into reviewItems[] for the focused label box (-1 = none)
     const [reviewItemIndex, setReviewItemIndex] = useState(-1)
     const reviewItemIndexRef = useRef(-1)
@@ -119,15 +135,78 @@ export function AnnotationEditor({
     const localDocumentRef = useRef<LocalAnnotationDocument | null>(localDocument)
     const addRoiRef = useRef<(left: number, top: number, width: number, height: number) => void>(null as any)
 
+    const notify = useCallback(
+        (type: 'success' | 'error', message: string, durationMs: number) => {
+            setNotification({ type, message })
+            setTimeout(() => setNotification(null), durationMs)
+        },
+        []
+    )
+
     // ── Register tools once when toolkit is ready ─────────────────────────
     useEffect(() => {
         if (!toolkit) return
         ;(toolkit as any).addTools(['default', 'rectangle'])
     }, [toolkit])
 
+    // ── Optional GeoURL fetch (only when `initialGeoJsonUrl` is set; otherwise no-op) ─
+    useEffect(() => {
+        if (initialGeoJson != null) {
+            setFetchedGeoJson(null)
+            return
+        }
+        if (!initialGeoJsonUrl) {
+            setFetchedGeoJson(null)
+            return
+        }
+
+        let cancelled = false
+        setIsLoadingAnnotation(true)
+        setFetchedGeoJson(null)
+
+        const headers: Record<string, string> = {}
+        if (apiHeaders) {
+            const entries =
+                apiHeaders instanceof Headers
+                    ? Array.from(apiHeaders.entries())
+                    : Object.entries(apiHeaders as Record<string, string>)
+            entries.forEach(([k, v]) => { headers[k] = v })
+        }
+        if (authToken) headers['Girder-Token'] = authToken
+
+        const doFetch = fetchFn ?? fetch
+
+        ;(async () => {
+            try {
+                const res = await doFetch(initialGeoJsonUrl, { headers })
+                if (cancelled) return
+                if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+                const j: unknown = await res.json()
+                if (cancelled) return
+                const asFc = j as { type?: string }
+                if (asFc.type !== 'FeatureCollection') {
+                    throw new Error('Response must be a GeoJSON FeatureCollection')
+                }
+                setFetchedGeoJson(j as FeatureCollection)
+            } catch (err) {
+                if (cancelled) return
+                console.error('[AnnotationEditor] Failed to load GeoJSON URL:', err)
+                setFetchedGeoJson(null)
+                setIsLoadingAnnotation(false)
+                notify('error', 'Failed to load GeoJSON from the given URL.', 5000)
+            }
+        })()
+
+        return () => { cancelled = true }
+    }, [initialGeoJson, initialGeoJsonUrl, apiHeaders, authToken, fetchFn, notify])
+
     // ── Load existing annotation document when toolkit first becomes ready ─
     useEffect(() => {
         if (!toolkit) return
+
+        if (initialGeoJson != null) return
+        if (initialGeoJsonUrl) return
+        if (skipDsaAnnotationLoad) return
 
         const itemId = resolveItemId(imageInfo)
         if (!itemId || !apiBaseUrl) return
@@ -211,84 +290,15 @@ export function AnnotationEditor({
                 })
                 setAnnotationDocumentId(docId)
 
-                // 5. Render ROI elements on the canvas via loadGeoJSON
+                // 5–7. Render ROIs and label elements on the canvas (same path as GeoJSON import)
                 const roiElements = elements.filter(e => e.group === 'ROI')
-                if (roiElements.length > 0) {
-                    const featureCollection = {
-                        type: 'FeatureCollection',
-                        label: config.annotationDocumentName,
-                        features: roiElements.map(el => ({
-                            type: 'Feature',
-                            geometry: {
-                                type: 'Point',
-                                coordinates: [el.center[0], el.center[1]],
-                                properties: {
-                                    subtype: 'Rectangle',
-                                    width: el.width,
-                                    height: el.height,
-                                    angle: el.rotation,
-                                },
-                            },
-                            properties: {
-                                label: el.label.value,
-                                strokeColor: el.lineColor,
-                                strokeWidth: el.lineWidth,
-                                fillColor: el.fillColor,
-                                rescale: { strokeWidth: el.lineWidth },
-                            },
-                        })),
-                        properties: {},
-                    }
-
-                    ;(toolkit as any).loadGeoJSON([featureCollection], false)
-
-                    // 6. Store paper.js item refs from the new feature collection group
-                    const groups = (toolkit as any).getFeatureCollectionGroups()
-                    if (groups.length > 0) {
-                        roiItemsRef.current = Array.from(groups[groups.length - 1].children)
-                    }
-                }
-
-                // 7. Render known annotation-type elements (label boxes) on canvas.
-                // These are rendered for visual context but not tracked in roiItemsRef.
-                // Foreign elements (unrecognized group names) are intentionally skipped —
-                // they stay in localDocument for preservation on save but are not rendered.
-                const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
-                const labelElements = elements.filter(e => knownTypeNames.has(e.group))
-                if (labelElements.length > 0) {
-                    const labelCollection = {
-                        type: 'FeatureCollection',
-                        label: `${config.annotationDocumentName} - Labels`,
-                        features: labelElements.map(el => ({
-                            type: 'Feature',
-                            geometry: {
-                                type: 'Point',
-                                coordinates: [el.center[0], el.center[1]],
-                                properties: {
-                                    subtype: 'Rectangle',
-                                    width: el.width,
-                                    height: el.height,
-                                    angle: el.rotation,
-                                },
-                            },
-                            properties: {
-                                label: el.label.value,
-                                strokeColor: el.lineColor,
-                                strokeWidth: el.lineWidth,
-                                fillColor: el.fillColor,
-                                rescale: { strokeWidth: el.lineWidth },
-                            },
-                        })),
-                        properties: {},
-                    }
-                    ;(toolkit as any).loadGeoJSON([labelCollection], false)
-
-                    // Capture Paper.js item refs for label elements (last loaded feature group)
-                    const allGroups = (toolkit as any).getFeatureCollectionGroups()
-                    if (allGroups.length > 0) {
-                        labelItemsRef.current = Array.from(allGroups[allGroups.length - 1].children)
-                    }
-                }
+                loadLocalElementsOntoAnnotationToolkit(
+                    toolkit as any,
+                    config,
+                    elements,
+                    roiItemsRef,
+                    labelItemsRef,
+                )
 
                 // 8. Auto-select the first ROI. This triggers the canvas-sync effect
                 // which calls fitBounds — that viewport change also forces Paper.js to
@@ -308,6 +318,68 @@ export function AnnotationEditor({
         return () => { cancelled = true }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toolkit])
+
+    // ── Inline / fetched GeoJSON → local document + canvas (YOLO, etc.) ─
+    const effectiveGeoJson: FeatureCollection | null =
+        initialGeoJson != null ? initialGeoJson : fetchedGeoJson
+
+    useEffect(() => {
+        if (!toolkit) return
+
+        if (initialGeoJson == null) {
+            if (!initialGeoJsonUrl) return
+            if (fetchedGeoJson == null) return
+        }
+
+        const fc = effectiveGeoJson
+        if (!fc) return
+        if (fc.type !== 'FeatureCollection') {
+            notify('error', 'GeoJSON must be a FeatureCollection.', 4000)
+            setIsLoadingAnnotation(false)
+            return
+        }
+
+        const applyKey = initialGeoJson != null
+            ? `inline:${JSON.stringify(fc)}`
+            : `url:${initialGeoJsonUrl!}:${JSON.stringify(fc)}`
+        if (lastGeoApplyKeyRef.current === applyKey) {
+            setIsLoadingAnnotation(false)
+            return
+        }
+        lastGeoApplyKeyRef.current = applyKey
+
+        try {
+            foreignElementsRef.current = []
+            setShowDuplicateWarning(false)
+            const doc = featureCollectionToLocalDocument(
+                fc,
+                config,
+                config.annotationDocumentName,
+                geoJsonImportOptions,
+            )
+            setLocalDocument(doc)
+            setAnnotationDocumentId(null)
+            loadLocalElementsOntoAnnotationToolkit(
+                toolkit as any,
+                config,
+                doc.elements,
+                roiItemsRef,
+                labelItemsRef,
+                { clear: true },
+            )
+            if (doc.elements.filter(e => e.group === 'ROI').length > 0) {
+                setSelectedRoiIndex(0)
+            } else {
+                setSelectedRoiIndex(-1)
+            }
+        } catch (err) {
+            console.error('[AnnotationEditor] GeoJSON hydrate failed:', err)
+            notify('error', 'Failed to load GeoJSON into the editor.', 5000)
+        } finally {
+            setIsLoadingAnnotation(false)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [toolkit, initialGeoJson, initialGeoJsonUrl, fetchedGeoJson, config, geoJsonImportOptions, notify])
 
     // ── Derive ROI list for the select dropdown ───────────────────────────
     // Declared early so callbacks below can reference it.
@@ -1174,15 +1246,7 @@ export function AnnotationEditor({
         return () => window.removeEventListener('keydown', handleKeyDown)
     }, [workflowMode, config.hotkeys, reviewNextItem, reviewPreviousItem])
 
-    // ── Save localDocument to DSA ─────────────────────────────────────────
-    const notify = useCallback(
-        (type: 'success' | 'error', message: string, durationMs: number) => {
-            setNotification({ type, message })
-            setTimeout(() => setNotification(null), durationMs)
-        },
-        []
-    )
-
+    // ── Save localDocument to DSA or export GeoJSON ───────────────────────
     const saveAnnotation = useCallback(async () => {
         // Always set saving immediately so the button disables visually
         setSaveStatus('saving')
@@ -1191,6 +1255,27 @@ export function AnnotationEditor({
             setSaveStatus('error')
             notify('error', 'Nothing to save — add some ROIs first.', 3000)
             setTimeout(() => setSaveStatus('idle'), 3000)
+            return
+        }
+        if (geoJsonExportMode) {
+            if (!onGeoJsonExport) {
+                setSaveStatus('error')
+                notify('error', 'onGeoJsonExport is not set — cannot export.', 3000)
+                setTimeout(() => setSaveStatus('idle'), 3000)
+                return
+            }
+            try {
+                const collection = localDocumentToFeatureCollection(localDocument)
+                onGeoJsonExport(collection)
+                setSaveStatus('saved')
+                notify('success', 'GeoJSON exported.', 2500)
+                setTimeout(() => setSaveStatus('idle'), 2500)
+            } catch (err) {
+                console.error('[AnnotationEditor] GeoJSON export failed:', err)
+                setSaveStatus('error')
+                notify('error', 'Failed to build GeoJSON export.', 4000)
+                setTimeout(() => setSaveStatus('idle'), 4000)
+            }
             return
         }
         if (!apiBaseUrl) {
@@ -1298,6 +1383,8 @@ export function AnnotationEditor({
         }
     }, [
         localDocument,
+        geoJsonExportMode,
+        onGeoJsonExport,
         apiBaseUrl,
         imageInfo,
         apiHeaders,
@@ -1551,7 +1638,18 @@ export function AnnotationEditor({
                 isLoadingAnnotation={isLoadingAnnotation}
                 saveStatus={saveStatus}
                 saveAnnotation={() => { void saveAnnotation() }}
-                canSave={resolveItemId(imageInfo) !== null || localDocument !== null}
+                canSave={
+                    geoJsonExportMode
+                        ? localDocument != null
+                        : resolveItemId(imageInfo) !== null || localDocument !== null
+                }
+                saveIdleLabel={geoJsonExportMode ? 'Export GeoJSON' : 'Save'}
+                saveSavingLabel={geoJsonExportMode ? 'Exporting…' : 'Saving…'}
+                saveButtonTitle={
+                    geoJsonExportMode
+                        ? 'Export the current document as GeoJSON (handled by onGeoJsonExport)'
+                        : 'Save annotations to DSA'
+                }
             />
 
             <div className="annotation-editor__viewer">
