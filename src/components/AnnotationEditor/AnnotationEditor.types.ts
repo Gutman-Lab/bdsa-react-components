@@ -109,4 +109,6 @@ export interface AnnotationEditorProps {
     style?: React.CSSProperties
     /** Callback when an API error occurs */
     onApiError?: ApiErrorHandler
+    /** Passed to SlideViewer. Use `true` in Storybook iframes so OSD initializes when not intersecting. */
+    disableVisibilityCheck?: boolean
 }

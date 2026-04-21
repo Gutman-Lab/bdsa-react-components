@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Storybook** stories for **SlideViewer** under `Components/SlideViewer` (basic slide, inline annotations, API-loaded annotations, GeoJSON, OSD options, viewport/zoom HUDs, overlay tile playground). Default story args set `disableVisibilityCheck` so the viewer initializes reliably inside the Storybook iframe.
 - **FolderBrowser** `visualStyle` prop (`'modern' | 'legacy'`) for classic tree styling (neutral panel, ▶/▼, Collection/Folder badges) aligned with the pre-refactor library; optional `showVisualStyleToggle` + `onVisualStyleChange` for an in-header Modern/Classic control.
 - **FolderBrowser** render props: `renderCollection`, `renderFolder`, and `renderItem` to customize rows. Collection/folder renderers replace **only the row**; expansion and children are still managed by the component (fixes the old full-node replacement footgun). Default item rows again use `largeImage` and AI-model metadata via **`itemUtils`** (`hasLargeImage`, `isAIModel`, etc.), re-exported from the package root.
 - **FolderBrowser** `onResourceSelect` / `onSelectionChange` with exported **`FolderBrowserResource`**; **single-click** collection/folder rows selects (and items still call these plus `onItemSelect`). **Double-click** a row or **single-click** the chevron to expand/collapse.

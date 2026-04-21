@@ -34,6 +34,7 @@ export function AnnotationEditor({
     className = '',
     style,
     onApiError,
+    disableVisibilityCheck,
 }: AnnotationEditorProps) {
     const [selectedRoiIndex, setSelectedRoiIndex] = useState<number>(-1)
     const [markComplete, setMarkComplete] = useState(false)
@@ -1568,6 +1569,7 @@ export function AnnotationEditor({
                     osdOptions={config.viewerOptions as never}
                     onToolkitReady={setToolkit}
                     onApiError={onApiError}
+                    disableVisibilityCheck={disableVisibilityCheck}
                 />
             </div>
 

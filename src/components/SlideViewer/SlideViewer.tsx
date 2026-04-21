@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDsaResolvedApi } from '../../auth/useDsaResolvedApi'
 import { PaperOverlay, AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { FeatureCollection, Feature } from 'geojson'
 import OpenSeadragon from 'openseadragon'
@@ -63,6 +64,12 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         },
         ref
     ) => {
+        const {
+            apiBaseUrl: effectiveApiBaseUrl,
+            apiHeaders: effectiveApiHeaders,
+            authToken: effectiveAuthToken,
+        } = useDsaResolvedApi({ apiBaseUrl, apiHeaders, authToken })
+
         const containerRef = useRef<HTMLDivElement>(null)
         const [viewer, setViewer] = useState<OpenSeadragonViewer | null>(null)
         const [overlay, setOverlay] = useState<InstanceType<typeof PaperOverlay> | null>(null)
@@ -292,10 +299,9 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             onAnnotationClickRef.current = onAnnotationClick
         }, [onAnnotationClick])
 
-        // Extract token from authToken or apiHeaders (memoized)
         const token = useMemo(() => {
-            return extractToken(authToken, apiHeaders)
-        }, [authToken, apiHeaders])
+            return extractToken(effectiveAuthToken, effectiveApiHeaders)
+        }, [effectiveAuthToken, effectiveApiHeaders])
 
         // Create wrapped fetch function that appends token to URLs when tokenQueryParam is true
         const wrappedFetch = useMemo(() => {
@@ -339,14 +345,14 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         // Fetch annotations from DSA API if annotationIds are provided
         const { fetchedAnnotations, annotationDocuments } = useAnnotationFetching(
             annotationIds,
-            apiBaseUrl,
+            effectiveApiBaseUrl,
             defaultAnnotationColor,
             maxPointsPerAnnotation,
             maxTotalPoints,
             wrappedFetch,
             cache,
             annotationHeaders,
-            apiHeaders,
+            effectiveApiHeaders,
             isMountedRef,
             debug,
             onApiError
@@ -414,7 +420,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             imageInfo,
             token,
             tokenQueryParam,
-            apiHeaders,
+            effectiveApiHeaders,
             osdOptions,
             onViewerReadyRef,
             setViewer,

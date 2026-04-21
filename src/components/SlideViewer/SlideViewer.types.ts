@@ -251,7 +251,10 @@ export interface SlideViewerProps {
     annotations?: AnnotationFeature[] | FeatureCollection
     /** Annotation IDs to fetch from DSA API (baseUrl/annotation/{id}) */
     annotationIds?: (string | number)[]
-    /** Base URL for DSA API (e.g., 'http://bdsa.pathology.emory.edu:8080/api/v1') */
+    /**
+     * DSA API base URL including `/api/v1`.
+     * When omitted, uses `dsaAuthStore` (via `useDsaResolvedApi`), same as FolderBrowser.
+     */
     apiBaseUrl?: string
     /** Callback when viewer is ready */
     onViewerReady?: (viewer: OpenSeadragonViewer) => void
@@ -285,9 +288,9 @@ export interface SlideViewerProps {
     /** Custom fetch function for API requests. Useful for adding authentication headers.
      *  If not provided, uses the default `fetch`. The function should match the Fetch API signature. */
     fetchFn?: (url: string, options?: RequestInit) => Promise<Response>
-    /** Custom headers to add to all API requests. Merged with fetchFn headers if both are provided. */
+    /** Merged on top of `dsaAuthStore.getAuthHeaders()` when authenticated. */
     apiHeaders?: HeadersInit
-    /** Authentication token to use for requests. Can be extracted from apiHeaders automatically if not provided. */
+    /** Overrides the Girder token from `dsaAuthStore` when set. */
     authToken?: string
     /** If true, appends the authentication token as a query parameter (?token=...) to all requests (DZI, tiles, annotations).
      *  This is required for some DSA servers that validate tokens via query parameters instead of (or in addition to) headers.

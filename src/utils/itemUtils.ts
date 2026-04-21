@@ -18,6 +18,9 @@ export interface ItemWithMeta {
   [key: string]: unknown
 }
 
+/** Alias for thumbnail components and older call sites; same shape as ItemWithMeta */
+export type Item = ItemWithMeta
+
 export function hasLargeImage(item: ItemWithMeta): boolean {
   const rootLargeImage = item.largeImage
   const rootHasLargeImage =
