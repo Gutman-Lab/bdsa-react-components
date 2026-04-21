@@ -265,14 +265,19 @@ npm install bdsa-react-components
 ```
 
 ```tsx
-import { Button, Card, SlideViewer } from 'bdsa-react-components'
+import { SlideViewer } from 'bdsa-react-components'
 import 'bdsa-react-components/styles.css'
 
 function App() {
   return (
-    <Card>
-      <Button variant="primary">Click me</Button>
-    </Card>
+    <div style={{ width: '100%', height: '600px' }}>
+      <SlideViewer
+        imageInfo={{
+          dziUrl: 'https://your-dsa-host/api/v1/item/YOUR_ITEM_ID/tiles/dzi.dzi',
+        }}
+        annotations={[]}
+      />
+    </div>
   )
 }
 ```

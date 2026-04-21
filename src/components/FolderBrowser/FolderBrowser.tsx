@@ -3,8 +3,10 @@ import { Network, Folder, FolderLock, Play, ChevronLeft, ChevronRight } from 'lu
 import { dsaAuthStore } from '../../auth/DsaAuthStore'
 import { useResizablePanel } from '../../hooks/useResizablePanel'
 import { TreeNode } from './TreeNode'
-import type { Collection, FolderItem, Item, NodeChildren } from './types'
+import type { Collection, FolderItem, FolderBrowserVisualStyle, Item, NodeChildren } from './types'
 import '../../styles/browserPanel.css'
+
+export type { FolderBrowserVisualStyle }
 
 /** Bypass API calls and drive the component with static data (for tests / Storybook). */
 export interface FolderBrowserSyntheticData {
@@ -23,9 +25,50 @@ interface FolderBrowserProps {
   defaultWidth?: number
   /** Skip API calls and render static data (for tests / Storybook). */
   syntheticData?: FolderBrowserSyntheticData
+  /** Panel look: modern (default) or legacy (matches pre-refactor FolderBrowser styling). */
+  visualStyle?: FolderBrowserVisualStyle
+  /** When the user picks a style via {@link showVisualStyleToggle}. */
+  onVisualStyleChange?: (style: FolderBrowserVisualStyle) => void
+  /** Show Modern / Classic controls in the header (uses internal state if `visualStyle` is omitted). */
+  showVisualStyleToggle?: boolean
 }
 
-export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions = [], className = '', style, defaultWidth = 250, syntheticData }: FolderBrowserProps) {
+export function FolderBrowser({
+  onItemSelect,
+  selectedItemId,
+  allowedExtensions = [],
+  className = '',
+  style,
+  defaultWidth = 250,
+  syntheticData,
+  visualStyle: visualStyleProp,
+  onVisualStyleChange,
+  showVisualStyleToggle = false,
+}: FolderBrowserProps) {
+  const [internalVisualStyle, setInternalVisualStyle] = useState<FolderBrowserVisualStyle>(
+    () => visualStyleProp ?? 'modern',
+  )
+
+  useEffect(() => {
+    if (visualStyleProp !== undefined) {
+      setInternalVisualStyle(visualStyleProp)
+    }
+  }, [visualStyleProp])
+
+  const effectiveVisualStyle: FolderBrowserVisualStyle =
+    visualStyleProp !== undefined
+      ? visualStyleProp
+      : showVisualStyleToggle
+        ? internalVisualStyle
+        : 'modern'
+
+  function handleVisualStyleChange(next: FolderBrowserVisualStyle) {
+    if (showVisualStyleToggle && visualStyleProp === undefined) {
+      setInternalVisualStyle(next)
+    }
+    onVisualStyleChange?.(next)
+  }
+
   const [collections, setCollections] = useState<Collection[]>(() => syntheticData?.collections ?? [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -111,10 +154,13 @@ export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions 
     })()
   }
 
+  const rootMods =
+    effectiveVisualStyle === 'legacy' ? 'folder-browser--legacy' : ''
+
   if (collapsed) {
     return (
       <div
-        className={`folder-browser folder-browser--collapsed ${className}`}
+        className={`folder-browser folder-browser--collapsed ${rootMods} ${className}`.trim()}
         style={{ ...style, width: '36px', minWidth: '36px' }}
       >
         <button className="folder-browser__collapse-btn" onClick={() => setCollapsed(false)} title="Expand panel">
@@ -127,17 +173,45 @@ export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions 
 
   return (
     <div
-      className={`folder-browser ${className}`}
+      className={`folder-browser ${rootMods} ${className}`.trim()}
       style={{ ...style, width: `${width}px`, minWidth: `${width}px` }}
     >
       <div className="folder-browser__header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <Network size={16} />
+        <div className="folder-browser__header-title">
+          {effectiveVisualStyle === 'modern' && <Network size={16} aria-hidden />}
           Collections
         </div>
-        <button className="folder-browser__collapse-btn" onClick={() => setCollapsed(true)} title="Collapse panel">
-          <ChevronLeft size={22} />
-        </button>
+        <div className="folder-browser__header-actions">
+          {showVisualStyleToggle && (
+            <div className="folder-browser__style-switch" role="group" aria-label="Folder browser style">
+              <button
+                type="button"
+                className={
+                  effectiveVisualStyle === 'modern'
+                    ? 'folder-browser__style-switch-btn folder-browser__style-switch-btn--active'
+                    : 'folder-browser__style-switch-btn'
+                }
+                onClick={() => handleVisualStyleChange('modern')}
+              >
+                Modern
+              </button>
+              <button
+                type="button"
+                className={
+                  effectiveVisualStyle === 'legacy'
+                    ? 'folder-browser__style-switch-btn folder-browser__style-switch-btn--active'
+                    : 'folder-browser__style-switch-btn'
+                }
+                onClick={() => handleVisualStyleChange('legacy')}
+              >
+                Classic
+              </button>
+            </div>
+          )}
+          <button className="folder-browser__collapse-btn" onClick={() => setCollapsed(true)} title="Collapse panel">
+            <ChevronLeft size={22} />
+          </button>
+        </div>
       </div>
       <div className="folder-browser__scroll">
         {loading && <div className="folder-browser__empty">Loading...</div>}
@@ -152,20 +226,46 @@ export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions 
               className="folder-browser__collection"
               onClick={() => toggleNode(collection._id, 'collection')}
             >
-              {collection.public === false
-                ? <FolderLock size={15} fill="#3b82f6" strokeWidth={0} className="folder-browser__item-folder-icon" />
-                : <Folder size={15} fill="#3b82f6" strokeWidth={0} className="folder-browser__item-folder-icon" />
-              }
-              <span>{collection.name}</span>
-              <Play
-                size={10}
-                fill="#3b82f6"
-                strokeWidth={0}
-                style={{
-                  transform: expanded.has(collection._id) ? 'rotate(90deg)' : 'none',
-                  transition: 'transform 0.15s',
-                }}
-              />
+              {effectiveVisualStyle === 'modern' ? (
+                <>
+                  {collection.public === false
+                    ? <FolderLock size={15} fill="#3b82f6" strokeWidth={0} className="folder-browser__item-folder-icon" />
+                    : <Folder size={15} fill="#3b82f6" strokeWidth={0} className="folder-browser__item-folder-icon" />
+                  }
+                  <span className="folder-browser__row-name">{collection.name}</span>
+                  <span
+                    className={
+                      expanded.has(collection._id)
+                        ? 'folder-browser__expand-chevron folder-browser__expand-chevron--expanded'
+                        : 'folder-browser__expand-chevron'
+                    }
+                    aria-hidden
+                  >
+                    <Play
+                      size={10}
+                      fill="#3b82f6"
+                      strokeWidth={0}
+                      style={{
+                        transform: expanded.has(collection._id) ? 'rotate(90deg)' : 'none',
+                        transition: 'transform 0.15s',
+                      }}
+                    />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span
+                    className={
+                      expanded.has(collection._id)
+                        ? 'folder-browser__expand-chevron folder-browser__expand-chevron--expanded'
+                        : 'folder-browser__expand-chevron'
+                    }
+                    aria-hidden
+                  />
+                  <span className="folder-browser__row-name">{collection.name}</span>
+                  <span className="folder-browser__type-badge">Collection</span>
+                </>
+              )}
             </div>
             {expanded.has(collection._id) && (
               <TreeNode
@@ -178,6 +278,7 @@ export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions 
                 onToggle={id => toggleNode(id, 'folder')}
                 onItemSelect={onItemSelect}
                 selectedItemId={selectedItemId}
+                visualStyle={effectiveVisualStyle}
               />
             )}
           </div>

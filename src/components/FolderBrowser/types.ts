@@ -1,3 +1,6 @@
+/** Visual theme for FolderBrowser: modern panel vs classic (pre-refactor) tree styling. */
+export type FolderBrowserVisualStyle = 'modern' | 'legacy'
+
 export interface Collection {
   _id: string
   name: string

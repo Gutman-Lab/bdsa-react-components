@@ -1,5 +1,5 @@
 import { Folder, FolderLock, Play } from 'lucide-react'
-import type { FolderItem, NodeChildren } from './types'
+import type { FolderBrowserVisualStyle, FolderItem, NodeChildren } from './types'
 import { ItemRow } from '../../utils/dsaBrowserUtils'
 import type { Item } from '../../utils/dsaBrowserUtils'
 
@@ -15,6 +15,7 @@ interface TreeNodeProps {
   onToggle: (id: string) => void
   onItemSelect?: (item: Item) => void
   selectedItemId?: string
+  visualStyle?: FolderBrowserVisualStyle
 }
 
 export function TreeNode({
@@ -27,6 +28,7 @@ export function TreeNode({
   onToggle,
   onItemSelect,
   selectedItemId,
+  visualStyle = 'modern',
 }: TreeNodeProps) {
   const indentStyle = { paddingLeft: `${depth * 1.25 + 0.75}rem` }
 
@@ -57,20 +59,46 @@ export function TreeNode({
             style={indentStyle}
             onClick={() => onToggle(folder._id)}
           >
-            {folder.public === false
-              ? <FolderLock size={14} fill="#3b82f6" strokeWidth={0} className="folder-browser__item-folder-icon" />
-              : <Folder size={14} fill="#3b82f6" strokeWidth={0} className="folder-browser__item-folder-icon" />
-            }
-            <span>{folder.name}</span>
-            <Play
-              size={9}
-              fill="#3b82f6"
-              strokeWidth={0}
-              style={{
-                transform: expanded.has(folder._id) ? 'rotate(90deg)' : 'none',
-                transition: 'transform 0.15s',
-              }}
-            />
+            {visualStyle === 'modern' ? (
+              <>
+                {folder.public === false
+                  ? <FolderLock size={14} fill="#3b82f6" strokeWidth={0} className="folder-browser__item-folder-icon" />
+                  : <Folder size={14} fill="#3b82f6" strokeWidth={0} className="folder-browser__item-folder-icon" />
+                }
+                <span className="folder-browser__row-name">{folder.name}</span>
+                <span
+                  className={
+                    expanded.has(folder._id)
+                      ? 'folder-browser__expand-chevron folder-browser__expand-chevron--expanded'
+                      : 'folder-browser__expand-chevron'
+                  }
+                  aria-hidden
+                >
+                  <Play
+                    size={9}
+                    fill="#3b82f6"
+                    strokeWidth={0}
+                    style={{
+                      transform: expanded.has(folder._id) ? 'rotate(90deg)' : 'none',
+                      transition: 'transform 0.15s',
+                    }}
+                  />
+                </span>
+              </>
+            ) : (
+              <>
+                <span
+                  className={
+                    expanded.has(folder._id)
+                      ? 'folder-browser__expand-chevron folder-browser__expand-chevron--expanded'
+                      : 'folder-browser__expand-chevron'
+                  }
+                  aria-hidden
+                />
+                <span className="folder-browser__row-name">{folder.name}</span>
+                <span className="folder-browser__type-badge">Folder</span>
+              </>
+            )}
           </div>
           {expanded.has(folder._id) && (
             <TreeNode
@@ -83,6 +111,7 @@ export function TreeNode({
               onToggle={onToggle}
               onItemSelect={onItemSelect}
               selectedItemId={selectedItemId}
+              visualStyle={visualStyle}
             />
           )}
         </div>

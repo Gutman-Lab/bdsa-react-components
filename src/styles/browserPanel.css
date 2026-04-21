@@ -65,6 +65,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.35rem;
   padding: 0.5rem 0.5rem 0.5rem 1rem;
   font-size: 0.95rem;
   font-weight: 600;
@@ -72,6 +73,76 @@
   border-bottom: 1px solid #ddd;
   user-select: none;
   white-space: nowrap;
+}
+
+.folder-browser__header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.folder-browser__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.folder-browser__style-switch {
+  display: inline-flex;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.folder-browser__style-switch-btn {
+  font-size: 10px;
+  padding: 3px 7px;
+  border: none;
+  background: #fff;
+  cursor: pointer;
+  color: #555;
+  line-height: 1.2;
+}
+
+.folder-browser__style-switch-btn:hover {
+  background: #f3f4f6;
+}
+
+.folder-browser__style-switch-btn--active {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+.folder-browser__row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-browser__expand-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.folder-browser:not(.folder-browser--legacy) .folder-browser__collection > .folder-browser__expand-chevron:last-child,
+.folder-browser:not(.folder-browser--legacy) .folder-browser__folder > .folder-browser__expand-chevron:last-child {
+  margin-left: auto;
+}
+
+.folder-browser__type-badge {
+  font-size: 10px;
+  color: #888;
+  background-color: #f0f0f0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .folder-browser__empty {
@@ -155,4 +226,107 @@
   font-size: 0.8rem;
   border-bottom: 1px solid #e5e7eb;
   white-space: nowrap;
+}
+
+/* Classic / legacy theme (pre-refactor bdsa-folder-browser look) */
+
+.folder-browser--legacy {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
+    'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  background-color: #fff;
+}
+
+.folder-browser--legacy.folder-browser--collapsed {
+  background-color: #fff;
+  color: #555;
+}
+
+.folder-browser--legacy .folder-browser__collapsed-label {
+  color: #555;
+}
+
+.folder-browser--legacy .folder-browser__header {
+  background-color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.folder-browser--legacy .folder-browser__style-switch {
+  border-color: #ccc;
+}
+
+.folder-browser--legacy .folder-browser__collection,
+.folder-browser--legacy .folder-browser__folder {
+  background-color: #fff;
+  border-bottom: 1px solid #eee;
+  padding: 3px 8px 3px 4px;
+  gap: 6px;
+}
+
+.folder-browser--legacy .folder-browser__collection:hover,
+.folder-browser--legacy .folder-browser__folder:hover {
+  background-color: #f5f5f5;
+}
+
+.folder-browser--legacy .folder-browser__expand-chevron {
+  width: 10px;
+  height: 10px;
+  margin-right: 2px;
+}
+
+.folder-browser--legacy .folder-browser__expand-chevron::before {
+  content: '▶';
+  font-size: 8px;
+  color: #666;
+  line-height: 1;
+}
+
+.folder-browser--legacy .folder-browser__expand-chevron--expanded::before {
+  content: '▼';
+}
+
+.folder-browser--legacy .folder-browser__row-name {
+  flex: 1 1 auto;
+  font-weight: 400;
+  color: #333;
+}
+
+.folder-browser--legacy .folder-browser__item {
+  background-color: #fff;
+  border-bottom: 1px solid #eee;
+  padding: 3px 8px 3px 4px;
+}
+
+.folder-browser--legacy .folder-browser__item:hover {
+  background-color: #f5f5f5;
+}
+
+.folder-browser--legacy .folder-browser__item--selected {
+  background-color: #e3f2fd;
+  box-shadow: inset 2px 0 0 #2196f3;
+  font-weight: 500;
+}
+
+.folder-browser--legacy .folder-browser__item--selected:hover {
+  background-color: #bbdefb;
+}
+
+.folder-browser--legacy .folder-browser__item-icon {
+  color: #666;
+}
+
+.folder-browser--legacy .folder-browser__empty {
+  color: #666;
+  font-size: 13px;
+}
+
+.folder-browser--legacy .folder-browser__node-loading {
+  font-size: 12px;
+  color: #888;
+  border-bottom-color: #eee;
 }

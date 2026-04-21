@@ -50,6 +50,8 @@ const meta: Meta<typeof FolderBrowser> = {
   argTypes: {
     defaultWidth: { control: { type: 'range', min: 150, max: 500, step: 10 } },
     allowedExtensions: { control: 'object' },
+    visualStyle: { control: 'inline-radio', options: ['modern', 'legacy'] },
+    showVisualStyleToggle: { control: 'boolean' },
   },
 }
 
@@ -149,5 +151,22 @@ export const Collapsed: Story = {
       return <div ref={ref} style={{ display: 'contents' }}><FolderBrowser {...args} /></div>
     }
     return <AutoCollapse />
+  },
+}
+
+/** Classic tree styling (neutral grays, ▶/▼, Collection/Folder badges) like the pre-refactor library. */
+export const LegacyVisualStyle: Story = {
+  args: {
+    syntheticData: storyData,
+    visualStyle: 'legacy',
+  },
+}
+
+/** Header control to switch between Modern and Classic without leaving the story. */
+export const WithStyleToggle: Story = {
+  args: {
+    syntheticData: storyData,
+    showVisualStyleToggle: true,
+    defaultWidth: 350
   },
 }

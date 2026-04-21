@@ -33,7 +33,7 @@ npm install react@^18.0.0 react-dom@^18.0.0
 ### Step 4: Use the components
 
 ```tsx
-import { SlideViewer, Button, Card } from 'bdsa-react-components'
+import { SlideViewer } from 'bdsa-react-components'
 import 'bdsa-react-components/styles.css'
 
 function App() {
@@ -132,17 +132,6 @@ function MySlideView() {
     />
   )
 }
-```
-
-### Button
-
-```tsx
-import { Button } from 'bdsa-react-components'
-import 'bdsa-react-components/styles.css'
-
-<Button variant="primary" size="large" onClick={() => alert('Clicked!')}>
-  Click Me
-</Button>
 ```
 
 ### Card

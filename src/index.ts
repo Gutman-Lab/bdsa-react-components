@@ -1,11 +1,9 @@
 // Components
-export { Button } from './components/Button/Button'
-export type { ButtonProps } from './components/Button/Button'
-
 export { DsaAuthManager } from './components/DsaAuthManager/DsaAuthManager'
 export type { DsaAuthManagerProps } from './components/DsaAuthManager/DsaAuthManager'
 export { dsaAuthStore } from './auth/DsaAuthStore'
 export { FolderBrowser } from './components/FolderBrowser/FolderBrowser'
+export type { FolderBrowserVisualStyle } from './components/FolderBrowser/types'
 export { ManifestBrowser } from './components/ManifestBrowser/ManifestBrowser'
 export { SlideViewer } from './components/SlideViewer/SlideViewer'
 export type { SlideViewerProps } from './components/SlideViewer/SlideViewer.types'

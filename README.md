@@ -38,15 +38,14 @@ npm install
 ### Basic Import
 
 ```tsx
-import { Button, Card } from 'bdsa-react-components'
+import { FolderBrowser } from 'bdsa-react-components'
 import 'bdsa-react-components/styles.css'
 
 function App() {
   return (
-    <Card header="Welcome">
-      <p>Digital Slide Archive</p>
-      <Button variant="primary">Get Started</Button>
-    </Card>
+    <div style={{ height: 480 }}>
+      <FolderBrowser apiBaseUrl="https://your-dsa-host/api/v1" />
+    </div>
   )
 }
 ```
@@ -54,40 +53,15 @@ function App() {
 ### Individual Component Import
 
 ```tsx
-import { Button } from 'bdsa-react-components'
+import { DsaAuthManager } from 'bdsa-react-components'
 import 'bdsa-react-components/styles.css'
 
 function MyComponent() {
-  return (
-    <Button 
-      variant="primary" 
-      size="large"
-      onClick={() => console.log('Clicked!')}
-    >
-      Click Me
-    </Button>
-  )
+  return <DsaAuthManager allowServerConfig compact={false} />
 }
 ```
 
 ## Available Components
-
-### Button
-
-A versatile button component with multiple variants and states.
-
-```tsx
-<Button variant="primary" size="medium" loading={false}>
-  Click Me
-</Button>
-```
-
-**Props:**
-- `variant`: 'primary' | 'secondary' | 'danger' | 'success'
-- `size`: 'small' | 'medium' | 'large'
-- `loading`: boolean
-- `fullWidth`: boolean
-- Plus all standard HTML button attributes
 
 ### Card
 
@@ -305,16 +279,12 @@ This creates optimized production builds in the `dist` folder with:
 bdsaReactComponents/
 ├── src/
 │   ├── components/
-│   │   ├── Button/
-│   │   │   ├── Button.tsx        # Component implementation
-│   │   │   ├── Button.css        # Component styles
-│   │   │   ├── Button.test.tsx   # Unit tests
-│   │   │   └── Button.stories.tsx # Storybook stories
-│   │   └── Card/
-│   │       ├── Card.tsx
-│   │       ├── Card.css
-│   │       ├── Card.test.tsx
-│   │       └── Card.stories.tsx
+│   │   ├── AnnotationBrowser/
+│   │   ├── AnnotationEditor/
+│   │   ├── DsaAuthManager/
+│   │   ├── FolderBrowser/
+│   │   ├── ManifestBrowser/
+│   │   └── SlideViewer/
 │   ├── test/
 │   │   └── setup.ts              # Test setup and configuration
 │   └── index.ts                  # Main export file
