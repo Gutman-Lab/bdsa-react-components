@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { Star } from 'lucide-react'
 import { FolderBrowser } from './FolderBrowser'
 import type { FolderBrowserSyntheticData } from './FolderBrowser'
 import type { Collection, FolderItem, Item } from './types'
@@ -19,10 +20,15 @@ const FOLDERS: FolderItem[] = [
 ]
 
 const ITEMS: Item[] = [
-  { _id: 'item-1', name: 'HE_stain_20x.svs' },
-  { _id: 'item-2', name: 'IHC_CD3_40x.tif' },
+  { _id: 'item-1', name: 'HE_stain_20x.svs', largeImage: true },
+  { _id: 'item-2', name: 'IHC_CD3_40x.tif', meta: { largeImage: true } },
   { _id: 'item-3', name: 'brightfield_scan.ndpi' },
-  { _id: 'item-4', name: 'clinical_notes.pdf' },
+  {
+    _id: 'item-4',
+    name: 'model_bundle.zip',
+    meta: { dataset_args: { batches: 1 }, train_args: { epochs: 1 } },
+  },
+  { _id: 'item-5', name: 'clinical_notes.pdf' },
 ]
 
 const storyData: FolderBrowserSyntheticData = {
@@ -31,6 +37,13 @@ const storyData: FolderBrowserSyntheticData = {
     parentType === 'collection'
       ? { folders: FOLDERS, items: [] }
       : { folders: [], items: ITEMS },
+}
+
+/** Programmatic expand: chevron uses a single click; the row uses double-click to toggle. */
+function clickExpandChevron(container: HTMLElement, selector: string) {
+  container.querySelector<HTMLElement>(selector)?.dispatchEvent(
+    new MouseEvent('click', { bubbles: true }),
+  )
 }
 
 // --- Meta ---
@@ -81,7 +94,9 @@ export const CollectionExpanded: Story = {
     function AutoExpand() {
       const ref = useRef<HTMLDivElement>(null)
       useEffect(() => {
-        ref.current?.querySelector<HTMLElement>('.folder-browser__collection')?.click()
+        const el = ref.current
+        if (!el) return
+        clickExpandChevron(el, '.folder-browser__collection .folder-browser__expand-chevron')
       }, [])
       return <div ref={ref} style={{ display: 'contents' }}><FolderBrowser {...args} /></div>
     }
@@ -101,8 +116,8 @@ export const FolderExpanded: Story = {
       useEffect(() => {
         const el = ref.current
         if (!el) return
-        el.querySelector<HTMLElement>('.folder-browser__collection')?.click()
-        el.querySelector<HTMLElement>('.folder-browser__folder')?.click()
+        clickExpandChevron(el, '.folder-browser__collection .folder-browser__expand-chevron')
+        clickExpandChevron(el, '.folder-browser__folder .folder-browser__expand-chevron')
       }, [])
       return <div ref={ref} style={{ display: 'contents' }}><FolderBrowser {...args} /></div>
     }
@@ -125,8 +140,8 @@ export const WithExtensionFilter: Story = {
       useEffect(() => {
         const el = ref.current
         if (!el) return
-        el.querySelector<HTMLElement>('.folder-browser__collection')?.click()
-        el.querySelector<HTMLElement>('.folder-browser__folder')?.click()
+        clickExpandChevron(el, '.folder-browser__collection .folder-browser__expand-chevron')
+        clickExpandChevron(el, '.folder-browser__folder .folder-browser__expand-chevron')
       }, [])
       return <div ref={ref} style={{ display: 'contents' }}><FolderBrowser {...args} /></div>
     }
@@ -167,6 +182,65 @@ export const WithStyleToggle: Story = {
   args: {
     syntheticData: storyData,
     showVisualStyleToggle: true,
-    defaultWidth: 350
+    defaultWidth: 350,
+  },
+}
+
+/**
+ * Default item rows pick icon/label from metadata (slide / AI model / generic file).
+ * Expand the first folder to see items.
+ */
+export const MetadataItemIcons: Story = {
+  args: { syntheticData: storyData },
+  render: (args) => {
+    function AutoExpand() {
+      const ref = useRef<HTMLDivElement>(null)
+      useEffect(() => {
+        const el = ref.current
+        if (!el) return
+        clickExpandChevron(el, '.folder-browser__collection .folder-browser__expand-chevron')
+        clickExpandChevron(el, '.folder-browser__folder .folder-browser__expand-chevron')
+      }, [])
+      return (
+        <div ref={ref} style={{ display: 'contents' }}>
+          <FolderBrowser {...args} />
+        </div>
+      )
+    }
+    return <AutoExpand />
+  },
+}
+
+/** Fully custom item row (e.g. your own icons and layout). */
+export const CustomItemRender: Story = {
+  args: {
+    syntheticData: storyData,
+    renderItem: (item, depth) => (
+      <div
+        className="folder-browser__item"
+        style={{ paddingLeft: `${depth * 1.25 + 0.75}rem`, gap: '0.35rem' }}
+      >
+        <Star size={14} className="folder-browser__item-icon" aria-hidden />
+        <span className="folder-browser__row-name">{item.name}</span>
+        <span className="folder-browser__resource-type">Custom</span>
+      </div>
+    ),
+  },
+  render: (args) => {
+    function AutoExpand() {
+      const ref = useRef<HTMLDivElement>(null)
+      useEffect(() => {
+        const el = ref.current
+        if (!el) return
+        clickExpandChevron(el, '.folder-browser__collection .folder-browser__expand-chevron')
+        clickExpandChevron(el, '.folder-browser__folder .folder-browser__expand-chevron')
+      }, [])
+      return (
+        <div ref={ref} style={{ display: 'contents' }}>
+          <FolderBrowser {...args} />
+        </div>
+      )
+    }
+    return <AutoExpand />
   },
 }

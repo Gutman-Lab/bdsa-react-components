@@ -238,6 +238,8 @@ You can provide annotations in two formats:
 
 ## Development
 
+Internal backlog (e.g. FolderBrowser pagination and parity with the pre-refactor library) lives in [docs/TO_DO.md](docs/TO_DO.md).
+
 ### Running Storybook
 
 View and interact with all components:

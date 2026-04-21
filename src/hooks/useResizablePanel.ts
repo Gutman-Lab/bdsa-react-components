@@ -41,9 +41,14 @@ export function useResizablePanel({
     }
 
     function onMouseUp() {
+      const ref = dragRef.current
       dragRef.current = null
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
+      // Click without meaningful drag: collapse (expand uses the panel header control).
+      if (ref && !ref.moved) {
+        setCollapsed(true)
+      }
     }
 
     document.addEventListener('mousemove', onMouseMove)

@@ -21,24 +21,24 @@ describe('FolderBrowser', () => {
     expect(screen.getByText('Private Archive')).toBeInTheDocument()
   })
 
-  it('expands a collection to show its folders on click', async () => {
+  it('expands a collection to show its folders on double-click (or use the chevron)', async () => {
     const user = userEvent.setup()
     render(<FolderBrowser syntheticData={SYNTHETIC_DATA} />)
 
-    await user.click(screen.getByText('Histology Slides'))
+    await user.dblClick(screen.getByText('Histology Slides'))
 
     expect(screen.getByText('Case 001')).toBeInTheDocument()
     expect(screen.getByText('Case 002')).toBeInTheDocument()
   })
 
-  it('collapses a collection on a second click', async () => {
+  it('collapses a collection on a second double-click', async () => {
     const user = userEvent.setup()
     render(<FolderBrowser syntheticData={SYNTHETIC_DATA} />)
 
-    await user.click(screen.getByText('Histology Slides'))
+    await user.dblClick(screen.getByText('Histology Slides'))
     expect(screen.getByText('Case 001')).toBeInTheDocument()
 
-    await user.click(screen.getByText('Histology Slides'))
+    await user.dblClick(screen.getByText('Histology Slides'))
     expect(screen.queryByText('Case 001')).not.toBeInTheDocument()
   })
 
@@ -46,8 +46,8 @@ describe('FolderBrowser', () => {
     const user = userEvent.setup()
     render(<FolderBrowser syntheticData={SYNTHETIC_DATA} />)
 
-    await user.click(screen.getByText('Histology Slides'))
-    await user.click(screen.getByText('Case 001'))
+    await user.dblClick(screen.getByText('Histology Slides'))
+    await user.dblClick(screen.getByText('Case 001'))
 
     expect(screen.getByText('slide.svs')).toBeInTheDocument()
     expect(screen.getByText('scan.tif')).toBeInTheDocument()
@@ -58,8 +58,8 @@ describe('FolderBrowser', () => {
     const user = userEvent.setup()
     render(<FolderBrowser syntheticData={SYNTHETIC_DATA} allowedExtensions={['svs', 'tif']} />)
 
-    await user.click(screen.getByText('Histology Slides'))
-    await user.click(screen.getByText('Case 001'))
+    await user.dblClick(screen.getByText('Histology Slides'))
+    await user.dblClick(screen.getByText('Case 001'))
 
     expect(screen.getByText('slide.svs')).toBeInTheDocument()
     expect(screen.getByText('scan.tif')).toBeInTheDocument()
@@ -70,8 +70,8 @@ describe('FolderBrowser', () => {
     const user = userEvent.setup()
     render(<FolderBrowser syntheticData={SYNTHETIC_DATA} allowedExtensions={[]} />)
 
-    await user.click(screen.getByText('Histology Slides'))
-    await user.click(screen.getByText('Case 001'))
+    await user.dblClick(screen.getByText('Histology Slides'))
+    await user.dblClick(screen.getByText('Case 001'))
 
     for (const item of SYNTHETIC_ITEMS) {
       expect(screen.getByText(item.name)).toBeInTheDocument()
@@ -97,8 +97,20 @@ describe('FolderBrowser', () => {
     fireEvent.mouseUp(document)
     expect(document.querySelector('.folder-browser--collapsed')).toBeInTheDocument()
 
-    await user.click(document.querySelector('.folder-browser--collapsed') as HTMLElement)
+    await user.click(screen.getByTitle('Expand panel'))
     expect(document.querySelector('.folder-browser--collapsed')).not.toBeInTheDocument()
+  })
+
+  it('calls onResourceSelect when a collection row is clicked', async () => {
+    const user = userEvent.setup()
+    const onResourceSelect = vi.fn()
+    render(<FolderBrowser syntheticData={SYNTHETIC_DATA} onResourceSelect={onResourceSelect} />)
+
+    await user.click(screen.getByText('Histology Slides'))
+
+    expect(onResourceSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ _id: expect.any(String), type: 'collection', name: 'Histology Slides' }),
+    )
   })
 
   it('calls onItemSelect when an item is clicked', async () => {
@@ -106,8 +118,8 @@ describe('FolderBrowser', () => {
     const onItemSelect = vi.fn()
     render(<FolderBrowser syntheticData={SYNTHETIC_DATA} onItemSelect={onItemSelect} allowedExtensions={[]} />)
 
-    await user.click(screen.getByText('Histology Slides'))
-    await user.click(screen.getByText('Case 001'))
+    await user.dblClick(screen.getByText('Histology Slides'))
+    await user.dblClick(screen.getByText('Case 001'))
     await user.click(screen.getByText('slide.svs'))
 
     expect(onItemSelect).toHaveBeenCalledWith(expect.objectContaining({ name: 'slide.svs' }))
