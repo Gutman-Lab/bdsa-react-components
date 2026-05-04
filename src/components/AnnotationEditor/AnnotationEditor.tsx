@@ -1331,6 +1331,7 @@ export function AnnotationEditor({
         const roi = config.roiSettings ?? {}
         const roiStyle = {
             strokeColor: normalizeCssColor(roi.color ?? '#ffa500'),
+            fillColor: normalizeCssColor(`rgba(0,0,0,${roi.fillOpacity ?? 0.05})`),
             fillOpacity: roi.fillOpacity ?? 0.05,
             rescale: { strokeWidth: roi.strokeWidth ?? 2 },
         }
