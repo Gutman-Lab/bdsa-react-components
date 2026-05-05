@@ -9,7 +9,7 @@ import type {
     LocalAnnotationDocument,
     LocalAnnotationElement,
 } from './AnnotationEditor.types'
-import { normalizeCssColor, resolveItemId, computeNextRoiLabel } from './AnnotationEditor.utils'
+import { normalizeCssColor, resolveItemId, computeNextRoiLabel, resolveStrokeColor, resolveFillColor, resolveRoiStrokeColor, resolveRoiFillColor, resolveRoiFillOpacity } from './AnnotationEditor.utils'
 import { AnnotationEditorToolbar } from './AnnotationEditor.Toolbar'
 import { AnnotationEditorOverlays } from './AnnotationEditor.Overlays'
 import { createApiError } from '../../utils/apiErrorHandling'
@@ -361,8 +361,6 @@ export function AnnotationEditor({
         (left: number, top: number, width: number, height: number) => {
             const roi = config.roiSettings ?? {}
             const labelBase = roi.label ?? 'roi'
-            const fillOpacity = roi.fillOpacity ?? 0.05
-
             setLocalDocument(prev => {
                 const elements = prev?.elements ?? []
                 const labelValue = computeNextRoiLabel(elements, labelBase)
@@ -379,9 +377,9 @@ export function AnnotationEditor({
                     width: Math.round(width),
                     height: Math.round(height),
                     rotation: 0,
-                    lineColor: normalizeCssColor(roi.color ?? '#ffa500'),
+                    lineColor: normalizeCssColor(resolveRoiStrokeColor(roi)),
                     lineWidth: roi.strokeWidth ?? 2,
-                    fillColor: normalizeCssColor(`rgba(0,0,0,${fillOpacity})`),
+                    fillColor: normalizeCssColor(resolveRoiFillColor(roi)),
                 }
 
                 const doc: LocalAnnotationDocument = prev
@@ -574,7 +572,7 @@ export function AnnotationEditor({
         // we apply the correct color in onItemCreated instead.
         const placeholder = paperScope.findSelectedNewItem?.()
         if (placeholder) {
-            try { placeholder.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+            try { placeholder.strokeColor = normalizeCssColor(resolveStrokeColor(annotationType)) } catch { /* ignore */ }
         }
     }, [toolkit, workflowMode, selectedTypeIndex, config])
 
@@ -602,7 +600,7 @@ export function AnnotationEditor({
             const t = types[idx]
             if (!t) return null
             return {
-                strokeColor: normalizeCssColor(t.color),
+                strokeColor: normalizeCssColor(resolveStrokeColor(t)),
                 rescale: { strokeWidth: t.strokeWidth ?? 2 },
             }
         }
@@ -634,8 +632,8 @@ export function AnnotationEditor({
 
             // Apply fixed-size if enabled: click point → top-left, reshape to type defaults
             if (labelFixedSizeEnabledRef.current) {
-                const fw = annotationType.defaultWidth
-                const fh = annotationType.defaultHeight
+                const fw = annotationType.defaultWidth ?? 100
+                const fh = annotationType.defaultHeight ?? 100
                 const left = item.position.x
                 const top = item.position.y
                 const innerPath = item.children?.[0] || item
@@ -645,7 +643,7 @@ export function AnnotationEditor({
                     innerPath.segments[2].point.set(left + fw, top + fh)
                     innerPath.segments[3].point.set(left, top + fh)
                 }
-                try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+                try { item.strokeColor = normalizeCssColor(resolveStrokeColor(annotationType)) } catch { /* ignore */ }
                 setLocalDocument(prev => {
                     const elements = prev?.elements ?? []
                     const newElement: LocalAnnotationElement = {
@@ -656,9 +654,9 @@ export function AnnotationEditor({
                         width: fw,
                         height: fh,
                         rotation: 0,
-                        lineColor: normalizeCssColor(annotationType.color),
+                        lineColor: normalizeCssColor(resolveStrokeColor(annotationType)),
                         lineWidth: annotationType.strokeWidth ?? 2,
-                        fillColor: 'rgba(0,0,0,0.05)',
+                        fillColor: resolveFillColor(annotationType),
                         ...(selectedRoiLabelRef.current != null ? { user: { roiLabel: selectedRoiLabelRef.current } } : {}),
                     }
                     return prev
@@ -670,7 +668,7 @@ export function AnnotationEditor({
                 const b = item.bounds
                 if (b && b.width >= 5 && b.height >= 5) {
                     // Correct the visual color — placeholder may have been a stale type.
-                    try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+                    try { item.strokeColor = normalizeCssColor(resolveStrokeColor(annotationType)) } catch { /* ignore */ }
                     setLocalDocument(prev => {
                         const elements = prev?.elements ?? []
                         const newElement: LocalAnnotationElement = {
@@ -685,9 +683,9 @@ export function AnnotationEditor({
                             width: Math.round(b.width),
                             height: Math.round(b.height),
                             rotation: 0,
-                            lineColor: normalizeCssColor(annotationType.color),
+                            lineColor: normalizeCssColor(resolveStrokeColor(annotationType)),
                             lineWidth: annotationType.strokeWidth ?? 2,
-                            fillColor: 'rgba(0,0,0,0.05)',
+                            fillColor: resolveFillColor(annotationType),
                             ...(selectedRoiLabelRef.current != null ? { user: { roiLabel: selectedRoiLabelRef.current } } : {}),
                         }
                         return prev
@@ -967,7 +965,7 @@ export function AnnotationEditor({
         const docIdx = findLabelDocIndex(itemIdx)
         if (docIdx < 0) { setContextMenu(null); return }
 
-        try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+        try { item.strokeColor = normalizeCssColor(resolveStrokeColor(annotationType)) } catch { /* ignore */ }
 
         // Sync the toolbar type dropdown regardless of which mode triggered this
         setSelectedTypeIndex(typeIndex)
@@ -979,7 +977,7 @@ export function AnnotationEditor({
                 ...elements[docIdx],
                 group: annotationType.name,
                 label: { value: annotationType.name },
-                lineColor: normalizeCssColor(annotationType.color),
+                lineColor: normalizeCssColor(resolveStrokeColor(annotationType)),
                 lineWidth: annotationType.strokeWidth ?? 2,
             }
             return { ...prev, elements }
@@ -1139,7 +1137,7 @@ export function AnnotationEditor({
         const { item, docIdx } = reviewItems[reviewItemIndexRef.current]
         const annotationType = config.annotationTypes[typeIndex]
         if (!annotationType) return
-        try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
+        try { item.strokeColor = normalizeCssColor(resolveStrokeColor(annotationType)) } catch { /* ignore */ }
         setSelectedTypeIndex(typeIndex)
         setLocalDocument(prev => {
             if (!prev) return prev
@@ -1148,7 +1146,7 @@ export function AnnotationEditor({
                 ...elements[docIdx],
                 group: annotationType.name,
                 label: { value: annotationType.name },
-                lineColor: normalizeCssColor(annotationType.color),
+                lineColor: normalizeCssColor(resolveStrokeColor(annotationType)),
                 lineWidth: annotationType.strokeWidth ?? 2,
             }
             return { ...prev, elements }
@@ -1330,9 +1328,9 @@ export function AnnotationEditor({
         // 'add-roi': set up fresh drawing
         const roi = config.roiSettings ?? {}
         const roiStyle = {
-            strokeColor: normalizeCssColor(roi.color ?? '#ffa500'),
-            fillColor: normalizeCssColor(`rgba(0,0,0,${roi.fillOpacity ?? 0.05})`),
-            fillOpacity: roi.fillOpacity ?? 0.05,
+            strokeColor: normalizeCssColor(resolveRoiStrokeColor(roi)),
+            fillColor: normalizeCssColor(resolveRoiFillColor(roi)),
+            fillOpacity: resolveRoiFillOpacity(roi),
             rescale: { strokeWidth: roi.strokeWidth ?? 2 },
         }
 

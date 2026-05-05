@@ -4,26 +4,37 @@ import type { ApiErrorHandler } from '../../utils/apiErrorHandling'
 export interface AnnotationType {
     /** Display name for this annotation type */
     name: string
-    /** Stroke color — must be hex (#rrggbb / #rrggbbaa) or rgb()/rgba() format. Named colors (e.g. "red") are not accepted by DSA. */
-    color: string
+    /**
+     * Stroke color — hex (#rrggbb / #rrggbbaa) or rgb()/rgba() format.
+     * Use `lineColor` as an alias (DSA convention). One of `color` or `lineColor` is required.
+     */
+    color?: string
+    /** Alias for `color` — DSA convention. Accepts hex or rgb()/rgba(). */
+    lineColor?: string
+    /** Fill color — hex or rgb()/rgba(). Defaults to no fill if omitted. */
+    fillColor?: string
     /** Stroke width in pixels. Default: 1 */
     strokeWidth?: number
     /** Keyboard shortcut key (single character) */
     key?: string
-    /** Default width in image pixels when drop-placing */
-    defaultWidth: number
-    /** Default height in image pixels when drop-placing */
-    defaultHeight: number
+    /** Default width in image pixels when drop-placing a box. Not used for polygon types. */
+    defaultWidth?: number
+    /** Default height in image pixels when drop-placing a box. Not used for polygon types. */
+    defaultHeight?: number
 }
 
 export interface RoiSettings {
     /** Base label for ROIs — sequential numbers are appended (e.g. "region" → "region1", "region2"). Default: 'roi' */
     label?: string
-    /** Stroke color for ROI rectangles — must be hex (#rrggbb) or rgb()/rgba() format. Default: '#ffa500' */
+    /** Stroke color — hex (#rrggbb) or rgb()/rgba() format. Default: '#ffa500' */
     color?: string
+    /** Alias for `color` — DSA convention. */
+    lineColor?: string
     /** Stroke width for ROI rectangles. Default: 2 */
     strokeWidth?: number
-    /** Fill opacity for ROI rectangles (0-1). Default: 0.05 */
+    /** Fill color — hex or rgb()/rgba(). When provided, takes precedence over `fillOpacity`. */
+    fillColor?: string
+    /** Fill opacity (0-1) when no `fillColor` is specified. Default: 0.05 */
     fillOpacity?: number
     /** Default width in image pixels for fixed-size ROI placement. Default: 1000 */
     width?: number
@@ -53,6 +64,20 @@ export interface LocalAnnotationDocument {
     name: string
     description: string
     elements: LocalAnnotationElement[]
+}
+
+export interface LocalPolylineElement {
+    type: 'polyline'
+    group: string
+    /** ROI label this polygon belongs to */
+    label: { value: string }
+    /** Ordered ring points in image pixel coordinates [x, y, z] */
+    points: [number, number, number][]
+    closed: boolean
+    lineColor: string
+    lineWidth: number
+    fillColor: string
+    user?: Record<string, unknown>
 }
 
 export interface HotkeySettings {

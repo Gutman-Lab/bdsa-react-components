@@ -1,4 +1,14 @@
-import type { LocalAnnotationElement, AnnotationEditorProps } from './AnnotationEditor.types'
+import type { LocalAnnotationElement, AnnotationEditorProps, AnnotationType, RoiSettings } from './AnnotationEditor.types'
+
+/** Resolves stroke color from either `color` or `lineColor`, preferring `lineColor` (DSA convention). */
+export function resolveStrokeColor(type: AnnotationType): string {
+    return type.lineColor ?? type.color ?? '#ff0000'
+}
+
+/** Resolves fill color from `fillColor`, falling back to no fill. */
+export function resolveFillColor(type: AnnotationType): string {
+    return type.fillColor ?? 'rgba(0,0,0,0)'
+}
 
 /**
  * Converts any CSS color string to a format accepted by DSA's schema
@@ -35,6 +45,29 @@ export function resolveItemId(imageInfo: AnnotationEditorProps['imageInfo']): st
         return m ? m[1] : null
     }
     return null
+}
+
+/** Resolves ROI stroke color from either `lineColor` or `color`, preferring `lineColor`. */
+export function resolveRoiStrokeColor(roi: RoiSettings): string {
+    return roi.lineColor ?? roi.color ?? '#ffa500'
+}
+
+/** Resolves ROI fill color. Uses `fillColor` directly if provided, otherwise builds from `fillOpacity`. */
+export function resolveRoiFillColor(roi: RoiSettings): string {
+    if (roi.fillColor != null) return roi.fillColor
+    return `rgba(0,0,0,${roi.fillOpacity ?? 0.05})`
+}
+
+/**
+ * Resolves the scalar fill opacity for Paper.js style objects.
+ * When `fillColor` is an rgba() string, extracts its alpha so the two don't conflict.
+ */
+export function resolveRoiFillOpacity(roi: RoiSettings): number {
+    if (roi.fillColor != null) {
+        const m = roi.fillColor.match(/rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/)
+        return m ? parseFloat(m[1]) : 1
+    }
+    return roi.fillOpacity ?? 0.05
 }
 
 /** Returns the lowest positive integer not already used as a label suffix. */

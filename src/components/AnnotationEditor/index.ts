@@ -1,2 +1,3 @@
 export { AnnotationEditor } from './AnnotationEditor'
-export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationType, RoiSettings, HotkeySettings, EditorMode, LocalAnnotationDocument, LocalAnnotationElement } from './AnnotationEditor.types'
+export { AnnotationEditorPolygons } from './AnnotationEditorPolygons'
+export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationType, RoiSettings, HotkeySettings, EditorMode, LocalAnnotationDocument, LocalAnnotationElement, LocalPolylineElement } from './AnnotationEditor.types'
