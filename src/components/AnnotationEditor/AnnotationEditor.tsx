@@ -8,6 +8,7 @@ import type {
     WorkflowMode,
     LocalAnnotationDocument,
     LocalAnnotationElement,
+    LocalPolylineElement,
 } from './AnnotationEditor.types'
 import { normalizeCssColor, resolveItemId, computeNextRoiLabel, resolveStrokeColor, resolveFillColor, resolveRoiStrokeColor, resolveRoiFillColor, resolveRoiFillOpacity } from './AnnotationEditor.utils'
 import { AnnotationEditorToolbar } from './AnnotationEditor.Toolbar'
@@ -82,8 +83,8 @@ export function AnnotationEditor({
     const showInfoRef = useRef(false)
     const [hoverInfo, setHoverInfo] = useState<{
         x: number; y: number
-        element: LocalAnnotationElement
-        roiElement?: LocalAnnotationElement
+        element: LocalAnnotationElement | LocalPolylineElement
+        roiElement?: LocalAnnotationElement | LocalPolylineElement
     } | null>(null)
     const editingLabelRef = useRef<{
         item: any; docElementIndex: number
@@ -121,7 +122,7 @@ export function AnnotationEditor({
     // ── Register tools once when toolkit is ready ─────────────────────────
     useEffect(() => {
         if (!toolkit) return
-        ;(toolkit as any).addTools(['default', 'rectangle'])
+        ;(toolkit as any).addTools(['default', 'rectangle', 'polygon'])
     }, [toolkit])
 
     // ── Load existing annotation document when toolkit first becomes ready ─
@@ -408,7 +409,7 @@ export function AnnotationEditor({
     useEffect(() => { showInfoRef.current = showInfo }, [showInfo])
 
     // ── Map a hit Paper.js item back to a LocalAnnotationElement ─────────
-    const findElementForHitItem = useCallback((hitItem: any): LocalAnnotationElement | null => {
+    const findElementForHitItem = useCallback((hitItem: any): LocalAnnotationElement | LocalPolylineElement | null => {
         if (!hitItem || !localDocumentRef.current) return null
         let current: any = hitItem
         while (current) {
@@ -475,7 +476,7 @@ export function AnnotationEditor({
 
             const elements = [...allHitItems]
                 .map(item => findElementForHitItem(item))
-                .filter(Boolean) as LocalAnnotationElement[]
+                .filter(Boolean) as (LocalAnnotationElement | LocalPolylineElement)[]
 
             // Prefer label box as primary; ROI as secondary context
             const labelEl = elements.find(e => e.group !== 'ROI')
@@ -573,6 +574,22 @@ export function AnnotationEditor({
         const placeholder = paperScope.findSelectedNewItem?.()
         if (placeholder) {
             try { placeholder.strokeColor = normalizeCssColor(resolveStrokeColor(annotationType)) } catch { /* ignore */ }
+        }
+    }, [toolkit, workflowMode, selectedTypeIndex, config])
+
+    // ── Update placeholder color when selected type changes in add-polygons ─
+    useEffect(() => {
+        if (!toolkit || workflowMode !== 'add-polygons') return
+        const types = config.annotationTypes ?? []
+        const annotationType = types[selectedTypeIndex]
+        if (!annotationType) return
+        const paperScope = (toolkit as any).paperScope
+        if (!paperScope) return
+        const placeholder = paperScope.findSelectedNewItem?.()
+        console.log('[polygon:type-change] selectedTypeIndex=', selectedTypeIndex, 'name=', annotationType.name, 'placeholder=', !!placeholder)
+        if (placeholder) {
+            try { placeholder.strokeColor = normalizeCssColor(resolveStrokeColor(annotationType)) } catch { /* ignore */ }
+            try { placeholder.fillColor = normalizeCssColor(resolveFillColor(annotationType)) } catch { /* ignore */ }
         }
     }, [toolkit, workflowMode, selectedTypeIndex, config])
 
@@ -721,6 +738,111 @@ export function AnnotationEditor({
             // Remove any undrawn placeholder so it doesn't pollute the next session
             const stale = getPaperScope()?.findSelectedNewItem?.()
             if (stale) stale.remove()
+            defaultTool.activate()
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [toolkit, workflowMode, config])
+
+    // ── Continuous polygon drawing in add-polygons mode ──────────────────
+    // Mirrors add-labels but uses the polygon tool and stores LocalPolylineElement.
+    // selectedTypeIndex is NOT a dependency — type changes must not interrupt
+    // an in-progress polygon draw.
+    useEffect(() => {
+        if (!toolkit || workflowMode !== 'add-polygons') return
+        const types = config.annotationTypes ?? []
+        if (types.length === 0) return
+
+        const polygonTool = (toolkit as any).getTool('polygon')
+        const defaultTool = (toolkit as any).getTool('default')
+        if (!polygonTool || !defaultTool) return
+
+        let active = true
+
+        const getStyle = (idx: number) => {
+            const t = types[idx]
+            if (!t) return null
+            return {
+                strokeColor: normalizeCssColor(resolveStrokeColor(t)),
+                fillColor: normalizeCssColor(resolveFillColor(t)),
+                rescale: { strokeWidth: t.strokeWidth ?? 2 },
+            }
+        }
+
+        const reactivate = () => {
+            if (!active) return
+            const style = getStyle(selectedTypeIndexRef.current)
+            polygonTool.deactivate(true)
+            polygonTool.activate({ createNewItem: true, style: style ?? undefined })
+        }
+
+        const onItemCreated = (payload: any) => {
+            const item = payload?.item
+            if (!item) return
+
+            const typeIdx = selectedTypeIndexRef.current
+            const annotationType = types[typeIdx]
+
+            console.log('[polygon:item-created] typeIdx=', typeIdx, 'name=', annotationType?.name,
+                'children=', item.children?.length,
+                'item.fillColor=', item.fillColor?.toCSS?.() ?? item.fillColor)
+
+            // Immediately clear selection so the polygon exits edit mode visually.
+            try { item.selected = false } catch { /* ignore */ }
+            if (item.children) item.children.forEach((c: any) => { try { c.selected = false } catch { /* ignore */ } })
+
+            if (!annotationType) { item.remove(); setTimeout(reactivate, 0); return }
+
+            // Extract polygon vertices from the CompoundPath outer ring
+            const ring = item.children?.[0] || item
+            const points: [number, number, number][] = (ring.segments ?? []).map((s: any) =>
+                [Math.round(s.point.x), Math.round(s.point.y), 0] as [number, number, number]
+            )
+            if (points.length < 3) { item.remove(); setTimeout(reactivate, 0); return }
+
+            // Apply colors to the drawn CompoundPath.
+            const strokeColor = normalizeCssColor(resolveStrokeColor(annotationType))
+            const fillColor = normalizeCssColor(resolveFillColor(annotationType))
+            console.log('[polygon:item-created] applying strokeColor=', strokeColor, 'fillColor=', fillColor)
+            const applyColors = (target: any) => {
+                try { target.strokeColor = strokeColor } catch { /* ignore */ }
+                try { target.fillColor = fillColor } catch { /* ignore */ }
+                try { target.strokeWidth = annotationType.strokeWidth ?? 2 } catch { /* ignore */ }
+            }
+            applyColors(item)
+            if (item.children) item.children.forEach((child: any) => applyColors(child))
+
+            const newElement: LocalPolylineElement = {
+                type: 'polyline',
+                group: annotationType.name,
+                label: { value: annotationType.name },
+                points,
+                closed: true,
+                lineColor: normalizeCssColor(resolveStrokeColor(annotationType)),
+                lineWidth: annotationType.strokeWidth ?? 2,
+                fillColor: normalizeCssColor(resolveFillColor(annotationType)),
+                ...(selectedRoiLabelRef.current != null ? { user: { roiLabel: selectedRoiLabelRef.current } } : {}),
+            }
+
+            setLocalDocument(prev => {
+                const elements = prev?.elements ?? []
+                return prev
+                    ? { ...prev, elements: [...elements, newElement] }
+                    : { name: config.annotationDocumentName, description: config.annotationDescription ?? '', elements: [newElement] }
+            })
+            labelItemsRef.current.push(item)
+
+            // Deactivate + reactivate after the tool finishes its own cleanup.
+            // Must deactivate first — activate() is a no-op when _active=true.
+            setTimeout(reactivate, 0)
+        }
+
+        const initialStyle = getStyle(selectedTypeIndexRef.current)
+        polygonTool.addEventListener('item-created', onItemCreated)
+        polygonTool.activate({ createNewItem: true, style: initialStyle ?? undefined })
+
+        return () => {
+            active = false
+            polygonTool.removeEventListener('item-created', onItemCreated)
             defaultTool.activate()
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1032,7 +1154,7 @@ export function AnnotationEditor({
                     center: [Math.round(b.x + b.width / 2), Math.round(b.y + b.height / 2), 0] as [number, number, number],
                     width: Math.round(b.width),
                     height: Math.round(b.height),
-                }
+                } as LocalAnnotationElement
                 return { ...prev, elements }
             })
         } else {
@@ -1308,8 +1430,8 @@ export function AnnotationEditor({
     // ── Activate / deactivate RectangleTool based on mode ────────────────
     useEffect(() => {
         if (!toolkit) return
-        // add-labels mode controls the tool in its own effect
-        if (workflowMode === 'add-labels') return
+        // these modes control their own tools in dedicated effects
+        if (workflowMode === 'add-labels' || workflowMode === 'add-polygons') return
 
         const rectTool = (toolkit as any).getTool('rectangle')
         const defaultTool = (toolkit as any).getTool('default')
@@ -1399,7 +1521,7 @@ export function AnnotationEditor({
             if (e.group !== 'ROI') return false
             return roiCount++ === roiIndex
         })
-        if (!el) return
+        if (!el || el.type !== 'rectangle') return
         const pad = 0.1
         const x = el.center[0] - el.width / 2 - el.width * pad
         const y = el.center[1] - el.height / 2 - el.height * pad
@@ -1425,10 +1547,10 @@ export function AnnotationEditor({
             if (roi) {
                 const item = roiItemsRef.current[roi.roiIndex]
                 if (item) {
-                    // In add-labels mode, selecting a Paper.js item hands control to
-                    // the rectangle tool's "modify" mode and breaks the drawing loop.
+                    // In drawing modes, selecting a Paper.js item deselects the placeholder
+                    // and triggers setMode() which deactivates the drawing tool.
                     // Skip select() — just pan to the ROI and reactivate drawing.
-                    if (workflowMode !== 'add-labels') {
+                    if (workflowMode !== 'add-labels' && workflowMode !== 'add-polygons') {
                         item.select()
                     }
                     // Only zoom when the selected ROI actually changed, not when
@@ -1485,7 +1607,7 @@ export function AnnotationEditor({
             if (!prev) return prev
             const roiEls = prev.elements.filter(e => e.group === 'ROI')
             const roiEl = roiEls[roi.roiIndex]
-            if (!roiEl) return prev
+            if (!roiEl || roiEl.type !== 'rectangle') return prev
             const newUser = v
                 ? { ...(roiEl.user ?? {}), complete: true }
                 : Object.fromEntries(Object.entries(roiEl.user ?? {}).filter(([k]) => k !== 'complete'))

@@ -63,7 +63,7 @@ export interface LocalAnnotationElement {
 export interface LocalAnnotationDocument {
     name: string
     description: string
-    elements: LocalAnnotationElement[]
+    elements: (LocalAnnotationElement | LocalPolylineElement)[]
 }
 
 export interface LocalPolylineElement {
@@ -109,7 +109,7 @@ export interface AnnotationEditorConfig {
 
 export type EditorMode = 'add-roi' | 'drawing-roi' | 'edit-roi' | 'delete-roi'
 
-export type WorkflowMode = 'edit-rois' | 'add-labels' | 'review' | 'filter'
+export type WorkflowMode = 'edit-rois' | 'add-labels' | 'review' | 'filter' | 'add-polygons'
 
 export interface AnnotationEditorProps {
     /** Image to display in the viewer */

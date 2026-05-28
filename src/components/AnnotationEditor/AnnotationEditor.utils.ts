@@ -1,4 +1,4 @@
-import type { LocalAnnotationElement, AnnotationEditorProps, AnnotationType, RoiSettings } from './AnnotationEditor.types'
+import type { LocalAnnotationElement, LocalPolylineElement, AnnotationEditorProps, AnnotationType, RoiSettings } from './AnnotationEditor.types'
 
 /** Resolves stroke color from either `color` or `lineColor`, preferring `lineColor` (DSA convention). */
 export function resolveStrokeColor(type: AnnotationType): string {
@@ -71,7 +71,7 @@ export function resolveRoiFillOpacity(roi: RoiSettings): number {
 }
 
 /** Returns the lowest positive integer not already used as a label suffix. */
-export function computeNextRoiLabel(elements: LocalAnnotationElement[], labelBase: string): string {
+export function computeNextRoiLabel(elements: (LocalAnnotationElement | LocalPolylineElement)[], labelBase: string): string {
     const usedNumbers = new Set(
         elements
             .filter(e => e.group === 'ROI')

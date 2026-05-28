@@ -125,6 +125,7 @@ export function AnnotationEditorToolbar({
                 >
                     <option value="edit-rois">Edit ROIs</option>
                     <option value="add-labels">Add Labels</option>
+                    <option value="add-polygons">Add Polygons</option>
                     <option value="review">Review</option>
                     <option value="filter">Filter</option>
                 </select>
@@ -234,6 +235,27 @@ export function AnnotationEditorToolbar({
                             />
                         </>
                     )}
+                    <span className="annotation-editor__roi-label">Type:</span>
+                    <span
+                        className="annotation-editor__type-swatch"
+                        style={{ backgroundColor: annotationTypes[selectedTypeIndex]?.color ?? 'transparent' }}
+                    />
+                    <select
+                        className="annotation-editor__roi-select"
+                        value={selectedTypeIndex}
+                        onChange={e => { setSelectedTypeIndex(Number(e.target.value)); e.target.blur() }}
+                    >
+                        {annotationTypes.map((t, i) => (
+                            <option key={i} value={i}>{t.name}</option>
+                        ))}
+                    </select>
+                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>Q / W to cycle</span>
+                </div>
+            )}
+
+            {/* Add Polygons: type selector (no fixed-size — polygons are freehand) */}
+            {workflowMode === 'add-polygons' && annotationTypes.length > 0 && (
+                <div className="annotation-editor__mode-group">
                     <span className="annotation-editor__roi-label">Type:</span>
                     <span
                         className="annotation-editor__type-swatch"

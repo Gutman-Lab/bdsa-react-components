@@ -1,4 +1,4 @@
-import type { AnnotationType, LocalAnnotationElement } from './AnnotationEditor.types'
+import type { AnnotationType, LocalAnnotationElement, LocalPolylineElement } from './AnnotationEditor.types'
 
 export interface OverlaysProps {
     // Right-click context menu
@@ -17,7 +17,7 @@ export interface OverlaysProps {
     annotationDocumentName: string
 
     // Show-info hover tooltip
-    hoverInfo: { x: number; y: number; element: LocalAnnotationElement; roiElement?: LocalAnnotationElement } | null
+    hoverInfo: { x: number; y: number; element: LocalAnnotationElement | LocalPolylineElement; roiElement?: LocalAnnotationElement | LocalPolylineElement } | null
 }
 
 export function AnnotationEditorOverlays({
@@ -71,8 +71,8 @@ export function AnnotationEditorOverlays({
             {/* Show-info hover tooltip */}
             {hoverInfo && (() => {
                 const { x, y, element: el, roiElement } = hoverInfo
-                const renderBlock = (e: LocalAnnotationElement, dim?: boolean) => {
-                    const area = e.width * e.height
+                const renderBlock = (e: LocalAnnotationElement | LocalPolylineElement, dim?: boolean) => {
+                    const area = e.type === 'rectangle' ? e.width * e.height : null
                     const userEntries = e.user ? Object.entries(e.user) : []
                     return (
                         <div style={dim ? { opacity: 0.65 } : undefined}>
@@ -80,10 +80,15 @@ export function AnnotationEditorOverlays({
                             <table className="annotation-editor__info-tooltip__table">
                                 <tbody>
                                     <tr><td>label</td><td>{e.label.value}</td></tr>
-                                    <tr><td>center</td><td>({e.center[0].toLocaleString()}, {e.center[1].toLocaleString()})</td></tr>
-                                    <tr><td>width</td><td>{e.width.toLocaleString()} px</td></tr>
-                                    <tr><td>height</td><td>{e.height.toLocaleString()} px</td></tr>
-                                    <tr><td>area</td><td>{area.toLocaleString()} px²</td></tr>
+                                    {e.type === 'rectangle' && <>
+                                        <tr><td>center</td><td>({e.center[0].toLocaleString()}, {e.center[1].toLocaleString()})</td></tr>
+                                        <tr><td>width</td><td>{e.width.toLocaleString()} px</td></tr>
+                                        <tr><td>height</td><td>{e.height.toLocaleString()} px</td></tr>
+                                        <tr><td>area</td><td>{area!.toLocaleString()} px²</td></tr>
+                                    </>}
+                                    {e.type === 'polyline' && (
+                                        <tr><td>points</td><td>{e.points.length}</td></tr>
+                                    )}
                                     {userEntries.map(([k, v]) => (
                                         <tr key={k}><td>{k}</td><td>{String(v)}</td></tr>
                                     ))}
