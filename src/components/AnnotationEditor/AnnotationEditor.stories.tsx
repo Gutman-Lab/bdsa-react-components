@@ -4,6 +4,12 @@ import type { SlideImageInfo } from '../SlideViewer/SlideViewer.types'
 import { DsaAuthManager } from '../DsaAuthManager/DsaAuthManager'
 import { AnnotationEditor } from './AnnotationEditor'
 import type { AnnotationEditorConfig } from './AnnotationEditor.types'
+import {
+    simulatedYoloPositiveNegative,
+    simulatedYoloTauPredictions,
+    paperAnnotatorEditorConfig,
+    yoloClassFromPropertiesImportOptions,
+} from './yoloSimulatedGeoJson'
 
 const exampleApiBaseUrl = 'http://bdsa.pathology.emory.edu:8080/api/v1'
 
@@ -43,7 +49,7 @@ const exampleConfig: AnnotationEditorConfig = {
     hotkeys: {
         reviewNext: 'M',
         reviewPrevious: 'N',
-        insertBox: 'b',
+        insertBox: 't',
     },
 }
 
@@ -94,7 +100,7 @@ const meta = {
         docs: {
             description: {
                 component:
-                    'Protocol-driven ROI and label editing on top of SlideViewer. Requires network access to the DSA host in `imageInfo` / `apiBaseUrl` (or configure `DsaAuthManager` and omit overrides). **Default** and **WithDsaAuthManager** are the standard DSA load/save workflow. **GeoJsonInputAndExport** is a separate, opt-in story (inline GeoJSON + export) and does not change how those work.',
+                    'Protocol-driven ROI and label editing on top of SlideViewer. Requires network access to the DSA host in `imageInfo` / `apiBaseUrl`. Use **WithDsaAuthManager** for the standard login + annotate flow, or **WithDsaAuthManagerWithoutShowInfo** to hide the toolbar "Show Info" button. Storybook manager shortcuts are disabled in `.storybook/manager.ts` so Q/W, D/F/G/H, and review keys are not stolen by the Storybook UI.',
             },
         },
     },
@@ -102,6 +108,7 @@ const meta = {
     args: {
         disableVisibilityCheck: true,
         showInfoBar: true,
+        showInfoControl: true,
     },
     argTypes: {
         imageInfo: { description: 'Slide source (e.g. `dziUrl` with `/item/{id}/tiles/dzi.dzi`)' },
@@ -109,6 +116,23 @@ const meta = {
         apiBaseUrl: {
             control: 'text',
             description: 'Optional override; defaults from `dsaAuthStore` when omitted',
+        },
+        showInfoBar: {
+            control: 'boolean',
+            description: 'Show the SlideViewer info bar (coords, zoom, preset zoom buttons). Default: true.',
+        },
+        showInfoControl: {
+            control: 'boolean',
+            description: 'Show the toolbar "Show Info" hover-tooltip toggle. Default: true.',
+        },
+        defaultShowInfo: {
+            control: 'boolean',
+            description: 'Enable hover tooltips on load (no need to click Show Info). Default: false.',
+        },
+        hoverInfoMode: {
+            control: 'select',
+            options: ['full', 'cleanup'],
+            description: 'Tooltip layout: full geometry table or cleanup (class, label, confidence).',
         },
         disableVisibilityCheck: {
             control: 'boolean',
@@ -138,6 +162,7 @@ export const WithDsaAuthManager: Story = {
         imageInfo: exampleImageInfo,
         config: exampleConfig,
         apiBaseUrl: exampleApiBaseUrl,
+        showInfoControl: true,
     },
     render: (args) => (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -151,14 +176,67 @@ export const WithDsaAuthManager: Story = {
         docs: {
             description: {
                 story:
-                    'Use the auth bar to set the same server as in `imageInfo` / `apiBaseUrl`, then log in. You can later omit `apiBaseUrl` so the editor uses only `dsaAuthStore` (via SlideViewer).',
+                    'Use the auth bar to set the same server as in `imageInfo` / `apiBaseUrl`, then log in. The toolbar includes the "Show Info" toggle by default.',
             },
         },
     },
 }
 
+export const WithDsaAuthManagerWithoutShowInfo: Story = {
+    args: {
+        imageInfo: exampleImageInfo,
+        config: exampleConfig,
+        apiBaseUrl: exampleApiBaseUrl,
+        showInfoControl: false,
+    },
+    render: (args) => (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <DsaAuthManager />
+            <div style={{ flex: 1, minHeight: 0 }}>
+                <AnnotationEditor {...args} />
+            </div>
+        </div>
+    ),
+    parameters: {
+        docs: {
+            description: {
+                story:
+                    'Same as **WithDsaAuthManager** but the toolbar "Show Info" button is hidden (`showInfoControl={false}`).',
+            },
+        },
+    },
+}
+
+const yoloGeoJsonImportOptions = yoloClassFromPropertiesImportOptions
+
+const yoloReviewEditorArgs = {
+    imageInfo: exampleImageInfo,
+    config: exampleConfig,
+    apiBaseUrl: exampleApiBaseUrl,
+    initialGeoJson: simulatedYoloPositiveNegative,
+    geoJsonImportOptions: yoloGeoJsonImportOptions,
+    geoJsonExportMode: true,
+    onGeoJsonExport: (fc: FeatureCollection) => {
+        console.info('[AnnotationEditor YOLO review] exported FeatureCollection', fc)
+    },
+    showInfoControl: false,
+}
+
+const yoloReviewTauArgs = {
+    imageInfo: exampleImageInfo,
+    config: paperAnnotatorEditorConfig,
+    apiBaseUrl: exampleApiBaseUrl,
+    initialGeoJson: simulatedYoloTauPredictions,
+    geoJsonImportOptions: yoloGeoJsonImportOptions,
+    geoJsonExportMode: true,
+    onGeoJsonExport: (fc: FeatureCollection) => {
+        console.info('[AnnotationEditor tau YOLO review] exported FeatureCollection', fc)
+    },
+    showInfoControl: false,
+}
+
 /**
- * **Alternate mode (does not affect Default / DSA):** pass `initialGeoJson` + `geoJsonExportMode` to hydrate from
+ * **Alternate mode:** pass `initialGeoJson` + `geoJsonExportMode` to hydrate from
  * server/ML output and export edited GeoJSON. Open the console to see `onGeoJsonExport` output.
  */
 export const GeoJsonInputAndExport: Story = {
@@ -181,6 +259,136 @@ export const GeoJsonInputAndExport: Story = {
             description: {
                 story:
                     'Skips DSA annotation load because `initialGeoJson` is set. Tiles still use `apiBaseUrl` for the slide. For URL-based GeoJSON, set `initialGeoJsonUrl` instead and omit `initialGeoJson`.',
+            },
+        },
+    },
+}
+
+/**
+ * Simulated YOLO run: several **Positive** and **Negative** boxes with confidence scores.
+ * Use **Review** / **Filter** workflow modes; export edits via **Export GeoJSON** (console).
+ */
+export const YoloReviewSimulated: Story = {
+    args: yoloReviewEditorArgs,
+    render: (args) => (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <AnnotationEditor {...args} />
+        </div>
+    ),
+    parameters: {
+        docs: {
+            description: {
+                story:
+                    'Fake model output (`yoloSimulatedGeoJson`) — 3 Positive boxes and 4 Negative boxes with varying confidence. Skips DSA annotation load. Try **Filter** mode to threshold by confidence, then **Export GeoJSON**.',
+            },
+        },
+    },
+}
+
+export const YoloReviewSimulatedWithAuth: Story = {
+    args: yoloReviewEditorArgs,
+    render: (args) => (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <DsaAuthManager />
+            <div style={{ flex: 1, minHeight: 0 }}>
+                <AnnotationEditor {...args} />
+            </div>
+        </div>
+    ),
+    parameters: {
+        docs: {
+            description: {
+                story:
+                    'Same simulated YOLO output as **YoloReviewSimulated**, with **DsaAuthManager** for tile auth.',
+            },
+        },
+    },
+}
+
+/**
+ * Paper Annotator tau classes (`PreTangle`, `MatureTangle`, …): simulated YOLO output
+ * matching `BDSA_Paper_Annotator/public/config.json`.
+ */
+export const YoloReviewTauSimulated: Story = {
+    args: yoloReviewTauArgs,
+    render: (args) => (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <AnnotationEditor {...args} />
+        </div>
+    ),
+    parameters: {
+        docs: {
+            description: {
+                story:
+                    '3 **PreTangle** + 4 **MatureTangle** boxes (varying confidence), plus one sample each for **Neuritic Plaque** and **Glial Tau**. Same protocol as the Paper Annotator app.',
+            },
+        },
+    },
+}
+
+export const YoloReviewTauSimulatedWithAuth: Story = {
+    args: yoloReviewTauArgs,
+    render: (args) => (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <DsaAuthManager />
+            <div style={{ flex: 1, minHeight: 0 }}>
+                <AnnotationEditor {...args} />
+            </div>
+        </div>
+    ),
+    parameters: {
+        docs: {
+            description: {
+                story:
+                    'Tau YOLO review simulation with **DsaAuthManager** for tile authentication.',
+            },
+        },
+    },
+}
+
+const yoloCleanupHoverArgs = {
+    ...yoloReviewTauArgs,
+    showInfoControl: true,
+    defaultShowInfo: true,
+    hoverInfoMode: 'cleanup' as const,
+}
+
+/**
+ * YOLO cleanup helper: hover any detection to see **class**, **label**, and **confidence**.
+ * Show Info is on by default; use Review mode to step through boxes or right-click to delete.
+ */
+export const YoloReviewCleanupHoverTau: Story = {
+    args: yoloCleanupHoverArgs,
+    render: (args) => (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <AnnotationEditor {...args} />
+        </div>
+    ),
+    parameters: {
+        docs: {
+            description: {
+                story:
+                    'Simulated tau YOLO output with **cleanup hover tooltips** enabled on load. Move the cursor over a box to read its class, label, and confidence score. Toggle **Show Info** in the toolbar to disable. Use **Review** to jump between detections or right-click a box to delete during cleanup. Click the slide once so the canvas has keyboard focus. Storybook UI shortcuts are disabled for this project so letter keys are not hijacked.',
+            },
+        },
+    },
+}
+
+export const YoloReviewCleanupHoverTauWithAuth: Story = {
+    args: yoloCleanupHoverArgs,
+    render: (args) => (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <DsaAuthManager />
+            <div style={{ flex: 1, minHeight: 0 }}>
+                <AnnotationEditor {...args} />
+            </div>
+        </div>
+    ),
+    parameters: {
+        docs: {
+            description: {
+                story:
+                    'Same as **YoloReviewCleanupHoverTau** with **DsaAuthManager** for tile auth.',
             },
         },
     },

@@ -77,6 +77,10 @@ interface FolderBrowserProps {
   startFolderId?: string
   /** Only show items whose filename extension matches this list. Empty array shows all items. */
   allowedExtensions?: string[]
+  /** When set, only items passing this predicate are shown (after `allowedExtensions`). */
+  itemFilter?: (item: Item) => boolean
+  /** Fired when a folder is expanded (chevron or double-click row). Does not fire on single-click select alone. */
+  onFolderOpen?: (folder: FolderItem) => void
   className?: string
   style?: React.CSSProperties
   defaultWidth?: number
@@ -125,6 +129,8 @@ export function FolderBrowser({
   startCollectionId,
   startFolderId,
   allowedExtensions = [],
+  itemFilter,
+  onFolderOpen,
   className = '',
   style,
   defaultWidth = 250,
@@ -210,7 +216,7 @@ export function FolderBrowser({
       }
 
       const foldersRes = await fetch(
-        `${serverUrl}/api/v1/folder?parentType=${parentType}&parentId=${id}&limit=0`,
+        `${serverUrl}/api/v1/folder?parentType=${parentType}&parentId=${id}&limit=10000`,
         { headers: dsaAuthStore.getAuthHeaders() },
       )
       if (!foldersRes.ok) {
@@ -222,7 +228,7 @@ export function FolderBrowser({
       let items: Item[] = []
       if (parentType === 'folder') {
         const itemsRes = await fetch(
-          `${serverUrl}/api/v1/item?folderId=${id}&limit=0`,
+          `${serverUrl}/api/v1/item?folderId=${id}&limit=10000`,
           { headers: dsaAuthStore.getAuthHeaders() },
         )
         if (!itemsRes.ok) {
@@ -237,6 +243,15 @@ export function FolderBrowser({
     [syntheticData],
   )
 
+  function findFolderById(folderId: string): FolderItem | undefined {
+    if (rootFolder?._id === folderId) return rootFolder
+    for (const children of childrenMap.values()) {
+      const match = children.folders.find(f => f._id === folderId)
+      if (match) return match
+    }
+    return undefined
+  }
+
   function toggleNode(id: string, parentType: 'collection' | 'folder') {
     if (expanded.has(id)) {
       setExpanded(prev => {
@@ -248,6 +263,11 @@ export function FolderBrowser({
     }
 
     setExpanded(prev => new Set(prev).add(id))
+
+    if (parentType === 'folder') {
+      const folder = findFolderById(id)
+      if (folder) onFolderOpen?.(folder)
+    }
 
     if (childrenMap.has(id)) return
 
@@ -289,7 +309,7 @@ export function FolderBrowser({
       }
 
       setLoading(true)
-      fetch(`${serverUrl}/api/v1/collection?limit=0`, { headers: dsaAuthStore.getAuthHeaders() })
+      fetch(`${serverUrl}/api/v1/collection?limit=10000`, { headers: dsaAuthStore.getAuthHeaders() })
         .then(res => {
           if (!res.ok) throw new Error(`Failed to fetch collections: ${res.status}`)
           return res.json()
@@ -334,7 +354,7 @@ export function FolderBrowser({
         let res = await fetch(directUrl, { headers })
 
         if (rootTypeResolved === 'collection' && !res.ok) {
-          const listRes = await fetch(`${serverUrl}/api/v1/collection?limit=0`, { headers })
+          const listRes = await fetch(`${serverUrl}/api/v1/collection?limit=10000`, { headers })
           if (!listRes.ok) {
             throw new Error(`Failed to fetch collections: ${listRes.status}`)
           }
@@ -388,8 +408,12 @@ export function FolderBrowser({
     }
 
     loadRoot()
+    const unsub = dsaAuthStore.subscribe(() => {
+      void loadRoot()
+    })
     return () => {
       cancelled = true
+      unsub()
     }
   }, [syntheticData, rootId, rootType, fetchChildren])
 
@@ -703,6 +727,7 @@ export function FolderBrowser({
                 childrenMap={childrenMap}
                 loadingIds={loadingIds}
                 allowedExtensions={allowedExtensions}
+                itemFilter={itemFilter}
                 onFolderToggle={id => toggleNode(id, 'folder')}
                 onFolderSelect={f => emitResource({ ...f, type: 'folder' })}
                 onItemSelect={handleItemSelect}
@@ -800,6 +825,7 @@ export function FolderBrowser({
                     childrenMap={childrenMap}
                     loadingIds={loadingIds}
                     allowedExtensions={allowedExtensions}
+                    itemFilter={itemFilter}
                     onFolderToggle={id => toggleNode(id, 'folder')}
                     onFolderSelect={f => emitResource({ ...f, type: 'folder' })}
                     onItemSelect={handleItemSelect}

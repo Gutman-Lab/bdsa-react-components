@@ -5,7 +5,7 @@ import type { FeatureCollection, Feature } from 'geojson'
 import OpenSeadragon from 'openseadragon'
 import type { Viewer as OpenSeadragonViewer } from 'openseadragon'
 import { IndexedDBAnnotationCache } from '../../cache'
-import { applyPaperJsPatches } from '../../utils/patchOsdPaperjs'
+import { applyPaperJsPatches, applyOsdPaperJsAnnotationPatches, isPaperViewReady } from '../../utils/patchOsdPaperjs'
 import { createDebugLogger } from '../../utils/debugLog'
 import type { SlideViewerProps, AnnotationFeature } from './SlideViewer.types'
 import { extractToken, appendTokenToUrl, DEFAULT_ANNOTATION_INFO_CONFIG } from './SlideViewer.utils'
@@ -14,6 +14,7 @@ import { useAnnotationFetching, useAnnotationRendering, useAnnotationOpacity, us
 // Apply patches IMMEDIATELY when this module loads (not in a component lifecycle)
 // This must happen before any Paper.js operations
 applyPaperJsPatches()
+applyOsdPaperJsAnnotationPatches()
 import './SlideViewer.css'
 
 // Re-export types for backward compatibility
@@ -49,6 +50,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             authToken,
             tokenQueryParam = false,
             showAnnotationControls = false,
+            manageAnnotationsExternally = false,
             defaultAnnotationOpacity = 1,
             annotationOpacities,
             visibleAnnotations,
@@ -237,15 +239,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
         // Helper function to check if Paper.js is fully initialized and ready
         const isPaperJsReady = useCallback((paperScope: InstanceType<typeof PaperOverlay>['paperScope']): boolean => {
-            if (!paperScope) return false
-            if (!paperScope.view) return false
-            // Check if _transformBounds exists (Paper.js internal property indicating initialization)
-            const view = paperScope.view as any
-            if (view._transformBounds === null || view._transformBounds === undefined) {
-                return false
-            }
-            if (typeof paperScope.view.draw !== 'function') return false
-            return true
+            if (!paperScope?.view) return false
+            return isPaperViewReady(paperScope.view)
         }, [])
 
         // Safe wrapper for Paper.js view.draw() that checks initialization
@@ -450,7 +445,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             tiledImageRef,
             lastRenderedAnnotationsRef,
             safeDrawPaperView,
-            debugLog
+            debugLog,
+            manageAnnotationsExternally,
         )
 
         // Update opacity on existing annotations when opacity changes

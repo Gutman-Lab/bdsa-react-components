@@ -12,7 +12,12 @@
             "import": "./dist/index.js",
             "require": "./dist/index.cjs"
         },
-        "./styles.css": "./dist/style.css"
+        "./styles.css": "./dist/index.css",
+        "./schemas/*": "./dist/schemas/*",
+        "./schemas/clinical-metadata.json": "./dist/schemas/clinical-metadata.json",
+        "./schemas/region-metadata.json": "./dist/schemas/region-metadata.json",
+        "./schemas/stain-metadata.json": "./dist/schemas/stain-metadata.json",
+        "./schemas/slide-level-metadata.json": "./dist/schemas/slide-level-metadata.json"
     },
     "files": [
         "dist",

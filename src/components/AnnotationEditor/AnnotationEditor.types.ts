@@ -1,5 +1,6 @@
 import type { FeatureCollection } from 'geojson'
-import type { SlideImageInfo } from '../SlideViewer/SlideViewer.types'
+import type { Viewer as OpenSeadragonViewer } from 'openseadragon'
+import type { SlideImageInfo, ViewportBounds } from '../SlideViewer/SlideViewer.types'
 import type { ApiErrorHandler } from '../../utils/apiErrorHandling'
 import type { FeatureCollectionToLocalOptions } from './annotationGeoJson'
 
@@ -16,6 +17,8 @@ export interface AnnotationType {
     defaultWidth: number
     /** Default height in image pixels when drop-placing */
     defaultHeight: number
+    /** DSA fill color for detection boxes. */
+    fillColor?: string
 }
 
 export interface RoiSettings {
@@ -31,6 +34,13 @@ export interface RoiSettings {
     width?: number
     /** Default height in image pixels for fixed-size ROI placement. Default: 1000 */
     height?: number
+    /**
+     * When set, every ROI uses this exact `label.value` (YOLO `roi_labels` compatibility).
+     * Without this, labels are `{label}{n}` e.g. `roi1`, `roi2`.
+     */
+    fixedLabel?: string
+    /** DSA fill color for ROI rectangles. Overrides default black fill. */
+    fillColor?: string
 }
 
 // ── Local annotation document (DSA-compatible structure, stored in memory) ──
@@ -57,13 +67,33 @@ export interface LocalAnnotationDocument {
     elements: LocalAnnotationElement[]
 }
 
+export interface AutoSaveSettings {
+    /** Persist after local document changes. Default: true when this object is passed. */
+    enabled?: boolean
+    /** Wait after the last edit before saving. Default: 2500 */
+    debounceMs?: number
+    /** Flush a pending save when the editor unmounts (e.g. slide change). Default: true */
+    saveOnUnmount?: boolean
+}
+
 export interface HotkeySettings {
     /** Key to navigate to next ROI. Default: 'M' */
     reviewNext?: string
     /** Key to navigate to previous ROI. Default: 'N' */
     reviewPrevious?: string
-    /** Key to insert a new annotation box. Default: 'b' */
+    /**
+     * In Add Labels mode, toggle rectangle drawing vs viewport pan (mouse drag).
+     * Default: 't'
+     */
     insertBox?: string
+    /** Previous label type in Add Labels mode. Default: '[' (Q/W are reserved for pan). */
+    typeCyclePrevious?: string
+    /** Next label type in Add Labels mode. Default: ']' */
+    typeCycleNext?: string
+    /** Commit in-progress label/ROI shape edit. Default: 'f' (Enter also works). */
+    finishShapeEdit?: string
+    /** Start editing hovered or focused label shape. Default: 'e' */
+    editLabelShape?: string
 }
 
 export interface AnnotationEditorConfig {
@@ -78,6 +108,8 @@ export interface AnnotationEditorConfig {
     annotationTypes: AnnotationType[]
     /** Visual settings for ROI rectangles */
     roiSettings?: RoiSettings
+    /** Optional metadata written to the DSA document `attributes` field on save. */
+    documentAttributes?: Record<string, unknown>
     /** Keyboard shortcut configuration */
     hotkeys?: HotkeySettings
     /** Additional OpenSeadragon options passed through to SlideViewer */
@@ -105,14 +137,44 @@ export interface AnnotationEditorProps {
     apiHeaders?: HeadersInit
     /** Show the SlideViewer info bar (mouse coords, zoom, preset zoom buttons). Default: true */
     showInfoBar?: boolean
+    /**
+     * Show the toolbar "Show Info" toggle (hover tooltips on annotation elements).
+     * Default: true.
+     */
+    showInfoControl?: boolean
+    /** Start with hover tooltips enabled (no need to click "Show Info"). Default: false */
+    defaultShowInfo?: boolean
+    /**
+     * Show the label hover panel (class picker + Edit/Delete) when mousing over a label box.
+     * Right-click context menu is unchanged. Default: true.
+     */
+    showLabelHoverPanel?: boolean
+    /** Show semi-transparent fill inside ROI rectangles. Default: false (outline only). */
+    defaultRoiFillVisible?: boolean
+    /**
+     * Hover tooltip layout. `cleanup` emphasizes class, label, and confidence for YOLO review.
+     * Default: `full` (geometry + all user fields).
+     */
+    hoverInfoMode?: 'full' | 'cleanup'
     /** Custom CSS class name */
     className?: string
     /** Inline styles for the root element */
     style?: React.CSSProperties
     /** Callback when an API error occurs */
     onApiError?: ApiErrorHandler
+    /**
+     * Debounced persist to DSA (or GeoJSON export) after annotation edits.
+     * Pass `true` for defaults, or an object to tune debounce / unmount flush.
+     */
+    autoSave?: boolean | AutoSaveSettings
+    /** Called after a successful manual or automatic save. */
+    onAnnotationSaved?: () => void
     /** Passed to SlideViewer. Use `true` in Storybook iframes so OSD initializes when not intersecting. */
     disableVisibilityCheck?: boolean
+    /** Passed through to the underlying SlideViewer. */
+    onViewerReady?: (viewer: OpenSeadragonViewer) => void
+    /** Passed through to the underlying SlideViewer. */
+    onViewportChange?: (bounds: ViewportBounds) => void
 
     // ── GeoJSON / YOLO-style workflow (optional; DSA path unchanged if omitted) ──
     /**
@@ -142,4 +204,46 @@ export interface AnnotationEditorProps {
      * with `geoJsonExportMode` only).
      */
     skipDsaAnnotationLoad?: boolean
+    /**
+     * Read-only model predictions rendered as a separate feature collection (does not replace DSA load).
+     */
+    overlayGeoJson?: FeatureCollection | null
+    /** When false, hides {@link overlayGeoJson} on the canvas. Default: true when overlay is set. */
+    overlayGeoJsonVisible?: boolean
+    /** Paper.js collection display name for {@link overlayGeoJson}. Default: `Model predictions`. */
+    overlayCollectionName?: string
+}
+
+/** Imperative API for host apps (e.g. testing utilities in the slide workspace). */
+export type ClearAllAnnotationsResult = 'cleared' | 'cancelled' | 'empty' | 'error'
+
+export type RoiImageBounds = {
+    left: number
+    top: number
+    width: number
+    height: number
+}
+
+/** Ground-truth detection box in the active ROI (slide pixel coordinates). */
+export type GroundTruthBox = {
+    className: string
+    left: number
+    top: number
+    width: number
+    height: number
+}
+
+export interface AnnotationEditorHandle {
+    /** Remove every ROI and detection label; optionally persist empty doc to DSA. */
+    clearAllAnnotations: (options?: {
+        saveToDsa?: boolean
+    }) => Promise<ClearAllAnnotationsResult>
+    /** Top-left of the selected ROI, or the first ROI when none is selected. */
+    getActiveRoiBounds: () => RoiImageBounds | null
+    /** Label boxes stamped to the active ROI (`user.roiLabel`). */
+    getActiveRoiGroundTruthBoxes: () => GroundTruthBox[]
+    /** Move the selected ROI (no-op when none selected). Returns false if nothing moved. */
+    nudgeSelectedRoi: (dx: number, dy: number) => boolean
+    /** Move the selected ROI top-left (no-op when none selected). */
+    setSelectedRoiTopLeft: (left: number, top: number) => boolean
 }

@@ -543,14 +543,15 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                 <div key={folder._id} className="bdsa-folder-browser__folder">
                     <div
                         className={`bdsa-folder-browser__folder-header ${isSelected ? 'selected' : ''} ${isLastClicked ? 'last-clicked' : ''}`}
-                        onClick={() => handleResourceSelect(folder, 'folder')}
-                        onDoubleClick={() => toggleFolder(folder)}
+                        onClick={async () => {
+                            await toggleFolder(folder)
+                            handleResourceSelect(folder, 'folder')
+                        }}
                         data-resource-id={folder._id}
                     >
                         {hasChildren && (
                             <span
                                 className={`bdsa-folder-browser__folder-icon ${isExpanded ? 'expanded' : ''}`}
-                                onClick={() => toggleFolder(folder)}
                                 style={{ cursor: 'pointer' }}
                             ></span>
                         )}
@@ -669,14 +670,15 @@ export const FolderBrowser = React.forwardRef<HTMLDivElement, FolderBrowserProps
                 <div key={collection._id} className="bdsa-folder-browser__collection">
                     <div
                         className={`bdsa-folder-browser__folder-header ${isSelected ? 'selected' : ''}`}
-                        onClick={() => handleResourceSelect(collection, 'collection')}
-                        onDoubleClick={() => toggleCollection(collection)}
+                        onClick={async () => {
+                            await toggleCollection(collection)
+                            handleResourceSelect(collection, 'collection')
+                        }}
                         data-resource-id={collection._id}
                     >
                         {hasChildren && (
                             <span
                                 className={`bdsa-folder-browser__folder-icon ${isExpanded ? 'expanded' : ''}`}
-                                onClick={() => toggleCollection(collection)}
                                 style={{ cursor: 'pointer' }}
                             ></span>
                         )}

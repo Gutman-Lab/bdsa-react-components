@@ -1,5 +1,16 @@
 import type { AnnotationType, LocalAnnotationElement } from './AnnotationEditor.types'
 
+export type LabelHoverActionsProps = {
+    x: number
+    y: number
+    itemIdx: number
+    typeIndex: number
+    labelName: string
+    onTypeChange: (typeIndex: number) => void
+    onEditShape: () => void
+    onDelete: () => void
+}
+
 export interface OverlaysProps {
     // Right-click context menu
     contextMenu: { x: number; y: number; itemIdx: number; item: any } | null
@@ -18,6 +29,8 @@ export interface OverlaysProps {
 
     // Show-info hover tooltip
     hoverInfo: { x: number; y: number; element: LocalAnnotationElement; roiElement?: LocalAnnotationElement } | null
+    hoverInfoMode?: 'full' | 'cleanup'
+    labelHoverActions?: LabelHoverActionsProps | null
 }
 
 export function AnnotationEditorOverlays({
@@ -26,6 +39,8 @@ export function AnnotationEditorOverlays({
     notification,
     showDuplicateWarning, setShowDuplicateWarning, annotationDocumentName,
     hoverInfo,
+    hoverInfoMode = 'full',
+    labelHoverActions = null,
 }: OverlaysProps) {
     return (
         <>
@@ -61,6 +76,51 @@ export function AnnotationEditorOverlays({
                 </div>
             )}
 
+            {labelHoverActions && (
+                <div
+                    className="annotation-editor__label-hover-panel"
+                    style={{ left: labelHoverActions.x + 16, top: labelHoverActions.y + 16 }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                >
+                    <div className="annotation-editor__label-hover-panel__title">
+                        {labelHoverActions.labelName}
+                    </div>
+                    <label className="annotation-editor__label-hover-panel__field">
+                        <span>Class</span>
+                        <select
+                            value={labelHoverActions.typeIndex}
+                            onChange={(e) => {
+                                labelHoverActions.onTypeChange(Number(e.target.value))
+                                e.target.blur()
+                            }}
+                        >
+                            {annotationTypes.map((t, i) => (
+                                <option key={i} value={i}>{t.name}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <div className="annotation-editor__label-hover-panel__actions">
+                        <button
+                            type="button"
+                            className="annotation-editor__label-hover-panel__btn"
+                            onClick={labelHoverActions.onEditShape}
+                        >
+                            Edit shape
+                        </button>
+                        <button
+                            type="button"
+                            className="annotation-editor__label-hover-panel__btn annotation-editor__label-hover-panel__btn--danger"
+                            onClick={labelHoverActions.onDelete}
+                        >
+                            Delete
+                        </button>
+                    </div>
+                    <div className="annotation-editor__label-hover-panel__hint">
+                        Del · right-click for menu
+                    </div>
+                </div>
+            )}
+
             {/* Save notification toast */}
             {notification && (
                 <div className={`annotation-editor__toast annotation-editor__toast--${notification.type}`}>
@@ -71,6 +131,41 @@ export function AnnotationEditorOverlays({
             {/* Show-info hover tooltip */}
             {hoverInfo && (() => {
                 const { x, y, element: el, roiElement } = hoverInfo
+
+                const formatConfidence = (user: LocalAnnotationElement['user']): string => {
+                    const raw = user?.confidence
+                    if (typeof raw === 'number' && Number.isFinite(raw)) {
+                        return `${Math.round(raw * 1000) / 10}%`
+                    }
+                    if (raw != null) return String(raw)
+                    return '—'
+                }
+
+                if (hoverInfoMode === 'cleanup') {
+                    const isRoi = el.group === 'ROI'
+                    return (
+                        <div
+                            className="annotation-editor__info-tooltip annotation-editor__info-tooltip--cleanup"
+                            style={{ left: x + 16, top: y + 16 }}
+                        >
+                            {isRoi ? (
+                                <>
+                                    <div className="annotation-editor__info-tooltip__cleanup-kind">ROI</div>
+                                    <div className="annotation-editor__info-tooltip__cleanup-label">{el.label.value}</div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="annotation-editor__info-tooltip__cleanup-kind">{el.group}</div>
+                                    <div className="annotation-editor__info-tooltip__cleanup-label">{el.label.value}</div>
+                                    <div className="annotation-editor__info-tooltip__cleanup-confidence">
+                                        {formatConfidence(el.user)}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )
+                }
+
                 const renderBlock = (e: LocalAnnotationElement, dim?: boolean) => {
                     const area = e.width * e.height
                     const userEntries = e.user ? Object.entries(e.user) : []

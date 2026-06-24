@@ -1,12 +1,17 @@
 import type { AnnotationType, EditorMode, WorkflowMode } from './AnnotationEditor.types'
+import { formatTypeHotkeyHint, formatRoiDropdownLabel } from './AnnotationEditor.utils'
 
 export interface ToolbarProps {
     // ROI selector
     rois: { label: string; roiIndex: number }[]
+    /** Label/detection count when not using ROI workflow (e.g. YOLO review). */
+    detectionCount: number
     selectedRoiIndex: number
     setSelectedRoiIndex: (i: number) => void
     markComplete: boolean
     setMarkComplete: (v: boolean) => void
+    roiFillVisible: boolean
+    setRoiFillVisible: (v: boolean) => void
     workflowMode: WorkflowMode
     setWorkflowMode: (m: WorkflowMode) => void
 
@@ -14,8 +19,15 @@ export interface ToolbarProps {
     isEditingLabel: boolean
     finishEditingLabel: () => void
     cancelEditingLabel: () => void
+    deleteActiveLabel: () => void
+    canDeleteActiveLabel: boolean
     labelFixedSizeEnabled: boolean
     setLabelFixedSizeEnabled: (v: boolean) => void
+    addLabelsDrawingEnabled: boolean
+    setAddLabelsDrawingEnabled: (v: boolean) => void
+    drawToggleHotkey: string
+    finishShapeEditHotkey: string
+    editLabelShapeHotkey: string
     annotationTypes: AnnotationType[]
     selectedTypeIndex: number
     setSelectedTypeIndex: (i: number) => void
@@ -43,7 +55,8 @@ export interface ToolbarProps {
     onReviewTypeChange: (typeIndex: number) => void
     startReviewEditShape: () => void
 
-    // Show info toggle
+    // Show info toggle (control hidden unless showInfoControl is true)
+    showInfoControl: boolean
     showInfo: boolean
     setShowInfo: (v: boolean) => void
 
@@ -60,6 +73,8 @@ export interface ToolbarProps {
     // Save / loading
     isLoadingAnnotation: boolean
     saveStatus: 'idle' | 'saving' | 'saved' | 'error'
+    saveDirty?: boolean
+    autoSaveEnabled?: boolean
     saveAnnotation: () => void
     canSave: boolean
     /** Default: "Save" */
@@ -72,10 +87,15 @@ export interface ToolbarProps {
 
 export function AnnotationEditorToolbar({
     rois, selectedRoiIndex, setSelectedRoiIndex,
+    detectionCount,
     markComplete, setMarkComplete,
+    roiFillVisible, setRoiFillVisible,
     workflowMode, setWorkflowMode,
     isEditingLabel, finishEditingLabel, cancelEditingLabel,
+    deleteActiveLabel, canDeleteActiveLabel,
     labelFixedSizeEnabled, setLabelFixedSizeEnabled,
+    addLabelsDrawingEnabled, setAddLabelsDrawingEnabled, drawToggleHotkey,
+    finishShapeEditHotkey, editLabelShapeHotkey,
     annotationTypes, selectedTypeIndex, setSelectedTypeIndex,
     activeMode, setActiveMode,
     fixedSizeEnabled, setFixedSizeEnabled,
@@ -84,38 +104,84 @@ export function AnnotationEditorToolbar({
     finishEditingRoi, cancelPendingRoi, startEditActiveRoi, deleteActiveRoi,
     reviewItemIndex, reviewItemCount, reviewNextItem, reviewPreviousItem,
     reviewSelectedTypeIndex, onReviewTypeChange, startReviewEditShape,
+    showInfoControl,
     showInfo, setShowInfo,
     confidenceThreshold, setConfidenceThreshold, filterVisibleCount, filterTotalCount,
     roiCompletedCount, roiTotal,
-    isLoadingAnnotation, saveStatus, saveAnnotation, canSave,
+    isLoadingAnnotation, saveStatus, saveDirty = false, autoSaveEnabled = false, saveAnnotation, canSave,
     saveIdleLabel = 'Save',
     saveSavingLabel = 'Saving…',
     saveButtonTitle = 'Save annotations to DSA',
 }: ToolbarProps) {
+    const roiLabels = rois.map(r => r.label)
+    const canCycleRois = rois.length > 0
+
+    const selectPreviousRoi = () => {
+        if (!canCycleRois) return
+        setSelectedRoiIndex(
+            selectedRoiIndex <= 0 ? rois.length - 1 : selectedRoiIndex - 1,
+        )
+    }
+
+    const selectNextRoi = () => {
+        if (!canCycleRois) return
+        setSelectedRoiIndex(
+            selectedRoiIndex < 0 || selectedRoiIndex >= rois.length - 1
+                ? 0
+                : selectedRoiIndex + 1,
+        )
+    }
+
     return (
         <div className="annotation-editor__toolbar">
             {/* ROI selector */}
             <div className="annotation-editor__toolbar-group">
                 <span className="annotation-editor__roi-label">ROI:</span>
-                <select
-                    className="annotation-editor__roi-select"
-                    value={selectedRoiIndex}
-                    onChange={e => setSelectedRoiIndex(Number(e.target.value))}
-                    disabled={rois.length === 0}
-                >
-                    {rois.length === 0 ? (
-                        <option value={-1}>— no ROIs loaded —</option>
-                    ) : (
-                        <>
-                            <option value={-1}>Unselect ROI</option>
-                            {rois.map((roi, i) => (
-                                <option key={i} value={i}>
-                                    {roi.label}
-                                </option>
-                            ))}
-                        </>
-                    )}
-                </select>
+                <div className="annotation-editor__roi-nav">
+                    <button
+                        type="button"
+                        className="annotation-editor__mode-btn annotation-editor__roi-nav-btn"
+                        onClick={selectPreviousRoi}
+                        disabled={!canCycleRois}
+                        title="Previous ROI"
+                        aria-label="Previous ROI"
+                    >
+                        &#8249;
+                    </button>
+                    <select
+                        className="annotation-editor__roi-select"
+                        value={selectedRoiIndex}
+                        onChange={e => setSelectedRoiIndex(Number(e.target.value))}
+                        disabled={rois.length === 0}
+                    >
+                        {rois.length === 0 ? (
+                            <option value={-1}>
+                                {detectionCount > 0
+                                    ? `${detectionCount} detection${detectionCount === 1 ? '' : 's'} (no ROIs)`
+                                    : '— no ROIs loaded —'}
+                            </option>
+                        ) : (
+                            <>
+                                <option value={-1}>Unselect ROI</option>
+                                {rois.map((roi, i) => (
+                                    <option key={i} value={i}>
+                                        {formatRoiDropdownLabel(roi.label, i, roiLabels)}
+                                    </option>
+                                ))}
+                            </>
+                        )}
+                    </select>
+                    <button
+                        type="button"
+                        className="annotation-editor__mode-btn annotation-editor__roi-nav-btn"
+                        onClick={selectNextRoi}
+                        disabled={!canCycleRois}
+                        title="Next ROI"
+                        aria-label="Next ROI"
+                    >
+                        &#8250;
+                    </button>
+                </div>
 
                 <label className="annotation-editor__checkbox-label">
                     <input
@@ -125,6 +191,21 @@ export function AnnotationEditorToolbar({
                         disabled={selectedRoiIndex < 0}
                     />
                     Mark Complete
+                </label>
+
+                <label className="annotation-editor__checkbox-label">
+                    <input
+                        type="checkbox"
+                        checked={roiFillVisible}
+                        onChange={e => setRoiFillVisible(e.target.checked)}
+                        disabled={workflowMode !== 'edit-rois'}
+                        title={
+                            workflowMode === 'edit-rois'
+                                ? 'Show semi-transparent fill inside ROI rectangles'
+                                : 'ROI fill is hidden while adding or reviewing labels'
+                        }
+                    />
+                    ROI fill
                 </label>
 
                 <select
@@ -147,17 +228,29 @@ export function AnnotationEditorToolbar({
                     <button
                         className="annotation-editor__mode-btn annotation-editor__mode-btn--finish"
                         onClick={finishEditingLabel}
-                        title="Commit the reshaped label box"
+                        title={`Commit the reshaped label box (${finishShapeEditHotkey} or Enter)`}
                     >
                         Done editing
                     </button>
                     <button
                         className="annotation-editor__mode-btn annotation-editor__mode-btn--danger annotation-editor__mode-btn--cancel"
                         onClick={cancelEditingLabel}
-                        title="Discard shape changes"
+                        title="Discard shape changes (Escape)"
                     >
                         Cancel
                     </button>
+                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>
+                        {finishShapeEditHotkey} / Enter finish · Esc cancel
+                    </span>
+                    {workflowMode === 'add-labels' && (
+                        <button
+                            className="annotation-editor__mode-btn annotation-editor__mode-btn--danger"
+                            onClick={deleteActiveLabel}
+                            title="Delete this label (Delete / Backspace)"
+                        >
+                            Delete label
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -194,18 +287,18 @@ export function AnnotationEditorToolbar({
                         value={reviewSelectedTypeIndex}
                         disabled={reviewItemIndex < 0}
                         onChange={e => { onReviewTypeChange(Number(e.target.value)); e.target.blur() }}
-                        title="Change the type of the focused label box (Q / W to cycle)"
+                        title={`Change the type of the focused label box (${formatTypeHotkeyHint(annotationTypes)})`}
                     >
                         {annotationTypes.map((t, i) => (
                             <option key={i} value={i}>{t.name}</option>
                         ))}
                     </select>
-                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>Q / W to cycle</span>
+                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>{formatTypeHotkeyHint(annotationTypes)}</span>
                     <button
                         className="annotation-editor__mode-btn"
                         onClick={startReviewEditShape}
                         disabled={reviewItemIndex < 0}
-                        title="Edit the shape of the focused label box"
+                        title={`Edit the shape of the focused label box (${editLabelShapeHotkey})`}
                     >
                         Edit Shape
                     </button>
@@ -215,6 +308,22 @@ export function AnnotationEditorToolbar({
             {/* Add Labels: type selector */}
             {workflowMode === 'add-labels' && !isEditingLabel && annotationTypes.length > 0 && (
                 <div className="annotation-editor__mode-group">
+                    <button
+                        type="button"
+                        className={`annotation-editor__mode-btn${addLabelsDrawingEnabled ? ' annotation-editor__mode-btn--active' : ''}`}
+                        onClick={() => setAddLabelsDrawingEnabled(true)}
+                        title={`Draw label boxes (${drawToggleHotkey} toggles draw/pan)`}
+                    >
+                        Draw
+                    </button>
+                    <button
+                        type="button"
+                        className={`annotation-editor__mode-btn${!addLabelsDrawingEnabled ? ' annotation-editor__mode-btn--active' : ''}`}
+                        onClick={() => setAddLabelsDrawingEnabled(false)}
+                        title={`Pan and zoom the slide (${drawToggleHotkey} toggles draw/pan)`}
+                    >
+                        Pan
+                    </button>
                     <label className="annotation-editor__checkbox-label">
                         <input
                             type="checkbox"
@@ -257,7 +366,19 @@ export function AnnotationEditorToolbar({
                             <option key={i} value={i}>{t.name}</option>
                         ))}
                     </select>
-                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>Q / W to cycle</span>
+                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>
+                        {addLabelsDrawingEnabled
+                            ? `${formatTypeHotkeyHint(annotationTypes, 'add-labels')} · ${drawToggleHotkey} draw off · ${editLabelShapeHotkey} edit`
+                            : `${drawToggleHotkey} draw · WASD/arrows pan · ${editLabelShapeHotkey} edit`}
+                    </span>
+                    <button
+                        className="annotation-editor__mode-btn annotation-editor__mode-btn--danger"
+                        onClick={deleteActiveLabel}
+                        disabled={!canDeleteActiveLabel}
+                        title="Delete the hovered label (Delete / Backspace). Hover a box or right-click for more actions."
+                    >
+                        Delete label
+                    </button>
                 </div>
             )}
 
@@ -295,17 +416,20 @@ export function AnnotationEditorToolbar({
                             <button
                                 className="annotation-editor__mode-btn annotation-editor__mode-btn--finish"
                                 onClick={finishEditingRoi}
-                                title="Accept the drawn ROI and save it"
+                                title={`Accept the drawn ROI (${finishShapeEditHotkey} or Enter)`}
                             >
                                 Finish editing
                             </button>
                             <button
                                 className="annotation-editor__mode-btn annotation-editor__mode-btn--danger annotation-editor__mode-btn--cancel"
                                 onClick={cancelPendingRoi}
-                                title="Discard the drawn ROI"
+                                title="Discard the drawn ROI (Escape)"
                             >
                                 Cancel
                             </button>
+                            <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>
+                                {finishShapeEditHotkey} / Enter finish · Esc cancel
+                            </span>
                         </>
                     ) : (
                         <>
@@ -375,13 +499,15 @@ export function AnnotationEditorToolbar({
             )}
 
             <div className="annotation-editor__toolbar-right">
-                <button
-                    className={`annotation-editor__mode-btn${showInfo ? ' annotation-editor__mode-btn--active' : ''}`}
-                    onClick={() => setShowInfo(!showInfo)}
-                    title="Hover over elements to see their info"
-                >
-                    Show Info
-                </button>
+                {showInfoControl && (
+                    <button
+                        className={`annotation-editor__mode-btn${showInfo ? ' annotation-editor__mode-btn--active' : ''}`}
+                        onClick={() => setShowInfo(!showInfo)}
+                        title="Hover over elements to see their info"
+                    >
+                        Show Info
+                    </button>
+                )}
 
                 {roiTotal > 0 && (() => {
                     const mod = roiCompletedCount === 0
@@ -406,9 +532,13 @@ export function AnnotationEditorToolbar({
                 )}
 
                 <button
-                    className={`annotation-editor__mode-btn annotation-editor__mode-btn--save${saveStatus === 'error' ? ' annotation-editor__mode-btn--save--error' : saveStatus === 'saved' ? ' annotation-editor__mode-btn--save--saved' : ''}`}
+                    className={`annotation-editor__mode-btn annotation-editor__mode-btn--save${saveStatus === 'error' ? ' annotation-editor__mode-btn--save--error' : saveStatus === 'saved' ? ' annotation-editor__mode-btn--save--saved' : ''}${autoSaveEnabled && saveDirty && saveStatus === 'idle' ? ' annotation-editor__mode-btn--save--dirty' : ''}`}
                     onClick={saveAnnotation}
-                    disabled={saveStatus === 'saving' || !canSave}
+                    disabled={
+                        saveStatus === 'saving'
+                        || !canSave
+                        || (autoSaveEnabled && !saveDirty && saveStatus !== 'error')
+                    }
                     title={saveButtonTitle}
                 >
                     {saveStatus === 'saving'

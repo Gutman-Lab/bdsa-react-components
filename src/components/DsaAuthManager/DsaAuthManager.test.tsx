@@ -158,5 +158,36 @@ describe('DsaAuthManager', () => {
       expect(screen.getByText('Invalid username or password')).toBeInTheDocument()
     })
   })
+
+  it('renders Login as external link when externalLoginUrl is set', () => {
+    dsaAuthStore.updateConfig({ baseUrl: 'http://test.example.com' })
+
+    render(<DsaAuthManager externalLoginUrl="https://pub-data.example/#collections?dialog=login" />)
+
+    const link = screen.getByRole('link', { name: 'Login' })
+    expect(link).toHaveAttribute('href', 'https://pub-data.example/#collections?dialog=login')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('shows API button and opens REST modal when embeddedApiLogin with externalLoginUrl', () => {
+    dsaAuthStore.updateConfig({ baseUrl: 'http://test.example.com' })
+
+    render(
+      <DsaAuthManager
+        compact
+        allowServerConfig={false}
+        externalLoginUrl="https://pub-data.example/#collections?dialog=login"
+        embeddedApiLogin
+      />,
+    )
+
+    const loginLink = screen.getByRole('link', { name: 'Login' })
+    expect(loginLink).toHaveAttribute('href', 'https://pub-data.example/#collections?dialog=login')
+
+    fireEvent.click(screen.getByRole('button', { name: 'API' }))
+    expect(screen.getByText('Login to DSA Server')).toBeInTheDocument()
+    expect(screen.getByText('http://test.example.com')).toBeInTheDocument()
+    expect(screen.queryByLabelText('DSA Server URL *')).not.toBeInTheDocument()
+  })
 })
 

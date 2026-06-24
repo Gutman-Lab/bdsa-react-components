@@ -298,6 +298,11 @@ export interface SlideViewerProps {
     tokenQueryParam?: boolean
     /** Show annotation controls panel in the sidebar (default: false) */
     showAnnotationControls?: boolean
+    /**
+     * When true, SlideViewer does not render or clear `annotations` / `annotationIds` on the toolkit.
+     * Use when a parent (e.g. AnnotationEditor) loads geometry directly via AnnotationToolkit.
+     */
+    manageAnnotationsExternally?: boolean
     /** Default opacity for all annotations (0-1, default: 1) */
     defaultAnnotationOpacity?: number
     /** Map of annotation IDs to their individual opacity values (0-1). Overrides defaultAnnotationOpacity for specific annotations. */

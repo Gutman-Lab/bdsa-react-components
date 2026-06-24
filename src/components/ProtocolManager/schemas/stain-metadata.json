@@ -1,0 +1,878 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.com/stain-metadata.schema.json",
+    "title": "BDSA Stain Schema",
+    "type": "object",
+    "properties": {
+        "bdsa_stain_id": {
+            "type": "array",
+            "description": "Choose a single stain for the image.",
+            "items": {
+                "title": "Stain ID",
+                "description": "Stain used on tissue section, with potentially additional information.",
+                "properties": {
+                    "Bielschowsky": {
+                        "type": "object",
+                        "title": "Bielschowsky",
+                        "abbreviation": "BIEL",
+                        "stainType": "histochemical",
+                        "recommended": true,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["silver impregnation"]
+                            }
+                        }
+                    },
+                    "Bodian": {
+                        "type": "object",
+                        "title": "Bodian",
+                        "abbreviation": "BOD",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["silver impregnation"]
+                            }
+                        }
+                    },
+                    "Gallyas-Braak": {
+                        "type": "object",
+                        "title": "Gallyas-Braak",
+                        "abbreviation": "GAL",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["silver impregnation"]
+                            }
+                        }
+                    },
+                    "Nissl": {
+                        "type": "object",
+                        "title": "Nissl (Cresyl Violet)",
+                        "abbreviation": "NISSL",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "LFB": {
+                        "type": "object",
+                        "title": "Luxol Fast Blue (LFB)",
+                        "abbreviation": "LFB",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "LFB-PAS": {
+                        "type": "object",
+                        "title": "LFB + PAS",
+                        "abbreviation": "LFB-PAS",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "LFB-CV": {
+                        "type": "object",
+                        "title": "LFB + Cresyl Violet",
+                        "abbreviation": "LFB-CV",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "LFB-HE": {
+                        "type": "object",
+                        "title": "LFB + H&E",
+                        "abbreviation": "LFB-HE",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "PAS": {
+                        "type": "object",
+                        "title": "PAS",
+                        "abbreviation": "PAS",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["reaction"]
+                            }
+                        }
+                    },
+                    "PAS-D": {
+                        "type": "object",
+                        "title": "PAS-D",
+                        "abbreviation": "PAS-D",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["reaction"]
+                            }
+                        }
+                    },
+                    "Congo Red": {
+                        "type": "object",
+                        "title": "Congo Red",
+                        "abbreviation": "CR",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "Thioflavin S": {
+                        "type": "object",
+                        "title": "Thioflavin S",
+                        "abbreviation": "ThioS",
+                        "stainType": "histochemical",
+                        "recommended": true,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "Thioflavin T": {
+                        "type": "object",
+                        "title": "Thioflavin T",
+                        "abbreviation": "ThioT",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "HE": {
+                        "type": "object",
+                        "title": "H&E",
+                        "abbreviation": "HE",
+                        "stainType": "histochemical",
+                        "recommended": true,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["dye binding"]
+                            }
+                        }
+                    },
+                    "Perls": {
+                        "type": "object",
+                        "title": "Perls' Prussian Blue",
+                        "abbreviation": "PERLS",
+                        "stainType": "histochemical",
+                        "recommended": false,
+                        "required": ["chemistry"],
+                        "properties": {
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["reaction"]
+                            }
+                        }
+                    },
+                    "aBeta": {
+                        "type": "object",
+                        "title": "aBeta",
+                        "abbreviation": "ABETA",
+                        "stainType": "IHC",
+                        "recommended": true,
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["4G8", "6E10", "12F4", "unknown"]
+                            },
+                            "phospho-specific": {
+                                "type": "string",
+                                "title": "Phospho-specific",
+                                "enum": ["no"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "AEC (Red)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "Tau": {
+                        "type": "object",
+                        "title": "Tau",
+                        "abbreviation": "TAU",
+                        "stainType": "IHC",
+                        "recommended": true,
+                        "required": ["antibody", "phospho-specific"],
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["AT8", "PHF1", "CP13", "unknown"]
+                            },
+                            "phospho-specific": {
+                                "type": "string",
+                                "title": "Phospho-specific",
+                                "enum": ["yes"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "AEC (Red)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "Tau 3R": {
+                        "type": "object",
+                        "title": "Tau 3R",
+                        "abbreviation": "TAU3R",
+                        "stainType": "IHC",
+                        "recommended": false,
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["RD3", "81A11", "unknown"]
+                            },
+                            "phospho-specific": {
+                                "type": "string",
+                                "title": "Phospho-specific",
+                                "enum": ["no"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "Nickel-DAB (Black)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "Tau 4R": {
+                        "type": "object",
+                        "title": "Tau 4R",
+                        "abbreviation": "TAU4R",
+                        "stainType": "IHC",
+                        "recommended": false,
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["RD4", "ETL3", "unknown"]
+                            },
+                            "phospho-specific": {
+                                "type": "string",
+                                "title": "Phospho-specific",
+                                "enum": ["no"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "Nickel-DAB (Black)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "aSyn": {
+                        "type": "object",
+                        "title": "Alpha Synuclein",
+                        "abbreviation": "ASYN",
+                        "stainType": "IHC",
+                        "recommended": true,
+                        "required": ["phospho-specific"],
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["KM51", "5G4", "LB509", "unknown"]
+                            },
+                            "phospho-specific": {
+                                "type": "string",
+                                "title": "Phospho-specific",
+                                "enum": ["yes", "no"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "Nickel-DAB (Black)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "TDP-43": {
+                        "type": "object",
+                        "title": "TDP-43",
+                        "abbreviation": "TDP43",
+                        "stainType": "IHC",
+                        "recommended": true,
+                        "required": ["phospho-specific"],
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["pS409/410", "1D3", "unknown"]
+                            },
+                            "phospho-specific": {
+                                "type": "string",
+                                "title": "Phospho-specific",
+                                "enum": ["yes", "no"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "AEC (Red)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "GFAP": {
+                        "type": "object",
+                        "title": "GFAP",
+                        "abbreviation": "GFAP",
+                        "stainType": "IHC",
+                        "recommended": false,
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["GA5", "6F2", "Polyclonal"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "HRP-Green"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "CD163": {
+                        "type": "object",
+                        "title": "CD163",
+                        "abbreviation": "CD163",
+                        "stainType": "IHC",
+                        "recommended": false,
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["10D6", "ED2", "MRQ-26"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "AEC (Red)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "CD68": {
+                        "type": "object",
+                        "title": "CD68",
+                        "abbreviation": "CD68",
+                        "stainType": "IHC",
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["KP1", "PG-M1"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "Nickel-DAB (Black)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "Iba1": {
+                        "type": "object",
+                        "title": "Iba1",
+                        "abbreviation": "IBA1",
+                        "stainType": "IHC",
+                        "recommended": false,
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["EPR16588", "Polyclonal"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "AEC (Red)"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "CD3": {
+                        "type": "object",
+                        "title": "CD3",
+                        "abbreviation": "CD3",
+                        "stainType": "IHC",
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["2GV6", "LN10", "Polyclonal"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "Warp Red"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "CD20": {
+                        "type": "object",
+                        "title": "CD20",
+                        "abbreviation": "CD20",
+                        "stainType": "IHC",
+                        "recommended": false,
+                        "properties": {
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody",
+                                "enum": ["L26", "unknown"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen",
+                                "enum": ["DAB (Brown)", "Warp Red"]
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            }
+                        }
+                    },
+                    "Other Histochemical": {
+                        "type": "object",
+                        "title": "Other Histochemical",
+                        "abbreviation": "HIST",
+                        "stainType": "histochemical",
+                        "required": ["name"],
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "title": "Stain Name",
+                                "required": true
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "chemistry": {
+                                "type": "string",
+                                "title": "Chemistry",
+                                "enum": ["silver impregnation", "dye binding", "reaction"]
+                            },
+                            "details": {
+                                "type": "object",
+                                "title": "Additional Details"
+                            }
+                        }
+                    },
+                    "Other IHC": {
+                        "type": "object",
+                        "title": "Other IHC",
+                        "abbreviation": "IHC",
+                        "stainType": "IHC",
+                        "recommended": false,
+                        "required": ["name"],
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "title": "Stain Name",
+                                "required": true
+                            },
+                            "dilution": {
+                                "type": "string",
+                                "title": "Dilution",
+                                "pattern": "^1:\\d+$",
+                                "examples": ["1:100", "1:1000"]
+                            },
+                            "vendor": {
+                                "type": "string",
+                                "title": "Vendor",
+                                "pattern": "^\\w+$"
+                            },
+                            "antibody": {
+                                "type": "string",
+                                "title": "Antibody"
+                            },
+                            "phospho-specific": {
+                                "type": "string",
+                                "title": "Phospho-specific",
+                                "enum": ["yes", "no"]
+                            },
+                            "chromogen": {
+                                "type": "string",
+                                "title": "Chromogen"
+                            },
+                            "details": {
+                                "type": "object",
+                                "title": "Additional Details"
+                            }
+                        }
+                    }
+                },
+                "minProperties": 1,
+                "maxProperties": 1
+            }
+        }
+    }
+}

@@ -34,11 +34,65 @@ export { SlideViewer } from './components/SlideViewer/SlideViewer'
 export type { SlideViewerProps } from './components/SlideViewer/SlideViewer.types'
 export { AnnotationBrowser } from './components/AnnotationBrowser/AnnotationBrowser'
 export { AnnotationEditor } from './components/AnnotationEditor/AnnotationEditor'
-export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationType, RoiSettings, HotkeySettings, EditorMode } from './components/AnnotationEditor/AnnotationEditor.types'
+export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationEditorHandle, GroundTruthBox, RoiImageBounds, AnnotationType, RoiSettings, HotkeySettings, EditorMode } from './components/AnnotationEditor/AnnotationEditor.types'
 export {
     localDocumentToFeatureCollection,
     featureCollectionToLocalDocument,
     loadLocalElementsOntoAnnotationToolkit,
+    applyLocalDocumentToToolkitWhenReady,
+    wrapOrphanLabelsInRoi,
+    refreshAnnotationToolkitDisplay,
+    getToolkitTiledImage,
+    loadOverlayFeatureCollectionOntoToolkit,
+    removeOverlayFeatureCollection,
+    MODEL_PREDICTION_OVERLAY_NAME,
 } from './components/AnnotationEditor/annotationGeoJson'
 export type { FeatureCollectionToLocalOptions, LoadLocalElementsOptions } from './components/AnnotationEditor/annotationGeoJson'
+export {
+    buildSimulatedYoloGeoJson,
+    buildSimulatedYoloGeoJsonFromConfig,
+    paperAnnotatorEditorConfig,
+    simulatedYoloPositiveNegative,
+    simulatedYoloTauPredictions,
+    yoloClassFromPropertiesImportOptions,
+    yoloRectFeature,
+} from './components/AnnotationEditor/yoloSimulatedGeoJson'
+export type { SimulatedYoloOptions } from './components/AnnotationEditor/yoloSimulatedGeoJson'
 export type { DsaAuthStatus, DsaAuthConfig, DsaUserInfo } from './auth/types'
+
+// Protocol manager (stain / region protocols, BDSA schema validation)
+export { ProtocolsTab as ProtocolManager } from './components/ProtocolManager/ProtocolsTab'
+export { ProtocolProvider, useProtocols } from './components/ProtocolManager/ProtocolContext'
+export { ProtocolCard } from './components/ProtocolManager/ProtocolCard'
+export { ProtocolList } from './components/ProtocolManager/ProtocolList'
+export { ProtocolModal } from './components/ProtocolManager/ProtocolModal'
+export { ProtocolsTab } from './components/ProtocolManager/ProtocolsTab'
+export {
+    LocalStorageProtocolStorage,
+    InMemoryProtocolStorage,
+    defaultStorage,
+    generateProtocolId,
+} from './components/ProtocolManager/storage/protocolStorage'
+export { DsaSyncAdapter, NoOpDsaSyncAdapter } from './components/ProtocolManager/adapters/DsaSyncAdapter'
+export {
+    SchemaValidator,
+    createSchemaValidator,
+    BDSA_SCHEMA_DEFAULT_OPTIONS,
+    SCHEMA_PATHS,
+} from './components/ProtocolManager/utils/schemaValidator'
+export type { LoadSchemasOptions } from './components/ProtocolManager/utils/schemaValidator'
+export { blockProtocolToBlock2RegionMap } from './components/ProtocolManager/utils/blockProtocol'
+export type {
+    Protocol,
+    ProtocolType,
+    BlockProtocolSlot,
+    ProtocolStorage,
+    DsaSyncAdapter as DsaSyncAdapterType,
+    SchemaValidator as SchemaValidatorType,
+    ProtocolContextValue,
+    ProtocolProviderProps,
+    ProtocolCardProps,
+    ProtocolListProps,
+    ProtocolModalProps,
+    ProtocolsTabProps,
+} from './components/ProtocolManager/ProtocolManager.types'

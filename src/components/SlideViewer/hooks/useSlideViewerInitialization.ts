@@ -5,6 +5,7 @@ import { AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { Viewer as OpenSeadragonViewer, Options as OpenSeadragonOptions } from 'openseadragon'
 import OpenSeadragon from 'openseadragon'
 import type { DebugLogger } from '../../../utils/debugLog'
+import { hardenPaperOverlayInstance } from '../../../utils/patchOsdPaperjs'
 
 /**
  * Hook to handle OpenSeadragon viewer initialization
@@ -99,6 +100,7 @@ export function useSlideViewerInitialization(
 
                 // Create Paper overlay from the viewer (before adding images, like working example)
                 paperOverlay = osdViewer.createPaperOverlay() as PaperOverlay
+                hardenPaperOverlayInstance(paperOverlay)
                 if (isMountedRef.current) {
                     setOverlay(paperOverlay)
                 }
@@ -107,103 +109,6 @@ export function useSlideViewerInitialization(
                 annotationToolkit = new AnnotationToolkit(osdViewer, {
                     overlay: paperOverlay,
                 })
-
-                // Add error handling for library's mouse event handlers
-                // The library's internal mouse handlers can throw _transformBounds errors
-                // if Paper.js isn't fully initialized when mouse events fire
-                if (annotationToolkit && typeof (annotationToolkit as any).overlay?.paperScope?.view !== 'undefined') {
-                    const paperScope = (annotationToolkit as any).overlay.paperScope
-                    if (paperScope && paperScope.view) {
-                        // Wrap view methods that might access _transformBounds
-                        const originalView = paperScope.view
-
-                        // Helper to safely check if _transformBounds is accessible
-                        const hasTransformBounds = (obj: any): boolean => {
-                            try {
-                                return obj !== null &&
-                                    obj !== undefined &&
-                                    typeof obj._transformBounds !== 'undefined' &&
-                                    obj._transformBounds !== null
-                            } catch {
-                                return false
-                            }
-                        }
-
-                        const viewProxy = new Proxy(originalView, {
-                            get: (target, prop) => {
-                                // Intercept methods that might access _transformBounds
-                                if (prop === 'getBounds' || prop === '_transformBounds') {
-                                    return function (...args: unknown[]) {
-                                        try {
-                                            // Defensive check: ensure target and _transformBounds exist
-                                            if (!target || !hasTransformBounds(target)) {
-                                                // Return a safe default instead of throwing
-                                                if (prop === 'getBounds') {
-                                                    // Return a bounds object that won't break the library
-                                                    return { x: 0, y: 0, width: 0, height: 0 }
-                                                }
-                                                return null
-                                            }
-
-                                            if (prop === 'getBounds') {
-                                                const bounds = (originalView.getBounds as any)?.apply(target, args)
-                                                return bounds || { x: 0, y: 0, width: 0, height: 0 }
-                                            }
-
-                                            return (target as any)[prop]
-                                        } catch (error) {
-                                            // Catch any _transformBounds related errors
-                                            if (error instanceof Error) {
-                                                const msg = error.message?.toLowerCase() || ''
-                                                if (msg.includes('_transformbounds') ||
-                                                    msg.includes('transformbounds') ||
-                                                    msg.includes('cannot read properties of null')) {
-                                                    // Return safe defaults instead of throwing
-                                                    if (prop === 'getBounds') {
-                                                        return { x: 0, y: 0, width: 0, height: 0 }
-                                                    }
-                                                    return null
-                                                }
-                                            }
-                                            // Re-throw non-_transformBounds errors
-                                            throw error
-                                        }
-                                    }
-                                }
-
-                                // For all other properties, try to access safely
-                                try {
-                                    const value = (target as any)[prop]
-                                    // If accessing _transformBounds property directly
-                                    if (prop === '_transformBounds' && (value === null || value === undefined)) {
-                                        // Return a dummy function to prevent null access errors
-                                        return () => ({ x: 0, y: 0, width: 0, height: 0 })
-                                    }
-                                    return value
-                                } catch (error) {
-                                    // If accessing the property throws, return a safe default
-                                    if (error instanceof Error) {
-                                        const msg = error.message?.toLowerCase() || ''
-                                        if (msg.includes('_transformbounds') || msg.includes('null')) {
-                                            if (prop === '_transformBounds') {
-                                                return () => ({ x: 0, y: 0, width: 0, height: 0 })
-                                            }
-                                            return null
-                                        }
-                                    }
-                                    throw error
-                                }
-                            }
-                        })
-
-                        // Try to replace the view (may not work if library has locked reference)
-                        try {
-                            (paperScope as any).view = viewProxy
-                        } catch (e) {
-                            // If we can't replace, that's okay - we'll handle errors globally
-                        }
-                    }
-                }
 
                 if (isMountedRef.current) {
                     setToolkit(annotationToolkit)

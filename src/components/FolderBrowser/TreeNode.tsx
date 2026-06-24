@@ -17,6 +17,8 @@ interface TreeNodeProps {
   loadingIds: Set<string>
   /** Only show items whose filename extension is in this list. Empty array shows all items. */
   allowedExtensions?: string[]
+  /** When set, only items passing this predicate are shown (after `allowedExtensions`). */
+  itemFilter?: (item: Item) => boolean
   /** Expand/collapse folder (chevron or double-click row). */
   onFolderToggle: (id: string) => void
   /** Single-click folder row — resource selection. */
@@ -37,6 +39,7 @@ export function TreeNode({
   childrenMap,
   loadingIds,
   allowedExtensions = [],
+  itemFilter,
   onFolderToggle,
   onFolderSelect,
   onItemSelect,
@@ -59,12 +62,14 @@ export function TreeNode({
   const children = childrenMap.get(parentId)
   if (!children) return null
 
-  const visibleItems = allowedExtensions.length === 0
-    ? children.items
-    : children.items.filter(item => {
-        const ext = item.name.split('.').pop()?.toLowerCase() ?? ''
-        return allowedExtensions.map(e => e.toLowerCase()).includes(ext)
-      })
+  const visibleItems = (
+    allowedExtensions.length === 0
+      ? children.items
+      : children.items.filter(item => {
+          const ext = item.name.split('.').pop()?.toLowerCase() ?? ''
+          return allowedExtensions.map(e => e.toLowerCase()).includes(ext)
+        })
+  ).filter(item => !itemFilter || itemFilter(item))
 
   return (
     <>
@@ -154,6 +159,7 @@ export function TreeNode({
                 childrenMap={childrenMap}
                 loadingIds={loadingIds}
                 allowedExtensions={allowedExtensions}
+                itemFilter={itemFilter}
                 onFolderToggle={onFolderToggle}
                 onFolderSelect={onFolderSelect}
                 onItemSelect={onItemSelect}

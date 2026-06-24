@@ -1,21 +1,32 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
 import type { FeatureCollection } from 'geojson'
 import OpenSeadragon from 'openseadragon'
 import type { AnnotationToolkit } from 'osd-paperjs-annotation'
 import { SlideViewer } from '../SlideViewer/SlideViewer'
 import type {
     AnnotationEditorProps,
+    AnnotationEditorHandle,
     EditorMode,
     WorkflowMode,
     LocalAnnotationDocument,
     LocalAnnotationElement,
+    RoiImageBounds,
+    GroundTruthBox,
 } from './AnnotationEditor.types'
 import {
     featureCollectionToLocalDocument,
     localDocumentToFeatureCollection,
+    applyLocalDocumentToToolkitWhenReady,
     loadLocalElementsOntoAnnotationToolkit,
+    wrapOrphanLabelsInRoi,
+    refreshAnnotationToolkitDisplay,
+    loadOverlayFeatureCollectionOntoToolkit,
+    removeOverlayFeatureCollection,
+    setOverlayFeatureCollectionVisibility,
+    getToolkitTiledImage,
+    MODEL_PREDICTION_OVERLAY_NAME,
 } from './annotationGeoJson'
-import { normalizeCssColor, resolveItemId, computeNextRoiLabel } from './AnnotationEditor.utils'
+import { normalizeCssColor, resolveItemId, resolveRoiLabelValue, fitViewerToElements, centerViewerOnElement, isFormFieldKeyboardTarget, findAnnotationTypeIndexForKey, shouldBlockOpenSeadragonKey, isFinishShapeEditKey, isEditLabelShapeKey, documentElementsSnapshot, resolveAutoSaveSettings, elementToRoiBounds, clampRoiTopLeft, translatePaperRoiItem, effectiveRoiFillOpacity, applyRoiFillVisibilityToPaperItem, findTopmostLabelItemIdxAtImagePoint } from './AnnotationEditor.utils'
 import { AnnotationEditorToolbar } from './AnnotationEditor.Toolbar'
 import { AnnotationEditorOverlays } from './AnnotationEditor.Overlays'
 import { createApiError } from '../../utils/apiErrorHandling'
@@ -28,7 +39,8 @@ import './AnnotationEditor.css'
  * Drawing is delegated entirely to osd-paperjs-annotation's RectangleTool,
  * which provides the crosshair, rubber-band, and mouse-capture behaviour.
  */
-export function AnnotationEditor({
+export const AnnotationEditor = forwardRef<AnnotationEditorHandle, AnnotationEditorProps>(
+function AnnotationEditor({
     imageInfo,
     config,
     apiBaseUrl,
@@ -37,17 +49,30 @@ export function AnnotationEditor({
     fetchFn,
     apiHeaders,
     showInfoBar = true,
+    showInfoControl = true,
+    defaultShowInfo = false,
+    showLabelHoverPanel = true,
+    defaultRoiFillVisible = false,
+    hoverInfoMode = 'full',
     className = '',
     style,
     onApiError,
+    autoSave,
+    onAnnotationSaved,
     disableVisibilityCheck,
+    onViewerReady,
+    onViewportChange,
     initialGeoJson,
     initialGeoJsonUrl,
     geoJsonImportOptions,
     geoJsonExportMode = false,
     onGeoJsonExport,
     skipDsaAnnotationLoad = false,
-}: AnnotationEditorProps) {
+    overlayGeoJson = null,
+    overlayGeoJsonVisible = true,
+    overlayCollectionName = MODEL_PREDICTION_OVERLAY_NAME,
+}: AnnotationEditorProps, ref) {
+    const autoSaveSettings = useMemo(() => resolveAutoSaveSettings(autoSave), [autoSave])
     const [selectedRoiIndex, setSelectedRoiIndex] = useState<number>(-1)
     const [markComplete, setMarkComplete] = useState(false)
     const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('edit-rois')
@@ -55,7 +80,9 @@ export function AnnotationEditor({
     const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
     // DSA document ID — null until saved/loaded for the first time
     const [annotationDocumentId, setAnnotationDocumentId] = useState<string | null>(null)
+    const annotationDocumentIdRef = useRef<string | null>(null)
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+    const [saveDirty, setSaveDirty] = useState(false)
     const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
     const [isLoadingAnnotation, setIsLoadingAnnotation] = useState(false)
     // Confidence filter mode
@@ -65,6 +92,8 @@ export function AnnotationEditor({
     const [fixedSizeEnabled, setFixedSizeEnabled] = useState(false)
     const [fixedWidth, setFixedWidth] = useState(() => config.roiSettings?.width ?? 1000)
     const [fixedHeight, setFixedHeight] = useState(() => config.roiSettings?.height ?? 1000)
+    const [roiFillVisible, setRoiFillVisible] = useState(defaultRoiFillVisible)
+    const roiFillVisibleRef = useRef(defaultRoiFillVisible)
 
     // The AnnotationToolkit instance provided by SlideViewer
     const [toolkit, setToolkit] = useState<AnnotationToolkit | null>(null)
@@ -81,17 +110,42 @@ export function AnnotationEditor({
     // Fixed-size label placement
     const [labelFixedSizeEnabled, setLabelFixedSizeEnabled] = useState(false)
     const labelFixedSizeEnabledRef = useRef(false)
+    /** Add Labels: when false, default tool is active so the slide can be panned with the mouse. */
+    const [addLabelsDrawingEnabled, setAddLabelsDrawingEnabled] = useState(true)
+    const addLabelsDrawingEnabledRef = useRef(true)
     // Tracks whether the add-labels drawing loop is still active
     const addLabelsActiveRef = useRef(false)
     // Paper.js item refs for label elements — parallel to the ordered label elements in localDocument
     const labelItemsRef = useRef<any[]>([])
+    /** Index into labelItemsRef for the last placed, hovered, or context-selected label (-1 = none). */
+    const [activeLabelItemIdx, setActiveLabelItemIdx] = useState(-1)
+    const activeLabelItemIdxRef = useRef(-1)
+    const [hoveredLabelItemIdx, setHoveredLabelItemIdx] = useState(-1)
+    const hoveredLabelItemIdxRef = useRef(-1)
+    const [hoveredLabelPointer, setHoveredLabelPointer] = useState<{ x: number; y: number } | null>(null)
+    const deleteActiveLabelRef = useRef<() => void>(() => {})
+    const finishEditingLabelRef = useRef<() => void>(() => {})
+    const cancelEditingLabelRef = useRef<() => void>(() => {})
+    const finishEditingRoiRef = useRef<() => void>(() => {})
+    const cancelPendingRoiRef = useRef<() => void>(() => {})
+    const startEditLabelByItemIdxRef = useRef<(itemIdx: number) => void>(() => {})
+    const startReviewEditShapeRef = useRef<() => void>(() => {})
+    const annotationLoadSettledRef = useRef(false)
+    const savedSnapshotRef = useRef<string | null>(null)
+    const documentDirtyRef = useRef(false)
+    const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const saveInFlightRef = useRef(false)
+    const pendingSaveRef = useRef(false)
+    const performSaveRef = useRef<(options?: { silent?: boolean }) => Promise<boolean>>(async () => false)
+    const markLoadSettledRef = useRef<(doc: LocalAnnotationDocument | null) => void>(() => {})
+    const scheduleAutoSaveRef = useRef<() => void>(() => {})
     // Right-click context menu for label items in add-labels mode
     const [contextMenu, setContextMenu] = useState<{
         x: number; y: number; itemIdx: number; item: any
     } | null>(null)
     // State for editing an existing label's shape via the context menu
     const [isEditingLabel, setIsEditingLabel] = useState(false)
-    const [showInfo, setShowInfo] = useState(false)
+    const [showInfo, setShowInfo] = useState(defaultShowInfo)
     const showInfoRef = useRef(false)
     const [hoverInfo, setHoverInfo] = useState<{
         x: number; y: number
@@ -116,6 +170,8 @@ export function AnnotationEditor({
     const [reviewItemIndex, setReviewItemIndex] = useState(-1)
     const reviewItemIndexRef = useRef(-1)
     const changeReviewItemTypeRef = useRef<(typeIndex: number) => void>(() => {})
+    const reviewNextItemRef = useRef<() => void>(() => {})
+    const reviewPreviousItemRef = useRef<() => void>(() => {})
     // Stable ref so workflowMode is readable inside finishEditingLabel / cancelEditingLabel
     // without adding toolkit to their dependency arrays.
     const workflowModeRef = useRef<WorkflowMode>('edit-rois')
@@ -130,7 +186,8 @@ export function AnnotationEditor({
     // Segment points saved before editing an existing ROI, for cancel restore
     const originalSegmentsRef = useRef<{ x: number; y: number }[] | null>(null)
     // Label of a newly finished ROI so we can auto-select it in the dropdown
-    const pendingSelectLabelRef = useRef<string | null>(null)
+    /** Document-order ROI index to select after the next localDocument update (add ROI). */
+    const pendingSelectRoiIndexRef = useRef<number | null>(null)
     // Refs to always-current values for use inside event-handler closures
     const localDocumentRef = useRef<LocalAnnotationDocument | null>(localDocument)
     const addRoiRef = useRef<(left: number, top: number, width: number, height: number) => void>(null as any)
@@ -142,6 +199,49 @@ export function AnnotationEditor({
         },
         []
     )
+
+    const markLoadSettled = useCallback((doc: LocalAnnotationDocument | null) => {
+        annotationLoadSettledRef.current = true
+        savedSnapshotRef.current = documentElementsSnapshot(doc)
+        documentDirtyRef.current = false
+        setSaveDirty(false)
+    }, [])
+
+    const scheduleAutoSave = useCallback(() => {
+        if (!autoSaveSettings.enabled) return
+        if (geoJsonExportMode && !onGeoJsonExport) return
+        if (!geoJsonExportMode && !apiBaseUrl) return
+
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+        autoSaveTimerRef.current = setTimeout(() => {
+            autoSaveTimerRef.current = null
+            void performSaveRef.current({ silent: true })
+        }, autoSaveSettings.debounceMs)
+    }, [
+        autoSaveSettings.enabled,
+        autoSaveSettings.debounceMs,
+        geoJsonExportMode,
+        onGeoJsonExport,
+        apiBaseUrl,
+    ])
+
+    useEffect(() => { markLoadSettledRef.current = markLoadSettled }, [markLoadSettled])
+    useEffect(() => { scheduleAutoSaveRef.current = scheduleAutoSave }, [scheduleAutoSave])
+
+    const resetSaveTracking = useCallback(() => {
+        annotationLoadSettledRef.current = false
+        savedSnapshotRef.current = null
+        documentDirtyRef.current = false
+        setSaveDirty(false)
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current)
+            autoSaveTimerRef.current = null
+        }
+    }, [])
+
+    useEffect(() => {
+        resetSaveTracking()
+    }, [resolveItemId(imageInfo), resetSaveTracking])
 
     // ── Register tools once when toolkit is ready ─────────────────────────
     useEffect(() => {
@@ -212,6 +312,7 @@ export function AnnotationEditor({
         if (!itemId || !apiBaseUrl) return
 
         let cancelled = false
+        let disposeApply: (() => void) | undefined
         setIsLoadingAnnotation(true)
 
         const headers: Record<string, string> = {}
@@ -288,36 +389,58 @@ export function AnnotationEditor({
                     description: docFull.annotation.description ?? '',
                     elements,
                 })
+                markLoadSettledRef.current({
+                    name: docFull.annotation.name,
+                    description: docFull.annotation.description ?? '',
+                    elements,
+                })
                 setAnnotationDocumentId(docId)
+                setActiveLabelItemIdx(-1)
 
                 // 5–7. Render ROIs and label elements on the canvas (same path as GeoJSON import)
-                const roiElements = elements.filter(e => e.group === 'ROI')
-                loadLocalElementsOntoAnnotationToolkit(
+                disposeApply = applyLocalDocumentToToolkitWhenReady(
                     toolkit as any,
                     config,
-                    elements,
+                    { name: docFull.annotation.name, description: docFull.annotation.description ?? '', elements },
                     roiItemsRef,
                     labelItemsRef,
-                )
-
-                // 8. Auto-select the first ROI. This triggers the canvas-sync effect
-                // which calls fitBounds — that viewport change also forces Paper.js to
-                // render, solving the "annotations invisible until zoom" bug.
-                if (roiElements.length > 0) {
-                    setSelectedRoiIndex(0)
-                }
+                    () => {
+                        const roiElements = elements.filter(e => e.group === 'ROI')
+                        if (roiElements.length > 0) {
+                            setSelectedRoiIndex(0)
+                        }
+                    },
+                    roiFillLoadOptions(),
+                ) ?? undefined
             } catch (err) {
                 if (cancelled) return
                 console.error('[AnnotationEditor] Failed to load annotations:', err)
                 notify('error', 'Failed to load existing annotations from server.', 4000)
             } finally {
-                if (!cancelled) setIsLoadingAnnotation(false)
+                if (!cancelled) {
+                    setIsLoadingAnnotation(false)
+                    if (!annotationLoadSettledRef.current) {
+                        markLoadSettledRef.current(null)
+                    }
+                }
             }
         })()
 
-        return () => { cancelled = true }
+        return () => {
+            cancelled = true
+            disposeApply?.()
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toolkit])
+
+    // Blank canvas when DSA load is skipped and no inline GeoJSON is provided.
+    useEffect(() => {
+        if (!toolkit) return
+        if (initialGeoJson != null || initialGeoJsonUrl) return
+        if (!skipDsaAnnotationLoad) return
+        if (annotationLoadSettledRef.current) return
+        markLoadSettledRef.current(null)
+    }, [toolkit, skipDsaAnnotationLoad, initialGeoJson, initialGeoJsonUrl])
 
     // ── Inline / fetched GeoJSON → local document + canvas (YOLO, etc.) ─
     const effectiveGeoJson: FeatureCollection | null =
@@ -348,35 +471,59 @@ export function AnnotationEditor({
         }
         lastGeoApplyKeyRef.current = applyKey
 
+        let disposeApply: (() => void) | undefined
+
         try {
             foreignElementsRef.current = []
             setShowDuplicateWarning(false)
-            const doc = featureCollectionToLocalDocument(
-                fc,
+            const doc = wrapOrphanLabelsInRoi(
+                featureCollectionToLocalDocument(
+                    fc,
+                    config,
+                    config.annotationDocumentName,
+                    geoJsonImportOptions,
+                ),
                 config,
-                config.annotationDocumentName,
-                geoJsonImportOptions,
             )
             setLocalDocument(doc)
+            markLoadSettledRef.current(doc)
             setAnnotationDocumentId(null)
-            loadLocalElementsOntoAnnotationToolkit(
+            setActiveLabelItemIdx(-1)
+            const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+            const fitTargets = doc.elements.filter(e => knownTypeNames.has(e.group))
+            disposeApply = applyLocalDocumentToToolkitWhenReady(
                 toolkit as any,
                 config,
-                doc.elements,
+                doc,
                 roiItemsRef,
                 labelItemsRef,
-                { clear: true },
-            )
-            if (doc.elements.filter(e => e.group === 'ROI').length > 0) {
-                setSelectedRoiIndex(0)
-            } else {
-                setSelectedRoiIndex(-1)
-            }
+                () => {
+                    const roiElements = doc.elements.filter(e => e.group === 'ROI')
+                    if (roiElements.length > 0) {
+                        setSelectedRoiIndex(0)
+                    } else {
+                        setSelectedRoiIndex(-1)
+                    }
+                    const viewer = (toolkit as any).viewer
+                    const toFit = fitTargets.length > 0 ? fitTargets : doc.elements
+                    if (viewer && toFit.length > 0) {
+                        requestAnimationFrame(() => {
+                            fitViewerToElements(viewer, toFit, OpenSeadragon as any)
+                            refreshDisplayAndSyncRoiFill(toolkit as any)
+                        })
+                    }
+                },
+                roiFillLoadOptions(),
+            ) ?? undefined
         } catch (err) {
             console.error('[AnnotationEditor] GeoJSON hydrate failed:', err)
             notify('error', 'Failed to load GeoJSON into the editor.', 5000)
         } finally {
             setIsLoadingAnnotation(false)
+        }
+
+        return () => {
+            disposeApply?.()
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toolkit, initialGeoJson, initialGeoJsonUrl, fetchedGeoJson, config, geoJsonImportOptions, notify])
@@ -433,12 +580,11 @@ export function AnnotationEditor({
     const addRoi = useCallback(
         (left: number, top: number, width: number, height: number) => {
             const roi = config.roiSettings ?? {}
-            const labelBase = roi.label ?? 'roi'
             const fillOpacity = roi.fillOpacity ?? 0.05
 
             setLocalDocument(prev => {
                 const elements = prev?.elements ?? []
-                const labelValue = computeNextRoiLabel(elements, labelBase)
+                const labelValue = resolveRoiLabelValue(elements, roi)
 
                 const newElement: LocalAnnotationElement = {
                     type: 'rectangle',
@@ -454,7 +600,9 @@ export function AnnotationEditor({
                     rotation: 0,
                     lineColor: normalizeCssColor(roi.color ?? '#ffa500'),
                     lineWidth: roi.strokeWidth ?? 2,
-                    fillColor: normalizeCssColor(`rgba(0,0,0,${fillOpacity})`),
+                    fillColor: normalizeCssColor(
+                        roi.fillColor ?? `rgba(0,0,0,${fillOpacity})`,
+                    ),
                 }
 
                 const doc: LocalAnnotationDocument = prev
@@ -473,14 +621,139 @@ export function AnnotationEditor({
 
     // Keep refs current so event-handler closures always see the latest values
     useEffect(() => { localDocumentRef.current = localDocument }, [localDocument])
+
+    // Track unsaved edits and schedule debounced autosave.
+    useEffect(() => {
+        if (!annotationLoadSettledRef.current || isLoadingAnnotation) return
+        if (!localDocument || savedSnapshotRef.current == null) return
+
+        const snap = documentElementsSnapshot(localDocument)
+        if (snap === savedSnapshotRef.current) {
+            documentDirtyRef.current = false
+            setSaveDirty(false)
+            return
+        }
+
+        documentDirtyRef.current = true
+        setSaveDirty(true)
+        scheduleAutoSaveRef.current()
+    }, [localDocument, isLoadingAnnotation])
+
+    useEffect(() => { annotationDocumentIdRef.current = annotationDocumentId }, [annotationDocumentId])
     useEffect(() => { addRoiRef.current = addRoi }, [addRoi])
     useEffect(() => { selectedTypeIndexRef.current = selectedTypeIndex }, [selectedTypeIndex])
     useEffect(() => { selectedRoiLabelRef.current = rois[selectedRoiIndex]?.label ?? null }, [selectedRoiIndex, rois])
     useEffect(() => { labelFixedSizeEnabledRef.current = labelFixedSizeEnabled }, [labelFixedSizeEnabled])
     useEffect(() => { workflowModeRef.current = workflowMode }, [workflowMode])
+    useEffect(() => { addLabelsDrawingEnabledRef.current = addLabelsDrawingEnabled }, [addLabelsDrawingEnabled])
+    useEffect(() => {
+        if (workflowMode === 'add-labels') {
+            setAddLabelsDrawingEnabled(true)
+        }
+    }, [workflowMode])
     useEffect(() => { toolkitRef.current = toolkit }, [toolkit])
     useEffect(() => { reviewItemIndexRef.current = reviewItemIndex }, [reviewItemIndex])
     useEffect(() => { showInfoRef.current = showInfo }, [showInfo])
+    useEffect(() => { roiFillVisibleRef.current = roiFillVisible }, [roiFillVisible])
+
+    const syncAllRoiFillVisibility = useCallback(() => {
+        const showRoiFill =
+            roiFillVisibleRef.current && workflowModeRef.current === 'edit-rois'
+        roiItemsRef.current.forEach(item =>
+            applyRoiFillVisibilityToPaperItem(item, showRoiFill, config.roiSettings),
+        )
+        if (pendingRoiItemRef.current) {
+            applyRoiFillVisibilityToPaperItem(
+                pendingRoiItemRef.current,
+                showRoiFill,
+                config.roiSettings,
+            )
+        }
+    }, [config.roiSettings])
+
+    const refreshDisplayAndSyncRoiFill = useCallback(
+        (tk: Parameters<typeof refreshAnnotationToolkitDisplay>[0]) => {
+            refreshAnnotationToolkitDisplay(tk)
+            syncAllRoiFillVisibility()
+        },
+        [syncAllRoiFillVisibility],
+    )
+
+    const roiFillLoadOptions = useCallback(
+        () => ({
+            roiFillOpacity: effectiveRoiFillOpacity(
+                roiFillVisibleRef.current && workflowModeRef.current === 'edit-rois',
+                config.roiSettings,
+            ),
+            onLoaded: () => {
+                syncAllRoiFillVisibility()
+                requestAnimationFrame(() => syncAllRoiFillVisibility())
+            },
+        }),
+        [config.roiSettings, syncAllRoiFillVisibility],
+    )
+
+    // ── ROI fill visibility (canvas only; saved DSA fill colors unchanged) ──
+    useEffect(() => {
+        syncAllRoiFillVisibility()
+    }, [roiFillVisible, workflowMode, config.roiSettings, localDocument, syncAllRoiFillVisibility])
+
+    // ── Read-only model prediction overlay (separate from editable annotations) ──
+    useEffect(() => {
+        if (!toolkit) return
+        const tk = toolkit as any
+        const collectionName = overlayCollectionName || MODEL_PREDICTION_OVERLAY_NAME
+        let cancelled = false
+        let rafId = 0
+
+        const applyOverlay = (): boolean => {
+            if (cancelled) return true
+            if (!overlayGeoJson?.features?.length) {
+                removeOverlayFeatureCollection(tk, collectionName)
+                return true
+            }
+            if (!getToolkitTiledImage(tk)) return false
+
+            if (!overlayGeoJsonVisible) {
+                if (setOverlayFeatureCollectionVisibility(tk, false, collectionName)) {
+                    return true
+                }
+                loadOverlayFeatureCollectionOntoToolkit(tk, overlayGeoJson, collectionName)
+                setOverlayFeatureCollectionVisibility(tk, false, collectionName)
+                return true
+            }
+
+            loadOverlayFeatureCollectionOntoToolkit(tk, overlayGeoJson, collectionName)
+            setOverlayFeatureCollectionVisibility(tk, true, collectionName)
+            return true
+        }
+
+        const scheduleApply = () => {
+            cancelAnimationFrame(rafId)
+            rafId = requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    applyOverlay()
+                })
+            })
+        }
+
+        if (getToolkitTiledImage(tk)) {
+            scheduleApply()
+        }
+
+        const viewer = tk.viewer
+        const onReady = () => {
+            scheduleApply()
+        }
+        viewer?.addHandler?.('open', onReady)
+        viewer?.world?.addHandler?.('add-item', onReady)
+        return () => {
+            cancelled = true
+            cancelAnimationFrame(rafId)
+            viewer?.removeHandler?.('open', onReady)
+            viewer?.world?.removeHandler?.('add-item', onReady)
+        }
+    }, [toolkit, overlayGeoJson, overlayGeoJsonVisible, overlayCollectionName])
 
     // ── Map a hit Paper.js item back to a LocalAnnotationElement ─────────
     const findElementForHitItem = useCallback((hitItem: any): LocalAnnotationElement | null => {
@@ -610,33 +883,189 @@ export function AnnotationEditor({
         })
     }, [workflowMode, confidenceThreshold, localDocument, config.annotationTypes])
 
-    // ── Q / W keyboard shortcuts to cycle annotation types ────────────────
+    // ── Editor hotkeys (cycle / assign types, review nav) ─────────────────
+    // Window listener handles actions; canvas-key handler blocks OpenSeadragon
+    // defaults (W/S/A/D/F pan, F flip, arrows pan) when the canvas has focus.
     useEffect(() => {
         if (annotationTypes.length === 0) return
+
+        const applyTypeIndex = (typeIndex: number) => {
+            setSelectedTypeIndex(typeIndex)
+            if (workflowModeRef.current === 'review') changeReviewItemTypeRef.current(typeIndex)
+        }
+
         const handleKeyDown = (e: KeyboardEvent) => {
-            const tag = (e.target as HTMLElement)?.tagName?.toUpperCase()
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-            if (e.key.toLowerCase() === 'q') {
+            if (isFormFieldKeyboardTarget(e)) return
+
+            const key = e.key.toLowerCase()
+            let consumed = false
+
+            if (!consumed && (e.metaKey || e.ctrlKey) && key === 's') {
+                consumed = true
+                if (autoSaveTimerRef.current) {
+                    clearTimeout(autoSaveTimerRef.current)
+                    autoSaveTimerRef.current = null
+                }
+                void performSaveRef.current({ silent: false })
+            }
+
+            if (!consumed && editingLabelRef.current) {
+                if (isFinishShapeEditKey(e.key, config.hotkeys)) {
+                    consumed = true
+                    finishEditingLabelRef.current()
+                } else if (e.key === 'Escape') {
+                    consumed = true
+                    cancelEditingLabelRef.current()
+                }
+            }
+
+            if (!consumed && pendingRoiItemRef.current) {
+                if (isFinishShapeEditKey(e.key, config.hotkeys)) {
+                    consumed = true
+                    finishEditingRoiRef.current()
+                } else if (e.key === 'Escape') {
+                    consumed = true
+                    cancelPendingRoiRef.current()
+                }
+            }
+
+            if (
+                !consumed
+                && !editingLabelRef.current
+                && !pendingRoiItemRef.current
+                && (workflowModeRef.current === 'add-labels' || workflowModeRef.current === 'review')
+            ) {
+                if (isEditLabelShapeKey(e.key, config.hotkeys)) {
+                    if (workflowModeRef.current === 'review') {
+                        consumed = true
+                        startReviewEditShapeRef.current()
+                    } else {
+                        const targetIdx = hoveredLabelItemIdxRef.current >= 0
+                            ? hoveredLabelItemIdxRef.current
+                            : activeLabelItemIdxRef.current
+                        if (targetIdx >= 0) {
+                            consumed = true
+                            startEditLabelByItemIdxRef.current(targetIdx)
+                        }
+                    }
+                }
+            }
+
+            if (
+                !consumed
+                && workflowModeRef.current === 'add-labels'
+            ) {
+                const { prev, next } = {
+                    prev: (config.hotkeys?.typeCyclePrevious ?? '[').toLowerCase(),
+                    next: (config.hotkeys?.typeCycleNext ?? ']').toLowerCase(),
+                }
+                if (addLabelsDrawingEnabledRef.current && key === prev) {
+                    consumed = true
+                    const n = (selectedTypeIndexRef.current - 1 + annotationTypes.length) % annotationTypes.length
+                    applyTypeIndex(n)
+                } else if (addLabelsDrawingEnabledRef.current && key === next) {
+                    consumed = true
+                    const n = (selectedTypeIndexRef.current + 1) % annotationTypes.length
+                    applyTypeIndex(n)
+                } else {
+                    const typeIdx = findAnnotationTypeIndexForKey(annotationTypes, e.key)
+                    if (typeIdx != null) {
+                        consumed = true
+                        applyTypeIndex(typeIdx)
+                    }
+                }
+            } else if (!consumed) {
+                if (key === 'q') {
+                    consumed = true
+                    const next = (selectedTypeIndexRef.current - 1 + annotationTypes.length) % annotationTypes.length
+                    applyTypeIndex(next)
+                } else if (key === 'w') {
+                    consumed = true
+                    const next = (selectedTypeIndexRef.current + 1) % annotationTypes.length
+                    applyTypeIndex(next)
+                } else {
+                    const typeIdx = findAnnotationTypeIndexForKey(annotationTypes, e.key)
+                    if (typeIdx != null) {
+                        consumed = true
+                        applyTypeIndex(typeIdx)
+                    }
+                }
+            }
+
+            if (
+                !consumed
+                && workflowModeRef.current === 'add-labels'
+                && !editingLabelRef.current
+            ) {
+                const drawToggleKey = (config.hotkeys?.insertBox ?? 't').toLowerCase()
+                if (key === drawToggleKey) {
+                    consumed = true
+                    setAddLabelsDrawingEnabled(prev => !prev)
+                }
+            }
+
+            if (
+                !consumed
+                && workflowModeRef.current === 'add-labels'
+                && (e.key === 'Delete' || e.key === 'Backspace')
+            ) {
+                consumed = true
+                deleteActiveLabelRef.current()
+            }
+
+            if (!consumed && workflowModeRef.current === 'review') {
+                const hotkeys = config.hotkeys ?? {}
+                const nextKey = (hotkeys.reviewNext ?? 'm').toLowerCase()
+                const prevKey = (hotkeys.reviewPrevious ?? 'n').toLowerCase()
+                if (key === nextKey || e.key === 'ArrowRight') {
+                    consumed = true
+                    reviewNextItemRef.current()
+                } else if (key === prevKey || e.key === 'ArrowLeft') {
+                    consumed = true
+                    reviewPreviousItemRef.current()
+                }
+            }
+
+            if (consumed) {
                 e.preventDefault()
-                const next = (selectedTypeIndexRef.current - 1 + annotationTypes.length) % annotationTypes.length
-                setSelectedTypeIndex(next)
-                if (workflowModeRef.current === 'review') changeReviewItemTypeRef.current(next)
-            } else if (e.key.toLowerCase() === 'w') {
-                e.preventDefault()
-                const next = (selectedTypeIndexRef.current + 1) % annotationTypes.length
-                setSelectedTypeIndex(next)
-                if (workflowModeRef.current === 'review') changeReviewItemTypeRef.current(next)
+                e.stopPropagation()
             }
         }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [annotationTypes.length])
+
+        window.addEventListener('keydown', handleKeyDown, true)
+        return () => window.removeEventListener('keydown', handleKeyDown, true)
+    }, [annotationTypes, config.hotkeys])
+
+    // Block OpenSeadragon canvas shortcuts when editor owns the same keys.
+    useEffect(() => {
+        if (!toolkit) return
+        const viewer = (toolkit as { viewer?: { addHandler?: (n: string, h: (e: { preventDefaultAction?: boolean; originalEvent?: KeyboardEvent }) => void) => void; removeHandler?: (n: string, h: (e: { preventDefaultAction?: boolean; originalEvent?: KeyboardEvent }) => void) => void } }).viewer
+        if (!viewer?.addHandler) return
+
+        const onCanvasKey = (event: { preventDefaultAction?: boolean; originalEvent?: KeyboardEvent }) => {
+            const e = event.originalEvent
+            if (!e || isFormFieldKeyboardTarget(e)) return
+            if (shouldBlockOpenSeadragonKey(
+                e.key,
+                workflowModeRef.current,
+                annotationTypes,
+                config.hotkeys,
+                addLabelsDrawingEnabledRef.current,
+                Boolean(editingLabelRef.current || pendingRoiItemRef.current),
+            )) {
+                event.preventDefaultAction = true
+            }
+        }
+
+        viewer.addHandler('canvas-key', onCanvasKey)
+        return () => viewer.removeHandler?.('canvas-key', onCanvasKey)
+    }, [toolkit, annotationTypes, config.hotkeys])
 
     // ── Update placeholder color when selected type changes (no restart) ──
     // This is intentionally separate from the drawing effect so that Q/W
     // never deactivates the tool mid-draw.
     useEffect(() => {
-        if (!toolkit || workflowMode !== 'add-labels') return
+        if (!toolkit || workflowMode !== 'add-labels' || !addLabelsDrawingEnabled) return
         const types = config.annotationTypes ?? []
         const annotationType = types[selectedTypeIndex]
         if (!annotationType) return
@@ -649,7 +1078,7 @@ export function AnnotationEditor({
         if (placeholder) {
             try { placeholder.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
         }
-    }, [toolkit, workflowMode, selectedTypeIndex, config])
+    }, [toolkit, workflowMode, selectedTypeIndex, config, addLabelsDrawingEnabled])
 
     // ── Continuous annotation drawing in add-labels mode ─────────────────
     // selectedTypeIndex is intentionally NOT a dependency — type changes must
@@ -667,9 +1096,19 @@ export function AnnotationEditor({
         const defaultTool = (toolkit as any).getTool('default')
         if (!rectTool || !defaultTool) return
 
-        addLabelsActiveRef.current = true
-
         const getPaperScope = () => (toolkit as any).project?.paperScope
+
+        const clearDrawPlaceholder = () => {
+            const stale = getPaperScope()?.findSelectedNewItem?.()
+            if (stale) stale.remove()
+        }
+
+        const activatePanTool = () => {
+            addLabelsActiveRef.current = false
+            clearDrawPlaceholder()
+            rectTool.deactivate(true)
+            defaultTool.activate()
+        }
 
         const getStyle = (idx: number) => {
             const t = types[idx]
@@ -681,18 +1120,29 @@ export function AnnotationEditor({
         }
 
         const reactivate = () => {
+            if (!addLabelsDrawingEnabledRef.current) {
+                activatePanTool()
+                return
+            }
             const style = getStyle(selectedTypeIndexRef.current)
             if (!style) return
-            // Remove any stale placeholder so activate creates a fresh one
-            // with the correct style for the current type.
-            const stale = getPaperScope()?.findSelectedNewItem?.()
-            if (stale) stale.remove()
+            clearDrawPlaceholder()
             rectTool.deactivate(true)
             rectTool.activate({ createNewItem: true, style })
+            addLabelsActiveRef.current = true
         }
 
-        // Expose reactivate so finishEditingLabel / cancelEditingLabel can resume drawing
         reactivateLabelDrawingRef.current = reactivate
+
+        if (!addLabelsDrawingEnabled) {
+            activatePanTool()
+            return () => {
+                addLabelsActiveRef.current = false
+                clearDrawPlaceholder()
+            }
+        }
+
+        addLabelsActiveRef.current = true
 
         const onItemCreated = (payload: any) => {
             const item = payload?.item
@@ -731,7 +1181,7 @@ export function AnnotationEditor({
                         rotation: 0,
                         lineColor: normalizeCssColor(annotationType.color),
                         lineWidth: annotationType.strokeWidth ?? 2,
-                        fillColor: 'rgba(0,0,0,0.05)',
+                        fillColor: normalizeCssColor(annotationType.fillColor ?? 'rgba(0,0,0,0.05)'),
                         ...(selectedRoiLabelRef.current != null ? { user: { roiLabel: selectedRoiLabelRef.current } } : {}),
                     }
                     return prev
@@ -739,6 +1189,7 @@ export function AnnotationEditor({
                         : { name: config.annotationDocumentName, description: config.annotationDescription ?? '', elements: [newElement] }
                 })
                 labelItemsRef.current.push(item)
+                setActiveLabelItemIdx(labelItemsRef.current.length - 1)
             } else {
                 const b = item.bounds
                 if (b && b.width >= 5 && b.height >= 5) {
@@ -760,7 +1211,7 @@ export function AnnotationEditor({
                             rotation: 0,
                             lineColor: normalizeCssColor(annotationType.color),
                             lineWidth: annotationType.strokeWidth ?? 2,
-                            fillColor: 'rgba(0,0,0,0.05)',
+                            fillColor: normalizeCssColor(annotationType.fillColor ?? 'rgba(0,0,0,0.05)'),
                             ...(selectedRoiLabelRef.current != null ? { user: { roiLabel: selectedRoiLabelRef.current } } : {}),
                         }
                         return prev
@@ -772,6 +1223,7 @@ export function AnnotationEditor({
                               }
                     })
                     labelItemsRef.current.push(item)
+                    setActiveLabelItemIdx(labelItemsRef.current.length - 1)
                 } else {
                     item.remove()
                 }
@@ -793,13 +1245,11 @@ export function AnnotationEditor({
         return () => {
             addLabelsActiveRef.current = false
             rectTool.removeEventListener('item-created', onItemCreated)
-            // Remove any undrawn placeholder so it doesn't pollute the next session
-            const stale = getPaperScope()?.findSelectedNewItem?.()
-            if (stale) stale.remove()
+            clearDrawPlaceholder()
             defaultTool.activate()
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toolkit, workflowMode, config])
+    }, [toolkit, workflowMode, config, addLabelsDrawingEnabled])
 
     // ── Review mode: activate default tool and configure the reactivate hook ─
     useEffect(() => {
@@ -851,13 +1301,10 @@ export function AnnotationEditor({
             } else {
                 // Brand-new ROI — commit to state and store item ref
                 if (b && b.width >= 5 && b.height >= 5) {
-                    // Compute the label that addRoi will assign so we can
-                    // auto-select it after localDocument updates
-                    const labelBase = (config.roiSettings?.label ?? 'roi')
-                    pendingSelectLabelRef.current = computeNextRoiLabel(
-                        localDocument?.elements ?? [],
-                        labelBase
-                    )
+                    // Index of the ROI about to be appended — used to auto-select
+                    // after localDocument updates (label alone is ambiguous with fixedLabel).
+                    pendingSelectRoiIndexRef.current =
+                        localDocumentRef.current?.elements.filter(e => e.group === 'ROI').length ?? 0
                     addRoi(b.x, b.y, b.width, b.height)
                     roiItemsRef.current.push(item)
                 } else {
@@ -894,6 +1341,9 @@ export function AnnotationEditor({
         originalSegmentsRef.current = null
         setActiveMode(null)
     }, [])
+
+    useEffect(() => { finishEditingRoiRef.current = finishEditingRoi }, [finishEditingRoi])
+    useEffect(() => { cancelPendingRoiRef.current = cancelPendingRoi }, [cancelPendingRoi])
 
     // ── Start editing an existing committed ROI ───────────────────────────
     const startEditActiveRoi = useCallback(() => {
@@ -950,54 +1400,6 @@ export function AnnotationEditor({
         setSelectedRoiIndex(-1)
     }, [selectedRoiIndex, rois])
 
-    // ── Right-click context menu for label items (add-labels + review mode) ─
-    useEffect(() => {
-        if (!toolkit || (workflowMode !== 'add-labels' && workflowMode !== 'review')) return
-        const viewer = (toolkit as any).viewer
-        if (!viewer) return
-        // Use tk.paperScope directly (same as archive: this.tk.paperScope)
-        const paperScope = (toolkit as any).paperScope
-        if (!paperScope) return
-        // The Paper.js canvas sits on top of OSD's canvas and intercepts all pointer
-        // events, so OSD's canvas-contextmenu never fires. We must listen on the
-        // overlay canvas element directly — exactly how the archive app does it.
-        const overlayCanvas: HTMLElement | undefined = (toolkit as any).overlay?.canvas()
-        if (!overlayCanvas) return
-
-        const handleContextMenu = (event: MouseEvent) => {
-            event.preventDefault()
-
-            // Convert canvas-relative coords → image pixel coords (archive pattern)
-            const rect = overlayCanvas.getBoundingClientRect()
-            const x = event.clientX - rect.left
-            const y = event.clientY - rect.top
-            const imageCoords = viewer.viewport.viewerElementToImageCoordinates(
-                new (OpenSeadragon as any).Point(x, y)
-            )
-            const point = new paperScope.Point(imageCoords.x, imageCoords.y)
-
-            // Use bounds-based hit detection — paper.js project.hitTest is unreliable
-            // here because items have near-transparent fills and the project traversal
-            // has quirks. Iterating labelItemsRef with bounds.contains() is direct and reliable.
-            let hitItem: any = null
-            let itemIdx = -1
-            for (let i = labelItemsRef.current.length - 1; i >= 0; i--) {
-                const it = labelItemsRef.current[i]
-                if (it?.bounds?.contains(point)) {
-                    hitItem = it
-                    itemIdx = i
-                    break
-                }
-            }
-            if (itemIdx < 0) { setContextMenu(null); return }
-
-            setContextMenu({ x: event.clientX, y: event.clientY, itemIdx, item: hitItem })
-        }
-
-        overlayCanvas.addEventListener('contextmenu', handleContextMenu)
-        return () => overlayCanvas.removeEventListener('contextmenu', handleContextMenu)
-    }, [toolkit, workflowMode])
-
     // Dismiss context menu on click-outside or Escape
     useEffect(() => {
         if (!contextMenu) return
@@ -1017,6 +1419,9 @@ export function AnnotationEditor({
         }
     }, [contextMenu])
 
+    useEffect(() => { activeLabelItemIdxRef.current = activeLabelItemIdx }, [activeLabelItemIdx])
+    useEffect(() => { hoveredLabelItemIdxRef.current = hoveredLabelItemIdx }, [hoveredLabelItemIdx])
+
     // Helper: given an item's index in labelItemsRef, find its index in localDocument.elements
     const findLabelDocIndex = useCallback((itemIdx: number): number => {
         if (!localDocument) return -1
@@ -1031,18 +1436,32 @@ export function AnnotationEditor({
         return -1
     }, [localDocument, config.annotationTypes])
 
-    const handleContextMenuChangeType = useCallback((typeIndex: number) => {
-        if (!contextMenu) return
-        const { itemIdx, item } = contextMenu
+    const resolveLabelItemIdxAtClientPoint = useCallback((clientX: number, clientY: number): number => {
+        if (!toolkit) return -1
+        const viewer = (toolkit as any).viewer
+        const paperScope = (toolkit as any).paperScope
+        const overlayCanvas: HTMLElement | undefined = (toolkit as any).overlay?.canvas()
+        if (!viewer || !paperScope || !overlayCanvas) return -1
+
+        const rect = overlayCanvas.getBoundingClientRect()
+        const x = clientX - rect.left
+        const y = clientY - rect.top
+        const imageCoords = viewer.viewport.viewerElementToImageCoordinates(
+            new (OpenSeadragon as any).Point(x, y),
+        )
+        const point = new paperScope.Point(imageCoords.x, imageCoords.y)
+        return findTopmostLabelItemIdxAtImagePoint(labelItemsRef.current, point)
+    }, [toolkit])
+
+    const changeLabelTypeByItemIdx = useCallback((itemIdx: number, typeIndex: number) => {
+        const item = labelItemsRef.current[itemIdx]
         const annotationType = config.annotationTypes[typeIndex]
-        if (!annotationType) return
+        if (!item || !annotationType) return
 
         const docIdx = findLabelDocIndex(itemIdx)
-        if (docIdx < 0) { setContextMenu(null); return }
+        if (docIdx < 0) return
 
         try { item.strokeColor = normalizeCssColor(annotationType.color) } catch { /* ignore */ }
-
-        // Sync the toolbar type dropdown regardless of which mode triggered this
         setSelectedTypeIndex(typeIndex)
 
         setLocalDocument(prev => {
@@ -1057,31 +1476,144 @@ export function AnnotationEditor({
             }
             return { ...prev, elements }
         })
-        setContextMenu(null)
-    }, [contextMenu, config.annotationTypes, findLabelDocIndex])
+    }, [config.annotationTypes, findLabelDocIndex])
 
-    const handleContextMenuEditShape = useCallback(() => {
-        if (!contextMenu || !toolkit) return
-        const { itemIdx, item } = contextMenu
+    const startEditLabelByItemIdx = useCallback((itemIdx: number) => {
+        if (!toolkit) return
+        const item = labelItemsRef.current[itemIdx]
+        if (!item) return
+
         const docIdx = findLabelDocIndex(itemIdx)
-        if (docIdx < 0) { setContextMenu(null); return }
+        if (docIdx < 0) return
 
         const rect = item.children?.[0] || item
         const originalSegments = rect.segments?.map((s: any) => ({ x: s.point.x, y: s.point.y })) ?? []
         editingLabelRef.current = { item, docElementIndex: docIdx, originalSegments }
         setIsEditingLabel(true)
-        setContextMenu(null)
+        setHoveredLabelItemIdx(-1)
+        setHoveredLabelPointer(null)
+        setActiveLabelItemIdx(itemIdx)
 
         item.select()
         const rectTool = (toolkit as any).getTool('rectangle')
         if (rectTool) rectTool.activate()
-    }, [contextMenu, toolkit, findLabelDocIndex])
+    }, [toolkit, findLabelDocIndex])
 
-    const handleContextMenuDelete = useCallback(() => {
-        if (!contextMenu) return
-        const { itemIdx, item } = contextMenu
+    useEffect(() => { startEditLabelByItemIdxRef.current = startEditLabelByItemIdx }, [startEditLabelByItemIdx])
+
+    const handleSelectedTypeIndexChange = useCallback((typeIndex: number) => {
+        setSelectedTypeIndex(typeIndex)
+        if (
+            workflowModeRef.current === 'add-labels'
+            && !editingLabelRef.current
+            && hoveredLabelItemIdxRef.current >= 0
+        ) {
+            changeLabelTypeByItemIdx(hoveredLabelItemIdxRef.current, typeIndex)
+        }
+    }, [changeLabelTypeByItemIdx])
+
+    // ── Right-click context menu for label items (add-labels + review mode) ─
+    useEffect(() => {
+        if (!toolkit || (workflowMode !== 'add-labels' && workflowMode !== 'review')) return
+        const overlayCanvas: HTMLElement | undefined = (toolkit as any).overlay?.canvas()
+        if (!overlayCanvas) return
+
+        const handleContextMenu = (event: MouseEvent) => {
+            event.preventDefault()
+
+            const itemIdx = resolveLabelItemIdxAtClientPoint(event.clientX, event.clientY)
+            if (itemIdx < 0) { setContextMenu(null); return }
+
+            const hitItem = labelItemsRef.current[itemIdx]
+            if (!hitItem) { setContextMenu(null); return }
+
+            setActiveLabelItemIdx(itemIdx)
+            setContextMenu({ x: event.clientX, y: event.clientY, itemIdx, item: hitItem })
+        }
+
+        overlayCanvas.addEventListener('contextmenu', handleContextMenu)
+        return () => overlayCanvas.removeEventListener('contextmenu', handleContextMenu)
+    }, [toolkit, workflowMode, resolveLabelItemIdxAtClientPoint])
+
+    // ── Add-labels hover: select existing boxes for edit / delete / reclassify ─
+    useEffect(() => {
+        if (!toolkit || workflowMode !== 'add-labels' || isEditingLabel) {
+            setHoveredLabelItemIdx(-1)
+            setHoveredLabelPointer(null)
+            return
+        }
+        const overlayCanvas: HTMLElement | undefined = (toolkit as any).overlay?.canvas()
+        if (!overlayCanvas) return
+
+        const syncHoverAt = (clientX: number, clientY: number) => {
+            const itemIdx = resolveLabelItemIdxAtClientPoint(clientX, clientY)
+            if (itemIdx < 0) {
+                setHoveredLabelItemIdx(-1)
+                setHoveredLabelPointer(null)
+                return
+            }
+            setHoveredLabelItemIdx(itemIdx)
+            setActiveLabelItemIdx(itemIdx)
+            setHoveredLabelPointer({ x: clientX, y: clientY })
+            const docIdx = findLabelDocIndex(itemIdx)
+            const group = docIdx >= 0 ? localDocumentRef.current?.elements[docIdx]?.group : undefined
+            if (group) {
+                const typeIdx = config.annotationTypes.findIndex(t => t.name === group)
+                if (typeIdx >= 0 && typeIdx !== selectedTypeIndexRef.current) {
+                    setSelectedTypeIndex(typeIdx)
+                }
+            }
+        }
+
+        const handleMouseMove = (event: MouseEvent) => {
+            syncHoverAt(event.clientX, event.clientY)
+        }
+
+        const handleMouseLeave = () => {
+            setHoveredLabelItemIdx(-1)
+            setHoveredLabelPointer(null)
+        }
+
+        const handleMouseDownCapture = (event: MouseEvent) => {
+            if (event.button !== 0 || !addLabelsDrawingEnabledRef.current) return
+            const itemIdx = resolveLabelItemIdxAtClientPoint(event.clientX, event.clientY)
+            if (itemIdx < 0) return
+            setActiveLabelItemIdx(itemIdx)
+            setHoveredLabelItemIdx(itemIdx)
+            setHoveredLabelPointer({ x: event.clientX, y: event.clientY })
+            event.stopPropagation()
+            event.preventDefault()
+        }
+
+        overlayCanvas.addEventListener('mousemove', handleMouseMove)
+        overlayCanvas.addEventListener('mouseleave', handleMouseLeave)
+        overlayCanvas.addEventListener('mousedown', handleMouseDownCapture, true)
+        return () => {
+            overlayCanvas.removeEventListener('mousemove', handleMouseMove)
+            overlayCanvas.removeEventListener('mouseleave', handleMouseLeave)
+            overlayCanvas.removeEventListener('mousedown', handleMouseDownCapture, true)
+            setHoveredLabelItemIdx(-1)
+            setHoveredLabelPointer(null)
+        }
+    }, [
+        toolkit,
+        workflowMode,
+        isEditingLabel,
+        resolveLabelItemIdxAtClientPoint,
+        findLabelDocIndex,
+        config.annotationTypes,
+    ])
+
+    const deleteLabelByItemIdx = useCallback((itemIdx: number): boolean => {
+        if (itemIdx < 0 || itemIdx >= labelItemsRef.current.length) return false
+        const item = labelItemsRef.current[itemIdx]
         const docIdx = findLabelDocIndex(itemIdx)
-        if (docIdx < 0) { setContextMenu(null); return }
+        if (docIdx < 0) return false
+
+        if (editingLabelRef.current?.item === item) {
+            editingLabelRef.current = null
+            setIsEditingLabel(false)
+        }
 
         item.remove()
         labelItemsRef.current.splice(itemIdx, 1)
@@ -1089,8 +1621,61 @@ export function AnnotationEditor({
             if (!prev) return prev
             return { ...prev, elements: prev.elements.filter((_, i) => i !== docIdx) }
         })
+        setActiveLabelItemIdx(prev => {
+            if (prev === itemIdx) return -1
+            if (prev > itemIdx) return prev - 1
+            return prev
+        })
+        setHoveredLabelItemIdx(prev => {
+            if (prev === itemIdx) {
+                setHoveredLabelPointer(null)
+                return -1
+            }
+            if (prev > itemIdx) return prev - 1
+            return prev
+        })
         setContextMenu(null)
-    }, [contextMenu, findLabelDocIndex])
+        if (workflowModeRef.current === 'add-labels') {
+            reactivateLabelDrawingRef.current()
+        }
+        return true
+    }, [findLabelDocIndex])
+
+    const deleteActiveLabel = useCallback(() => {
+        if (workflowModeRef.current !== 'add-labels') return
+
+        const editInfo = editingLabelRef.current
+        if (editInfo) {
+            const itemIdx = labelItemsRef.current.indexOf(editInfo.item)
+            if (itemIdx >= 0) deleteLabelByItemIdx(itemIdx)
+            return
+        }
+
+        const targetIdx = hoveredLabelItemIdxRef.current >= 0
+            ? hoveredLabelItemIdxRef.current
+            : activeLabelItemIdxRef.current
+        if (targetIdx < 0) return
+        deleteLabelByItemIdx(targetIdx)
+    }, [deleteLabelByItemIdx])
+
+    useEffect(() => { deleteActiveLabelRef.current = deleteActiveLabel }, [deleteActiveLabel])
+
+    const handleContextMenuChangeType = useCallback((typeIndex: number) => {
+        if (!contextMenu) return
+        changeLabelTypeByItemIdx(contextMenu.itemIdx, typeIndex)
+        setContextMenu(null)
+    }, [contextMenu, changeLabelTypeByItemIdx])
+
+    const handleContextMenuEditShape = useCallback(() => {
+        if (!contextMenu) return
+        startEditLabelByItemIdx(contextMenu.itemIdx)
+        setContextMenu(null)
+    }, [contextMenu, startEditLabelByItemIdx])
+
+    const handleContextMenuDelete = useCallback(() => {
+        if (!contextMenu) return
+        deleteLabelByItemIdx(contextMenu.itemIdx)
+    }, [contextMenu, deleteLabelByItemIdx])
 
     const finishEditingLabel = useCallback(() => {
         const editInfo = editingLabelRef.current
@@ -1135,6 +1720,9 @@ export function AnnotationEditor({
         reactivateLabelDrawingRef.current()
     }, [])
 
+    useEffect(() => { finishEditingLabelRef.current = finishEditingLabel }, [finishEditingLabel])
+    useEffect(() => { cancelEditingLabelRef.current = cancelEditingLabel }, [cancelEditingLabel])
+
     // ── Review mode: navigate to a specific item by index ────────────────
     const goToReviewItem = useCallback((idx: number) => {
         if (idx < 0 || idx >= reviewItems.length) return
@@ -1147,16 +1735,19 @@ export function AnnotationEditor({
             if (typeIdx >= 0) setSelectedTypeIndex(typeIdx)
         }
         if (!item) return
-        // Pan viewport to center on the item (archive pattern)
+        const el = localDocument?.elements[docIdx]
         const viewer = toolkitRef.current ? (toolkitRef.current as any).viewer : null
-        if (viewer && item.position) {
+        if (viewer && el) {
+            centerViewerOnElement(viewer, el, OpenSeadragon as any)
+            refreshDisplayAndSyncRoiFill(toolkitRef.current as any)
+        } else if (viewer && item.position) {
             const tiledImage = item.layer?.tiledImage
             if (tiledImage) {
                 const vp = tiledImage.imageToViewportCoordinates(item.position.x, item.position.y)
                 viewer.viewport.panTo(vp, true)
             }
         }
-    }, [reviewItems, localDocument, config.annotationTypes])
+    }, [reviewItems, localDocument, config.annotationTypes, refreshDisplayAndSyncRoiFill])
 
     // Auto-select first item when entering review mode or switching ROIs
     useEffect(() => {
@@ -1194,6 +1785,9 @@ export function AnnotationEditor({
         goToReviewItem(cur < 0 ? reviewItems.length - 1 : (cur - 1 + reviewItems.length) % reviewItems.length)
     }, [reviewItems, goToReviewItem])
 
+    useEffect(() => { reviewNextItemRef.current = reviewNextItem }, [reviewNextItem])
+    useEffect(() => { reviewPreviousItemRef.current = reviewPreviousItem }, [reviewPreviousItem])
+
     const startReviewEditShape = useCallback(() => {
         if (!toolkit || reviewItemIndex < 0 || reviewItemIndex >= reviewItems.length) return
         const { item, docIdx } = reviewItems[reviewItemIndex]
@@ -1206,6 +1800,8 @@ export function AnnotationEditor({
         const rectTool = (toolkit as any).getTool('rectangle')
         if (rectTool) rectTool.activate()
     }, [toolkit, reviewItemIndex, reviewItems])
+
+    useEffect(() => { startReviewEditShapeRef.current = startReviewEditShape }, [startReviewEditShape])
 
     const changeReviewItemType = useCallback((typeIndex: number) => {
         if (reviewItemIndexRef.current < 0 || reviewItemIndexRef.current >= reviewItems.length) return
@@ -1230,101 +1826,47 @@ export function AnnotationEditor({
 
     useEffect(() => { changeReviewItemTypeRef.current = changeReviewItemType }, [changeReviewItemType])
 
-    // ── Review mode hotkeys (reviewNext / reviewPrevious from config) ─────
-    useEffect(() => {
-        if (workflowMode !== 'review') return
-        const hotkeys = config.hotkeys ?? {}
-        const nextKey = (hotkeys.reviewNext ?? 'm').toLowerCase()
-        const prevKey = (hotkeys.reviewPrevious ?? 'n').toLowerCase()
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const tag = (e.target as HTMLElement)?.tagName?.toUpperCase()
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-            if (e.key.toLowerCase() === nextKey || e.key === 'ArrowRight') { e.preventDefault(); reviewNextItem() }
-            else if (e.key.toLowerCase() === prevKey || e.key === 'ArrowLeft') { e.preventDefault(); reviewPreviousItem() }
-        }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [workflowMode, config.hotkeys, reviewNextItem, reviewPreviousItem])
-
-    // ── Save localDocument to DSA or export GeoJSON ───────────────────────
-    const saveAnnotation = useCallback(async () => {
-        // Always set saving immediately so the button disables visually
-        setSaveStatus('saving')
-
-        if (!localDocument) {
-            setSaveStatus('error')
-            notify('error', 'Nothing to save — add some ROIs first.', 3000)
-            setTimeout(() => setSaveStatus('idle'), 3000)
-            return
-        }
-        if (geoJsonExportMode) {
-            if (!onGeoJsonExport) {
-                setSaveStatus('error')
-                notify('error', 'onGeoJsonExport is not set — cannot export.', 3000)
-                setTimeout(() => setSaveStatus('idle'), 3000)
-                return
+    // ── Persist localDocument to DSA ──────────────────────────────────────
+    const persistLocalDocument = useCallback(
+        async (doc: LocalAnnotationDocument): Promise<void> => {
+            if (!apiBaseUrl) {
+                throw new Error('No API base URL configured — cannot save.')
             }
-            try {
-                const collection = localDocumentToFeatureCollection(localDocument)
-                onGeoJsonExport(collection)
-                setSaveStatus('saved')
-                notify('success', 'GeoJSON exported.', 2500)
-                setTimeout(() => setSaveStatus('idle'), 2500)
-            } catch (err) {
-                console.error('[AnnotationEditor] GeoJSON export failed:', err)
-                setSaveStatus('error')
-                notify('error', 'Failed to build GeoJSON export.', 4000)
-                setTimeout(() => setSaveStatus('idle'), 4000)
+            const itemId = resolveItemId(imageInfo)
+            if (!itemId) {
+                throw new Error('Cannot determine item ID from imageInfo — cannot save.')
             }
-            return
-        }
-        if (!apiBaseUrl) {
-            setSaveStatus('error')
-            notify('error', 'No API base URL configured — cannot save.', 3000)
-            setTimeout(() => setSaveStatus('idle'), 3000)
-            return
-        }
-        const itemId = resolveItemId(imageInfo)
-        if (!itemId) {
-            setSaveStatus('error')
-            notify('error', 'Cannot determine item ID from imageInfo — cannot save.', 3000)
-            setTimeout(() => setSaveStatus('idle'), 3000)
-            return
-        }
 
-        // Build headers
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-        if (apiHeaders) {
-            const entries =
-                apiHeaders instanceof Headers
-                    ? Array.from(apiHeaders.entries())
-                    : Object.entries(apiHeaders as Record<string, string>)
-            entries.forEach(([k, v]) => { headers[k] = v })
-        }
-        if (authToken) headers['Girder-Token'] = authToken
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+            if (apiHeaders) {
+                const entries =
+                    apiHeaders instanceof Headers
+                        ? Array.from(apiHeaders.entries())
+                        : Object.entries(apiHeaders as Record<string, string>)
+                entries.forEach(([k, v]) => {
+                    headers[k] = v
+                })
+            }
+            if (authToken) headers['Girder-Token'] = authToken
 
-        // The annotation object sent in both calls (no wrapper for PUT, wrapped for POST).
-        // Foreign elements (unrecognized group names) are appended verbatim so they
-        // are never lost when this app saves back to DSA.
-        const annotationObject = {
-            name: localDocument.name,
-            description: localDocument.description,
-            elements: [...localDocument.elements, ...foreignElementsRef.current],
-        }
+            const annotationObject = {
+                name: doc.name,
+                description: doc.description,
+                elements: [...doc.elements, ...foreignElementsRef.current],
+                ...(config.documentAttributes ? { attributes: config.documentAttributes } : {}),
+            }
 
-        const doFetch = fetchFn ?? fetch
+            const doFetch = fetchFn ?? fetch
+            const existingId = annotationDocumentIdRef.current
 
-        try {
             let res: Response
-            if (annotationDocumentId) {
-                // PUT expects the annotation object directly (no { annotation: ... } wrapper)
-                res = await doFetch(`${apiBaseUrl}/annotation/${annotationDocumentId}`, {
+            if (existingId) {
+                res = await doFetch(`${apiBaseUrl}/annotation/${existingId}`, {
                     method: 'PUT',
                     headers,
                     body: JSON.stringify(annotationObject),
                 })
             } else {
-                // POST expects an array of annotation objects (or full model records)
                 res = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, {
                     method: 'POST',
                     headers,
@@ -1335,65 +1877,363 @@ export function AnnotationEditor({
             if (!res.ok) {
                 let detail = `${res.status} ${res.statusText}`
                 try {
-                    const body = await res.json() as Record<string, unknown>
+                    const body = (await res.json()) as Record<string, unknown>
                     if (body.message) detail += `: ${body.message}`
                     else detail += `\n${JSON.stringify(body)}`
-                } catch { /* body not JSON */ }
+                } catch {
+                    /* body not JSON */
+                }
                 console.error('[AnnotationEditor] Save failed —', detail, '\nPayload:', annotationObject)
                 throw Object.assign(new Error(detail), { status: res.status, statusText: res.statusText })
             }
 
-            // On first save, capture the returned _id for future PUTs
-            if (!annotationDocumentId) {
+            if (!existingId) {
                 let newId: string | undefined
                 try {
                     const saved: unknown = await res.json()
-                    // DSA may return the annotation as a single object or an array
                     const candidate = Array.isArray(saved) ? (saved[0] as any) : (saved as any)
                     newId = candidate?._id ?? candidate?.annotation?._id
-                } catch { /* body not JSON or already consumed */ }
+                } catch {
+                    /* body not JSON or already consumed */
+                }
 
-                // Fallback: re-list annotations and find by document name
                 if (!newId) {
                     try {
                         const listRes = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, { headers })
                         if (listRes.ok) {
                             const list: any[] = await listRes.json()
-                            const match = list.find((a: any) => a.annotation?.name === localDocument.name)
+                            const match = list.find((a: any) => a.annotation?.name === doc.name)
                             newId = match?._id
                         }
-                    } catch { /* ignore */ }
+                    } catch {
+                        /* ignore */
+                    }
                 }
 
                 if (newId) setAnnotationDocumentId(newId)
             }
+        },
+        [apiBaseUrl, imageInfo, apiHeaders, authToken, fetchFn, config.documentAttributes],
+    )
 
+    // ── Save localDocument to DSA or export GeoJSON ───────────────────────
+    const performSave = useCallback(async (options?: { silent?: boolean }): Promise<boolean> => {
+        if (saveInFlightRef.current) {
+            pendingSaveRef.current = true
+            return false
+        }
+
+        const doc = localDocumentRef.current
+        if (!doc) {
+            if (!options?.silent) {
+                setSaveStatus('error')
+                notify('error', 'Nothing to save — add some ROIs first.', 3000)
+                setTimeout(() => setSaveStatus('idle'), 3000)
+            }
+            return false
+        }
+
+        saveInFlightRef.current = true
+        setSaveStatus('saving')
+
+        const finish = async (): Promise<boolean> => {
+            saveInFlightRef.current = false
+            if (pendingSaveRef.current) {
+                pendingSaveRef.current = false
+                return performSaveRef.current({ silent: true })
+            }
+            return true
+        }
+
+        if (geoJsonExportMode) {
+            if (!onGeoJsonExport) {
+                setSaveStatus('error')
+                if (!options?.silent) {
+                    notify('error', 'onGeoJsonExport is not set — cannot export.', 3000)
+                    setTimeout(() => setSaveStatus('idle'), 3000)
+                }
+                await finish()
+                return false
+            }
+            try {
+                const collection = localDocumentToFeatureCollection(doc)
+                onGeoJsonExport(collection)
+                savedSnapshotRef.current = documentElementsSnapshot(doc)
+                documentDirtyRef.current = false
+                setSaveDirty(false)
+                setSaveStatus('saved')
+                if (!options?.silent) {
+                    notify('success', 'GeoJSON exported.', 2500)
+                }
+                onAnnotationSaved?.()
+                setTimeout(() => setSaveStatus('idle'), 2500)
+                await finish()
+                return true
+            } catch (err) {
+                console.error('[AnnotationEditor] GeoJSON export failed:', err)
+                setSaveStatus('error')
+                notify('error', 'Failed to build GeoJSON export.', 4000)
+                setTimeout(() => setSaveStatus('idle'), 4000)
+                await finish()
+                return false
+            }
+        }
+
+        try {
+            await persistLocalDocument(doc)
+            savedSnapshotRef.current = documentElementsSnapshot(doc)
+            documentDirtyRef.current = false
+            setSaveDirty(false)
             setSaveStatus('saved')
-            notify('success', 'Annotation saved successfully.', 2500)
+            if (!options?.silent) {
+                notify('success', 'Annotation saved successfully.', 2500)
+            }
+            onAnnotationSaved?.()
             setTimeout(() => setSaveStatus('idle'), 2500)
+            await finish()
+            return true
         } catch (err) {
             const apiErr = createApiError(err)
             setSaveStatus('error')
             notify('error', `Save failed: ${apiErr.message}`, 4000)
-            onApiError?.(apiErr, () => { void saveAnnotation() }, {
-                operation: annotationDocumentId ? 'update' : 'create',
+            onApiError?.(apiErr, () => { void performSave({ silent: false }) }, {
+                operation: annotationDocumentIdRef.current ? 'update' : 'create',
                 endpoint: apiBaseUrl,
             })
             setTimeout(() => setSaveStatus('idle'), 4000)
+            await finish()
+            return false
         }
     }, [
-        localDocument,
         geoJsonExportMode,
         onGeoJsonExport,
         apiBaseUrl,
-        imageInfo,
-        apiHeaders,
-        authToken,
-        fetchFn,
-        annotationDocumentId,
         onApiError,
+        onAnnotationSaved,
         notify,
+        persistLocalDocument,
     ])
+
+    const saveAnnotation = useCallback(async () => {
+        await performSave({ silent: false })
+    }, [performSave])
+
+    useEffect(() => { performSaveRef.current = performSave }, [performSave])
+
+    useEffect(() => {
+        return () => {
+            if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current)
+                autoSaveTimerRef.current = null
+            }
+            if (
+                autoSaveSettings.saveOnUnmount
+                && autoSaveSettings.enabled
+                && documentDirtyRef.current
+                && annotationLoadSettledRef.current
+            ) {
+                void performSaveRef.current({ silent: true })
+            }
+        }
+    }, [autoSaveSettings.enabled, autoSaveSettings.saveOnUnmount])
+
+    const clearAllAnnotations = useCallback(
+        async (options?: { saveToDsa?: boolean }) => {
+            const doc = localDocumentRef.current
+            const hasDocElements = Boolean(doc && doc.elements.length > 0)
+            const hasCanvasItems =
+                roiItemsRef.current.length > 0 || labelItemsRef.current.length > 0
+            const hasPending = pendingRoiItemRef.current != null
+            if (!hasDocElements && !hasCanvasItems && !hasPending) {
+                notify('error', 'Nothing to clear — no ROIs or labels on this slide.', 2500)
+                return 'empty' as const
+            }
+
+            const saveToDsa = options?.saveToDsa !== false
+            const confirmMessage = saveToDsa
+                ? 'Clear all ROIs and detection labels on this slide and save the empty document to DSA?'
+                : 'Clear all ROIs and detection labels on this slide?'
+            if (!window.confirm(confirmMessage)) return 'cancelled' as const
+
+            cancelPendingRoi()
+            setContextMenu(null)
+            setIsEditingLabel(false)
+            editingLabelRef.current = null
+            addLabelsActiveRef.current = false
+
+            if (toolkit) {
+                loadLocalElementsOntoAnnotationToolkit(
+                    toolkit as any,
+                    config,
+                    [],
+                    roiItemsRef,
+                    labelItemsRef,
+                    { clear: true },
+                )
+                refreshDisplayAndSyncRoiFill(toolkit as any)
+            }
+
+            const emptyDoc: LocalAnnotationDocument = doc
+                ? { ...doc, elements: [] }
+                : {
+                      name: config.annotationDocumentName,
+                      description: config.annotationDescription ?? '',
+                      elements: [],
+                  }
+
+            setLocalDocument(emptyDoc)
+            localDocumentRef.current = emptyDoc
+            roiItemsRef.current = []
+            labelItemsRef.current = []
+            setActiveLabelItemIdx(-1)
+            setSelectedRoiIndex(-1)
+            setReviewItemIndex(-1)
+            setActiveMode(null)
+            setWorkflowMode('edit-rois')
+
+            if (saveToDsa && apiBaseUrl && !geoJsonExportMode) {
+                setSaveStatus('saving')
+                try {
+                    await persistLocalDocument(emptyDoc)
+                    savedSnapshotRef.current = documentElementsSnapshot(emptyDoc)
+                    documentDirtyRef.current = false
+                    setSaveDirty(false)
+                    setSaveStatus('saved')
+                    notify('success', 'Cleared all ROIs and labels and saved to DSA.', 3000)
+                    onAnnotationSaved?.()
+                    setTimeout(() => setSaveStatus('idle'), 2500)
+                    return 'cleared' as const
+                } catch (err) {
+                    const apiErr = createApiError(err)
+                    setSaveStatus('error')
+                    notify('error', `Cleared canvas but save failed: ${apiErr.message}`, 5000)
+                    onApiError?.(apiErr, () => { void clearAllAnnotations(options) }, {
+                        operation: annotationDocumentIdRef.current ? 'update' : 'create',
+                        endpoint: apiBaseUrl,
+                    })
+                    setTimeout(() => setSaveStatus('idle'), 4000)
+                    return 'error' as const
+                }
+            } else {
+                notify('success', 'Cleared all ROIs and labels.', 2500)
+                return 'cleared' as const
+            }
+        },
+        [apiBaseUrl, cancelPendingRoi, config, geoJsonExportMode, notify, onAnnotationSaved, onApiError, persistLocalDocument, toolkit],
+    )
+
+    const getViewerImageSize = useCallback((): { w: number; h: number } | null => {
+        const viewer = (toolkit as { viewer?: { world: { getItemAt: (i: number) => { getContentSize: () => { x: number; y: number } } | null } } } | null)?.viewer
+        if (!viewer) return null
+        const tiled = viewer.world.getItemAt(0)
+        if (!tiled) return null
+        const sz = tiled.getContentSize()
+        if (!sz || sz.x <= 0 || sz.y <= 0) return null
+        return { w: sz.x, h: sz.y }
+    }, [toolkit])
+
+    const findRoiElementAtIndex = useCallback((roiIndexInDoc: number) => {
+        const doc = localDocumentRef.current
+        if (!doc) return null
+        let roiCount = 0
+        for (let i = 0; i < doc.elements.length; i++) {
+            const el = doc.elements[i]
+            if (el.group !== 'ROI') continue
+            if (roiCount === roiIndexInDoc) return { el, docIdx: i }
+            roiCount++
+        }
+        return null
+    }, [])
+
+    const resolveActiveRoiEntry = useCallback(() => {
+        if (selectedRoiIndex >= 0 && rois[selectedRoiIndex]) return rois[selectedRoiIndex]
+        if (rois.length > 0) return rois[0]
+        return null
+    }, [selectedRoiIndex, rois])
+
+    const getActiveRoiBounds = useCallback((): RoiImageBounds | null => {
+        const entry = resolveActiveRoiEntry()
+        if (!entry) return null
+        const found = findRoiElementAtIndex(entry.roiIndex)
+        if (!found) return null
+        return elementToRoiBounds(found.el)
+    }, [resolveActiveRoiEntry, findRoiElementAtIndex])
+
+    const getActiveRoiGroundTruthBoxes = useCallback(() => {
+        const entry = resolveActiveRoiEntry()
+        if (!entry || !localDocumentRef.current) return []
+        const roiLabel = entry.label
+        const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+        const out: GroundTruthBox[] = []
+        for (const el of localDocumentRef.current.elements) {
+            if (!knownTypeNames.has(el.group)) continue
+            if (el.user?.roiLabel !== roiLabel) continue
+            const bounds = elementToRoiBounds(el)
+            out.push({ className: el.group, ...bounds })
+        }
+        return out
+    }, [resolveActiveRoiEntry, config.annotationTypes])
+
+    const applyRoiTopLeft = useCallback((roiIndexInDoc: number, left: number, top: number): boolean => {
+        const img = getViewerImageSize()
+        const found = findRoiElementAtIndex(roiIndexInDoc)
+        if (!found || !img) return false
+        const { el, docIdx } = found
+        const clamped = clampRoiTopLeft(left, top, el.width, el.height, img.w, img.h)
+        const prev = elementToRoiBounds(el)
+        const dx = clamped.left - prev.left
+        const dy = clamped.top - prev.top
+        if (dx === 0 && dy === 0) return false
+
+        setLocalDocument(prevDoc => {
+            if (!prevDoc) return prevDoc
+            const elements = [...prevDoc.elements]
+            const current = elements[docIdx]
+            elements[docIdx] = {
+                ...current,
+                center: [
+                    Math.round(clamped.left + current.width / 2),
+                    Math.round(clamped.top + current.height / 2),
+                    current.center[2] ?? 0,
+                ],
+            }
+            return { ...prevDoc, elements }
+        })
+
+        translatePaperRoiItem(roiItemsRef.current[roiIndexInDoc] ?? null, dx, dy)
+
+        if (workflowModeRef.current === 'add-labels' && addLabelsDrawingEnabledRef.current) {
+            setTimeout(() => reactivateLabelDrawingRef.current(), 0)
+        }
+        return true
+    }, [findRoiElementAtIndex, getViewerImageSize])
+
+    const nudgeSelectedRoi = useCallback((dx: number, dy: number): boolean => {
+        const entry = resolveActiveRoiEntry()
+        if (!entry) return false
+        const found = findRoiElementAtIndex(entry.roiIndex)
+        if (!found) return false
+        const prev = elementToRoiBounds(found.el)
+        return applyRoiTopLeft(entry.roiIndex, prev.left + dx, prev.top + dy)
+    }, [resolveActiveRoiEntry, findRoiElementAtIndex, applyRoiTopLeft])
+
+    const setSelectedRoiTopLeft = useCallback((left: number, top: number): boolean => {
+        const entry = resolveActiveRoiEntry()
+        if (!entry) return false
+        return applyRoiTopLeft(entry.roiIndex, left, top)
+    }, [resolveActiveRoiEntry, applyRoiTopLeft])
+
+    useImperativeHandle(
+        ref,
+        () => ({
+            clearAllAnnotations,
+            getActiveRoiBounds,
+            getActiveRoiGroundTruthBoxes,
+            nudgeSelectedRoi,
+            setSelectedRoiTopLeft,
+        }),
+        [clearAllAnnotations, getActiveRoiBounds, getActiveRoiGroundTruthBoxes, nudgeSelectedRoi, setSelectedRoiTopLeft],
+    )
 
     // ── Activate / deactivate RectangleTool based on mode ────────────────
     useEffect(() => {
@@ -1419,7 +2259,7 @@ export function AnnotationEditor({
         const roi = config.roiSettings ?? {}
         const roiStyle = {
             strokeColor: normalizeCssColor(roi.color ?? '#ffa500'),
-            fillOpacity: roi.fillOpacity ?? 0.05,
+            fillOpacity: effectiveRoiFillOpacity(roiFillVisible, roi),
             rescale: { strokeWidth: roi.strokeWidth ?? 2 },
         }
 
@@ -1440,11 +2280,8 @@ export function AnnotationEditor({
                     innerPath.segments[2].point.set(left + fixedWidth, top + fixedHeight)
                     innerPath.segments[3].point.set(left, top + fixedHeight)
                 }
-                const labelBase = roi.label ?? 'roi'
-                pendingSelectLabelRef.current = computeNextRoiLabel(
-                    localDocumentRef.current?.elements ?? [],
-                    labelBase
-                )
+                pendingSelectRoiIndexRef.current =
+                    localDocumentRef.current?.elements.filter(e => e.group === 'ROI').length ?? 0
                 addRoiRef.current(left, top, fixedWidth, fixedHeight)
                 roiItemsRef.current.push(item)
                 pendingRoiItemRef.current = null
@@ -1464,15 +2301,15 @@ export function AnnotationEditor({
             // Intentionally NOT activating defaultTool here: when transitioning
             // to 'drawing-roi' we keep the rect tool alive for move/resize.
         }
-    }, [toolkit, activeMode, workflowMode, config, fixedSizeEnabled, fixedWidth, fixedHeight])
+    }, [toolkit, activeMode, workflowMode, config, fixedSizeEnabled, fixedWidth, fixedHeight, roiFillVisible])
 
     // ── Auto-select the newly finished ROI in the dropdown ───────────────
     useEffect(() => {
-        if (!pendingSelectLabelRef.current) return
-        const idx = rois.findIndex(r => r.label === pendingSelectLabelRef.current)
+        if (pendingSelectRoiIndexRef.current == null) return
+        const idx = rois.findIndex(r => r.roiIndex === pendingSelectRoiIndexRef.current)
         if (idx >= 0) {
             setSelectedRoiIndex(idx)
-            pendingSelectLabelRef.current = null
+            pendingSelectRoiIndexRef.current = null
         }
     }, [rois])
 
@@ -1527,10 +2364,11 @@ export function AnnotationEditor({
                         zoomToRoiByIndex(roi.roiIndex)
                         // Reactivate the drawing loop after panning so the tool
                         // is ready to draw in the new ROI immediately.
-                        if (workflowMode === 'add-labels') {
+                        if (workflowMode === 'add-labels' && addLabelsDrawingEnabledRef.current) {
                             reactivateLabelDrawingRef.current()
                         }
                     }
+                    syncAllRoiFillVisibility()
                 }
             }
         } else {
@@ -1539,7 +2377,7 @@ export function AnnotationEditor({
                 if (item) item.deselect(true)
             })
         }
-    }, [toolkit, selectedRoiIndex, activeMode, workflowMode, rois, zoomToRoiByIndex])
+    }, [toolkit, selectedRoiIndex, activeMode, workflowMode, rois, zoomToRoiByIndex, syncAllRoiFillVisibility])
 
     // ── Sync markComplete checkbox from the selected ROI's user data ──────
     useEffect(() => {
@@ -1590,14 +2428,60 @@ export function AnnotationEditor({
         })
     }, [selectedRoiIndex, rois, config])
 
+    const labelHoverActions = useMemo(() => {
+        if (
+            !showLabelHoverPanel
+            || workflowMode !== 'add-labels'
+            || isEditingLabel
+            || hoveredLabelItemIdx < 0
+            || !hoveredLabelPointer
+        ) {
+            return null
+        }
+        const docIdx = findLabelDocIndex(hoveredLabelItemIdx)
+        const el = docIdx >= 0 ? localDocument?.elements[docIdx] : undefined
+        const group = el?.group
+        const typeIndex = group
+            ? Math.max(0, config.annotationTypes.findIndex(t => t.name === group))
+            : selectedTypeIndex
+        return {
+            x: hoveredLabelPointer.x,
+            y: hoveredLabelPointer.y,
+            itemIdx: hoveredLabelItemIdx,
+            typeIndex: typeIndex >= 0 ? typeIndex : 0,
+            labelName: el?.label?.value ?? group ?? 'Label',
+            onTypeChange: (nextTypeIndex: number) => {
+                changeLabelTypeByItemIdx(hoveredLabelItemIdx, nextTypeIndex)
+            },
+            onEditShape: () => startEditLabelByItemIdx(hoveredLabelItemIdx),
+            onDelete: () => deleteLabelByItemIdx(hoveredLabelItemIdx),
+        }
+    }, [
+        showLabelHoverPanel,
+        workflowMode,
+        isEditingLabel,
+        hoveredLabelItemIdx,
+        hoveredLabelPointer,
+        findLabelDocIndex,
+        localDocument,
+        config.annotationTypes,
+        selectedTypeIndex,
+        changeLabelTypeByItemIdx,
+        startEditLabelByItemIdx,
+        deleteLabelByItemIdx,
+    ])
+
     return (
         <div className={`annotation-editor ${className}`} style={style}>
             <AnnotationEditorToolbar
                 rois={rois}
+                detectionCount={filterCounts.total}
                 selectedRoiIndex={selectedRoiIndex}
                 setSelectedRoiIndex={setSelectedRoiIndex}
                 markComplete={markComplete}
                 setMarkComplete={handleMarkComplete}
+                roiFillVisible={roiFillVisible}
+                setRoiFillVisible={setRoiFillVisible}
                 roiCompletedCount={roiCompletedCount}
                 roiTotal={rois.length}
                 workflowMode={workflowMode}
@@ -1605,11 +2489,18 @@ export function AnnotationEditor({
                 isEditingLabel={isEditingLabel}
                 finishEditingLabel={finishEditingLabel}
                 cancelEditingLabel={cancelEditingLabel}
+                deleteActiveLabel={deleteActiveLabel}
+                canDeleteActiveLabel={isEditingLabel || hoveredLabelItemIdx >= 0 || activeLabelItemIdx >= 0}
                 labelFixedSizeEnabled={labelFixedSizeEnabled}
                 setLabelFixedSizeEnabled={setLabelFixedSizeEnabled}
+                addLabelsDrawingEnabled={addLabelsDrawingEnabled}
+                setAddLabelsDrawingEnabled={setAddLabelsDrawingEnabled}
+                drawToggleHotkey={(config.hotkeys?.insertBox ?? 't').toUpperCase()}
+                finishShapeEditHotkey={(config.hotkeys?.finishShapeEdit ?? 'f').toUpperCase()}
+                editLabelShapeHotkey={(config.hotkeys?.editLabelShape ?? 'e').toUpperCase()}
                 annotationTypes={annotationTypes}
                 selectedTypeIndex={selectedTypeIndex}
-                setSelectedTypeIndex={setSelectedTypeIndex}
+                setSelectedTypeIndex={handleSelectedTypeIndexChange}
                 activeMode={activeMode}
                 setActiveMode={setActiveMode}
                 fixedSizeEnabled={fixedSizeEnabled}
@@ -1629,6 +2520,7 @@ export function AnnotationEditor({
                 reviewSelectedTypeIndex={selectedTypeIndex}
                 onReviewTypeChange={changeReviewItemType}
                 startReviewEditShape={startReviewEditShape}
+                showInfoControl={showInfoControl}
                 showInfo={showInfo}
                 setShowInfo={setShowInfo}
                 confidenceThreshold={confidenceThreshold}
@@ -1637,18 +2529,26 @@ export function AnnotationEditor({
                 filterTotalCount={filterCounts.total}
                 isLoadingAnnotation={isLoadingAnnotation}
                 saveStatus={saveStatus}
+                saveDirty={saveDirty}
+                autoSaveEnabled={autoSaveSettings.enabled}
                 saveAnnotation={() => { void saveAnnotation() }}
                 canSave={
                     geoJsonExportMode
                         ? localDocument != null
                         : resolveItemId(imageInfo) !== null || localDocument !== null
                 }
-                saveIdleLabel={geoJsonExportMode ? 'Export GeoJSON' : 'Save'}
+                saveIdleLabel={
+                    autoSaveSettings.enabled
+                        ? (saveDirty ? 'Save now' : 'Saved')
+                        : (geoJsonExportMode ? 'Export GeoJSON' : 'Save')
+                }
                 saveSavingLabel={geoJsonExportMode ? 'Exporting…' : 'Saving…'}
                 saveButtonTitle={
-                    geoJsonExportMode
-                        ? 'Export the current document as GeoJSON (handled by onGeoJsonExport)'
-                        : 'Save annotations to DSA'
+                    autoSaveSettings.enabled
+                        ? 'Save now (⌘S / Ctrl+S). Changes autosave after you stop editing.'
+                        : geoJsonExportMode
+                          ? 'Export the current document as GeoJSON (handled by onGeoJsonExport)'
+                          : 'Save annotations to DSA (⌘S / Ctrl+S)'
                 }
             />
 
@@ -1668,6 +2568,9 @@ export function AnnotationEditor({
                     onToolkitReady={setToolkit}
                     onApiError={onApiError}
                     disableVisibilityCheck={disableVisibilityCheck}
+                    onViewerReady={onViewerReady}
+                    onViewportChange={onViewportChange}
+                    manageAnnotationsExternally
                 />
             </div>
 
@@ -1682,7 +2585,11 @@ export function AnnotationEditor({
                 setShowDuplicateWarning={setShowDuplicateWarning}
                 annotationDocumentName={config.annotationDocumentName}
                 hoverInfo={hoverInfo}
+                hoverInfoMode={hoverInfoMode}
+                labelHoverActions={labelHoverActions}
             />
         </div>
     )
-}
+})
+
+AnnotationEditor.displayName = 'AnnotationEditor'

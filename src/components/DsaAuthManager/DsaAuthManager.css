@@ -115,6 +115,42 @@
   transition: background-color 0.2s ease;
 }
 
+a.login-button {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dsa-external-login-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dsa-api-login-button {
+  background: transparent;
+  color: #1976d2;
+  border: 1px solid #1976d2;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dsa-auth-manager.compact .dsa-api-login-button {
+  padding: 3px 7px;
+  font-size: 0.72rem;
+}
+
+.dsa-api-login-button:hover {
+  background: rgba(25, 118, 210, 0.08);
+}
+
+
 .compact .login-button,
 .compact .logout-button {
   padding: 4px 10px;

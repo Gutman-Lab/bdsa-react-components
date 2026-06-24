@@ -81,6 +81,19 @@ describe('AnnotationEditor', () => {
         )
         expect(screen.getByTestId('slide-viewer-mock')).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Show Info' })).toBeInTheDocument()
+    })
+
+    it('hides the Show Info toggle when showInfoControl is false', () => {
+        render(
+            <AnnotationEditor
+                imageInfo={exampleImage}
+                config={exampleConfig}
+                skipDsaAnnotationLoad
+                showInfoControl={false}
+            />,
+        )
+        expect(screen.queryByRole('button', { name: 'Show Info' })).not.toBeInTheDocument()
     })
 
     it('uses Export GeoJSON label when geoJsonExportMode is on', () => {

@@ -11,6 +11,29 @@ const STORAGE_KEYS = {
   USER_INFO: 'bdsa_user_info',
 }
 
+/** Girder origin only — `DsaAuthStore` builds `${baseUrl}/api/v1/…`. */
+function normalizeGirderBaseUrl(raw: string): string {
+  return raw.trim().replace(/\/+$/, '').replace(/\/api\/v1$/i, '')
+}
+
+async function readJsonResponse(response: Response): Promise<unknown> {
+  const text = await response.text()
+  if (!text.trim()) {
+    return {}
+  }
+  const trimmed = text.trimStart()
+  if (trimmed.startsWith('<')) {
+    throw new Error(
+      'Server returned HTML instead of JSON. Use the Girder origin only (e.g. http://host:8080 or /dsa in dev — not …/api/v1).',
+    )
+  }
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    throw new Error('Invalid JSON from DSA server — check the configured base URL and proxy.')
+  }
+}
+
 class DsaAuthStore {
   private listeners: Set<DsaAuthListener> = new Set()
   private config: DsaAuthConfig
@@ -39,7 +62,14 @@ class DsaAuthStore {
   private loadConfig(): DsaAuthConfig {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.DSA_CONFIG)
-      return stored ? JSON.parse(stored) : { baseUrl: '' }
+      if (!stored) {
+        return { baseUrl: '' }
+      }
+      const parsed = JSON.parse(stored) as DsaAuthConfig
+      if (parsed.baseUrl) {
+        parsed.baseUrl = normalizeGirderBaseUrl(parsed.baseUrl)
+      }
+      return parsed
     } catch (error) {
       console.error('Error loading DSA config:', error)
       return { baseUrl: '' }
@@ -107,11 +137,24 @@ class DsaAuthStore {
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error((errorData as any).message || `Authentication failed: ${response.status}`)
+      let message = `Authentication failed: ${response.status}`
+      try {
+        const errorData = (await readJsonResponse(response)) as { message?: string }
+        if (errorData.message) {
+          message = errorData.message
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('HTML instead of JSON')) {
+          throw err
+        }
+      }
+      throw new Error(message)
     }
 
-    const authData = await response.json()
+    const authData = (await readJsonResponse(response)) as {
+      authToken?: { token?: string }
+      user?: Record<string, string | undefined>
+    }
     const girderToken = authData?.authToken?.token
     const userData = authData?.user
 
@@ -180,7 +223,7 @@ class DsaAuthStore {
   // Configuration
   updateConfig(newConfig: Partial<DsaAuthConfig>): void {
     if (newConfig.baseUrl) {
-      newConfig.baseUrl = newConfig.baseUrl.replace(/\/+$/, '')
+      newConfig.baseUrl = normalizeGirderBaseUrl(newConfig.baseUrl)
     }
     this.config = { ...this.config, ...newConfig }
     this.saveConfig()
