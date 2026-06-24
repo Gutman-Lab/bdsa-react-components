@@ -6,6 +6,8 @@ import {
     effectiveRoiFillOpacity,
     shouldBlockOpenSeadragonKey,
     isFinishShapeEditKey,
+    documentElementsSnapshot,
+    resolveAutoSaveSettings,
     centerViewerOnElement,
     clampRoiTopLeft,
     findTopmostLabelItemIdxAtImagePoint,
@@ -57,6 +59,44 @@ describe('annotation editor hotkeys', () => {
         expect(isFinishShapeEditKey('f')).toBe(true)
         expect(isFinishShapeEditKey('g', { finishShapeEdit: 'g' })).toBe(true)
         expect(isFinishShapeEditKey('x')).toBe(false)
+    })
+
+    it('resolveAutoSaveSettings applies defaults', () => {
+        expect(resolveAutoSaveSettings(false)).toEqual({
+            enabled: false,
+            debounceMs: 2500,
+            saveOnUnmount: true,
+        })
+        expect(resolveAutoSaveSettings(true)).toEqual({
+            enabled: true,
+            debounceMs: 2500,
+            saveOnUnmount: true,
+        })
+        expect(resolveAutoSaveSettings({ debounceMs: 1000, saveOnUnmount: false })).toEqual({
+            enabled: true,
+            debounceMs: 1000,
+            saveOnUnmount: false,
+        })
+    })
+
+    it('documentElementsSnapshot serializes elements only', () => {
+        const snap = documentElementsSnapshot({
+            name: 'a',
+            description: '',
+            elements: [{
+                type: 'rectangle',
+                group: 'ROI',
+                label: { value: 'r1' },
+                center: [0, 0, 0],
+                width: 1,
+                height: 1,
+                rotation: 0,
+                lineColor: '#000',
+                lineWidth: 1,
+                fillColor: '#000',
+            }],
+        })
+        expect(JSON.parse(snap)).toHaveLength(1)
     })
 
     it('formatTypeHotkeyHint lists assign keys and Q/W cycle', () => {

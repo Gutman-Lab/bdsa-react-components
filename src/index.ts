@@ -34,7 +34,7 @@ export { SlideViewer } from './components/SlideViewer/SlideViewer'
 export type { SlideViewerProps } from './components/SlideViewer/SlideViewer.types'
 export { AnnotationBrowser } from './components/AnnotationBrowser/AnnotationBrowser'
 export { AnnotationEditor } from './components/AnnotationEditor/AnnotationEditor'
-export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationEditorHandle, GroundTruthBox, RoiImageBounds, AnnotationType, RoiSettings, HotkeySettings, EditorMode } from './components/AnnotationEditor/AnnotationEditor.types'
+export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationEditorHandle, AutoSaveSettings, GroundTruthBox, RoiImageBounds, AnnotationType, RoiSettings, HotkeySettings, EditorMode } from './components/AnnotationEditor/AnnotationEditor.types'
 export {
     localDocumentToFeatureCollection,
     featureCollectionToLocalDocument,
