@@ -209,51 +209,40 @@ export function useSlideViewerInitialization(
         return () => {
             clearTimeout(initTimer)
 
-            // Only cleanup if imageKey actually changed (which means we're re-initializing) or component is unmounting
-            // Don't cleanup on every dependency update
-            const imageKeyChanged = imageKey !== lastImageKeyRef.current
-            const shouldCleanup = !isMountedRef.current || imageKeyChanged
-
-            if (shouldCleanup) {
-                // Update the tracked imageKey
-                if (imageKeyChanged) {
-                    lastImageKeyRef.current = imageKey
+            // Always tear down resources created in this effect instance. A previous guard
+            // skipped cleanup when imageKey matched lastImageKeyRef (set during init) and
+            // isMountedRef was still true — React runs this cleanup before the isMounted
+            // effect, so OpenSeadragon viewers leaked on slide change / remount.
+            if (annotationToolkit) {
+                try {
+                    annotationToolkit.destroy()
+                } catch (e) {
+                    console.warn('Error destroying annotation toolkit:', e)
                 }
-                // Cleanup in reverse order with error handling
-                // Use local variables captured from the effect closure
-                if (annotationToolkit) {
-                    try {
-                        annotationToolkit.destroy()
-                    } catch (e) {
-                        console.warn('Error destroying annotation toolkit:', e)
-                    }
+            }
+            if (paperOverlay) {
+                try {
+                    paperOverlay.destroy()
+                } catch (e) {
+                    console.warn('Error destroying paper overlay:', e)
                 }
-                if (paperOverlay) {
-                    try {
-                        paperOverlay.destroy()
-                    } catch (e) {
-                        console.warn('Error destroying paper overlay:', e)
-                    }
-                }
-                if (osdViewer) {
-                    try {
-                        // Check if viewer has isDestroyed property before destroying
-                        if (typeof (osdViewer as any).isDestroyed === 'boolean' && (osdViewer as any).isDestroyed) {
-                            return
-                        }
+            }
+            if (osdViewer) {
+                try {
+                    const alreadyDestroyed =
+                        typeof (osdViewer as { isDestroyed?: boolean }).isDestroyed === 'boolean' &&
+                        (osdViewer as { isDestroyed: boolean }).isDestroyed
+                    if (!alreadyDestroyed) {
                         osdViewer.destroy()
-                    } catch (e) {
-                        console.warn('Error destroying OpenSeadragon viewer:', e)
                     }
-                }
-
-                if (!isMountedRef.current || imageKeyChanged) {
-                    isInitializedRef.current = false
+                } catch (e) {
+                    console.warn('Error destroying OpenSeadragon viewer:', e)
                 }
             }
 
-            // Don't clear state here - let React handle it on unmount
-            // Clearing state here can cause infinite loops if the effect runs again
+            isInitializedRef.current = false
+
+            // Don't clear React state here — can cause re-init loops if the effect runs again
         }
     }, [
         imageKey,

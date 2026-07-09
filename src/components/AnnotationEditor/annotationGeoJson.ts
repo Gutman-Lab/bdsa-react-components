@@ -796,6 +796,24 @@ export function applyLocalDocumentToToolkitWhenReady(
 ): (() => void) | void {
     let cancelled = false
     let applied = false
+    let rafId = 0
+    let pollActive = false
+
+    const viewer = toolkit.viewer
+    if (!viewer) return
+
+    const stopPoll = () => {
+        pollActive = false
+        if (rafId) {
+            cancelAnimationFrame(rafId)
+            rafId = 0
+        }
+    }
+
+    const cleanupHandlers = () => {
+        viewer.removeHandler?.('open', onReady)
+        viewer.world?.removeHandler?.('add-item', onReady)
+    }
 
     const tryApply = (): boolean => {
         if (cancelled || applied) return applied
@@ -811,13 +829,10 @@ export function applyLocalDocumentToToolkitWhenReady(
         )
         applied = true
         onApplied?.()
+        stopPoll()
+        cleanupHandlers()
         return true
     }
-
-    if (tryApply()) return
-
-    const viewer = toolkit.viewer
-    if (!viewer) return
 
     const onReady = () => {
         tryApply()
@@ -826,31 +841,31 @@ export function applyLocalDocumentToToolkitWhenReady(
     viewer.addHandler?.('open', onReady)
     viewer.world?.addHandler?.('add-item', onReady)
 
-    let attempts = 0
-    const maxAttempts = 120
-    const poll = () => {
-        if (cancelled || applied) return
-        if (tryApply()) {
-            cleanup()
-            return
-        }
-        attempts += 1
-        if (attempts < maxAttempts) {
-            requestAnimationFrame(poll)
-        } else {
-            cleanup()
+    if (tryApply()) {
+        return () => {
+            cancelled = true
+            stopPoll()
+            cleanupHandlers()
         }
     }
-    requestAnimationFrame(poll)
 
-    function cleanup() {
-        if (!viewer) return
-        viewer.removeHandler?.('open', onReady)
-        viewer.world?.removeHandler?.('add-item', onReady)
+    let attempts = 0
+    const maxPollAttempts = 600
+    pollActive = true
+    const poll = () => {
+        if (!pollActive || cancelled || applied) return
+        if (tryApply()) return
+        attempts += 1
+        if (attempts < maxPollAttempts) {
+            rafId = requestAnimationFrame(poll)
+        }
+        // Keep open/add-item handlers until dispose — slow slides may open after polling stops.
     }
+    rafId = requestAnimationFrame(poll)
 
     return () => {
         cancelled = true
-        cleanup()
+        stopPoll()
+        cleanupHandlers()
     }
 }

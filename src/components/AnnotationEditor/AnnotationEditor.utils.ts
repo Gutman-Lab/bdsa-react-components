@@ -25,6 +25,28 @@ export function annotationFindByNameUrl(
     return `${base}/annotation?${params}`
 }
 
+/** Stable key so DSA load re-runs when Girder auth headers appear or change. */
+export function authHeadersFetchKey(
+    apiHeaders: AnnotationEditorProps['apiHeaders'],
+    authToken?: string | null,
+): string {
+    const parts: string[] = []
+    if (authToken?.trim()) parts.push(`token:${authToken.trim()}`)
+    if (apiHeaders) {
+        const entries =
+            apiHeaders instanceof Headers
+                ? Array.from(apiHeaders.entries())
+                : Object.entries(apiHeaders as Record<string, string>)
+        for (const [k, v] of entries) {
+            const lower = k.toLowerCase()
+            if (lower === 'girder-token' || lower === 'authorization') {
+                parts.push(`${lower}:${v}`)
+            }
+        }
+    }
+    return parts.sort().join('|')
+}
+
 /**
  * Converts any CSS color string to a format accepted by DSA's schema
  * (#rrggbb, #rrggbbaa, rgb(...), rgba(...)).

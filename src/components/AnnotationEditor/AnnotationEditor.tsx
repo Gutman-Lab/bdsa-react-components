@@ -27,7 +27,7 @@ import {
     getToolkitTiledImage,
     MODEL_PREDICTION_OVERLAY_NAME,
 } from './annotationGeoJson'
-import { normalizeCssColor, resolveItemId, resolveRoiLabelValue, fitViewerToElements, centerViewerOnElement, isFormFieldKeyboardTarget, findAnnotationTypeIndexForKey, shouldBlockOpenSeadragonKey, isFinishShapeEditKey, isEditLabelShapeKey, documentElementsSnapshot, normalizeKnownDsaElements, countKnownAnnotationElements, isRoiElementForConfig, wouldRegressServerAnnotation, AnnotationSaveConflictError, AnnotationSaveRegressionError, resolveAutoSaveSettings, elementToRoiBounds, clampRoiTopLeft, translatePaperRoiItem, effectiveRoiFillOpacity, applyRoiFillVisibilityToPaperItem, findTopmostLabelItemIdxAtImagePoint, annotationFindByNameUrl } from './AnnotationEditor.utils'
+import { normalizeCssColor, resolveItemId, resolveRoiLabelValue, fitViewerToElements, centerViewerOnElement, isFormFieldKeyboardTarget, findAnnotationTypeIndexForKey, shouldBlockOpenSeadragonKey, isFinishShapeEditKey, isEditLabelShapeKey, documentElementsSnapshot, normalizeKnownDsaElements, countKnownAnnotationElements, isRoiElementForConfig, wouldRegressServerAnnotation, AnnotationSaveConflictError, AnnotationSaveRegressionError, resolveAutoSaveSettings, elementToRoiBounds, clampRoiTopLeft, translatePaperRoiItem, effectiveRoiFillOpacity, applyRoiFillVisibilityToPaperItem, findTopmostLabelItemIdxAtImagePoint, annotationFindByNameUrl, authHeadersFetchKey } from './AnnotationEditor.utils'
 import { findOverlappingBoxDocIndices, type OverlapBox } from './overlapUtils'
 import { AnnotationEditorToolbar } from './AnnotationEditor.Toolbar'
 import { AnnotationEditorOverlays } from './AnnotationEditor.Overlays'
@@ -137,6 +137,7 @@ function AnnotationEditor({
     const startEditLabelByItemIdxRef = useRef<(itemIdx: number) => void>(() => {})
     const startReviewEditShapeRef = useRef<() => void>(() => {})
     const annotationLoadSettledRef = useRef(false)
+    const annotationLoadGenerationRef = useRef(0)
     const savedSnapshotRef = useRef<string | null>(null)
     const documentDirtyRef = useRef(false)
     const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -249,6 +250,8 @@ function AnnotationEditor({
         resetSaveTracking()
     }, [resolveItemId(imageInfo), resetSaveTracking])
 
+    const authFetchKey = authHeadersFetchKey(apiHeaders, authToken)
+
     // ── Register tools once when toolkit is ready ─────────────────────────
     useEffect(() => {
         if (!toolkit) return
@@ -317,11 +320,6 @@ function AnnotationEditor({
         const itemId = resolveItemId(imageInfo)
         if (!itemId || !apiBaseUrl) return
 
-        let cancelled = false
-        let disposeApply: (() => void) | undefined
-        annotationLoadSettledRef.current = false
-        setIsLoadingAnnotation(true)
-
         const headers: Record<string, string> = {}
         if (apiHeaders) {
             const entries =
@@ -331,21 +329,27 @@ function AnnotationEditor({
             entries.forEach(([k, v]) => { headers[k] = v })
         }
         if (authToken) headers['Girder-Token'] = authToken
+        if (!headers['Girder-Token']?.trim()) return
+
+        let cancelled = false
+        const loadGeneration = ++annotationLoadGenerationRef.current
+        let disposeApply: (() => void) | undefined
+        annotationLoadSettledRef.current = false
+        setIsLoadingAnnotation(true)
 
         const doFetch = fetchFn ?? fetch
 
         ;(async () => {
             try {
-                // 1. Look up annotation list rows by exact project document name (not every slide doc).
                 const listRes = await doFetch(
                     annotationFindByNameUrl(apiBaseUrl, itemId, config.annotationDocumentName),
                     { headers, cache: 'no-store' },
                 )
-                if (cancelled) return
+                if (cancelled || loadGeneration !== annotationLoadGenerationRef.current) return
                 if (!listRes.ok) throw new Error(`${listRes.status} ${listRes.statusText}`)
                 const matching: any[] = await listRes.json()
-                if (cancelled) return
-                if (!Array.isArray(matching) || matching.length === 0) return // No existing document — start fresh
+                if (cancelled || loadGeneration !== annotationLoadGenerationRef.current) return
+                if (!Array.isArray(matching) || matching.length === 0) return
 
                 if (matching.length > 1) {
                     setShowDuplicateWarning(true)
@@ -353,14 +357,14 @@ function AnnotationEditor({
 
                 const row = matching[0]!
                 const candidateRes = await doFetch(`${apiBaseUrl}/annotation/${row._id}`, { headers, cache: 'no-store' })
-                if (cancelled) return
-                if (!candidateRes.ok) return
+                if (cancelled || loadGeneration !== annotationLoadGenerationRef.current) return
+                if (!candidateRes.ok) {
+                    throw new Error(`Annotation fetch failed (${candidateRes.status})`)
+                }
                 const docFull: any = await candidateRes.json()
-                if (cancelled) return
+                if (cancelled || loadGeneration !== annotationLoadGenerationRef.current) return
                 const docId: string = row._id
 
-                // 4. Partition DSA elements into known (ROI / annotation types) and foreign.
-                // Foreign elements are preserved verbatim so save never strips them.
                 const rawElements: any[] = docFull.annotation?.elements ?? []
                 const knownGroups = new Set([
                     'ROI',
@@ -383,7 +387,6 @@ function AnnotationEditor({
                 setAnnotationDocumentId(docId)
                 setActiveLabelItemIdx(-1)
 
-                // 5–7. Render ROIs and label elements on the canvas (same path as GeoJSON import)
                 disposeApply = applyLocalDocumentToToolkitWhenReady(
                     toolkit as any,
                     config,
@@ -399,11 +402,11 @@ function AnnotationEditor({
                     roiFillLoadOptions(),
                 ) ?? undefined
             } catch (err) {
-                if (cancelled) return
+                if (cancelled || loadGeneration !== annotationLoadGenerationRef.current) return
                 console.error('[AnnotationEditor] Failed to load annotations:', err)
                 notify('error', 'Failed to load existing annotations from server.', 4000)
             } finally {
-                if (!cancelled) {
+                if (!cancelled && loadGeneration === annotationLoadGenerationRef.current) {
                     setIsLoadingAnnotation(false)
                     if (!annotationLoadSettledRef.current) {
                         markLoadSettledRef.current(null)
@@ -420,11 +423,56 @@ function AnnotationEditor({
         toolkit,
         resolveItemId(imageInfo),
         config.annotationDocumentName,
+        config.annotationTypes,
         apiBaseUrl,
         skipDsaAnnotationLoad,
         initialGeoJson,
         initialGeoJsonUrl,
         authToken,
+        authFetchKey,
+        fetchFn,
+    ])
+
+    // DSA doc in memory but slide still opening — retry canvas apply when tiled image appears.
+    useEffect(() => {
+        if (!toolkit || !localDocument?.elements?.length) return
+        if (isLoadingAnnotation) return
+        if (!annotationLoadSettledRef.current) return
+        if (initialGeoJson != null || initialGeoJsonUrl || skipDsaAnnotationLoad) return
+
+        const knownGroups = new Set([
+            'ROI',
+            ...config.annotationTypes.map(t => t.name),
+        ])
+        const knownCount = localDocument.elements.filter(el => knownGroups.has(el.group ?? '')).length
+        if (knownCount === 0) return
+        if (roiItemsRef.current.length + labelItemsRef.current.length > 0) return
+
+        const dispose = applyLocalDocumentToToolkitWhenReady(
+            toolkit as any,
+            config,
+            localDocument,
+            roiItemsRef,
+            labelItemsRef,
+            () => {
+                const roiElements = localDocument.elements.filter(e => e.group === 'ROI')
+                if (roiElements.length > 0) {
+                    setSelectedRoiIndex(0)
+                }
+            },
+            roiFillLoadOptions(),
+        )
+        return () => {
+            dispose?.()
+        }
+    }, [
+        toolkit,
+        localDocument,
+        isLoadingAnnotation,
+        skipDsaAnnotationLoad,
+        initialGeoJson,
+        initialGeoJsonUrl,
+        config,
     ])
 
     // Blank canvas when DSA load is skipped and no inline GeoJSON is provided.
