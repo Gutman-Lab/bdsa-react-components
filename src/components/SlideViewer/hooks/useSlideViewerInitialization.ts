@@ -229,10 +229,8 @@ export function useSlideViewerInitialization(
             }
             if (osdViewer) {
                 try {
-                    const alreadyDestroyed =
-                        typeof (osdViewer as { isDestroyed?: boolean }).isDestroyed === 'boolean' &&
-                        (osdViewer as { isDestroyed: boolean }).isDestroyed
-                    if (!alreadyDestroyed) {
+                    const viewerState = osdViewer as unknown as { isDestroyed?: boolean }
+                    if (viewerState.isDestroyed !== true) {
                         osdViewer.destroy()
                     }
                 } catch (e) {

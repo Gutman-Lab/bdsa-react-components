@@ -2655,7 +2655,9 @@ function AnnotationEditor({
                     // localDocument changed (e.g. a label box was drawn/deleted).
                     if (selectedRoiIndex !== zoomedForRoiIndexRef.current) {
                         zoomedForRoiIndexRef.current = selectedRoiIndex
-                        zoomToRoiByIndex(roi.roiIndex)
+                        if (config.zoomToSelectedRoi) {
+                            zoomToRoiByIndex(roi.roiIndex)
+                        }
                         // Reactivate the drawing loop after panning so the tool
                         // is ready to draw in the new ROI immediately.
                         if (workflowMode === 'add-labels' && addLabelsDrawingEnabledRef.current) {
@@ -2671,7 +2673,7 @@ function AnnotationEditor({
                 if (item) item.deselect(true)
             })
         }
-    }, [toolkit, selectedRoiIndex, activeMode, workflowMode, rois, zoomToRoiByIndex, syncAllRoiFillVisibility])
+    }, [toolkit, selectedRoiIndex, activeMode, workflowMode, rois, zoomToRoiByIndex, syncAllRoiFillVisibility, config.zoomToSelectedRoi])
 
     // ── Sync markComplete checkbox from the selected ROI's user data ──────
     useEffect(() => {

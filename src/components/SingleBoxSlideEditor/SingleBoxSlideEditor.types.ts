@@ -34,4 +34,9 @@ export type SingleBoxSlideEditorProps = {
     disableVisibilityCheck?: boolean
     osdOptions?: SlideViewerProps['osdOptions']
     onApiError?: SlideViewerProps['onApiError']
+    /**
+     * Automatically pan/zoom to fit the box when `box` changes or the viewer opens.
+     * Default: false — use the toolbar “Zoom to box” button instead.
+     */
+    autoZoomToBox?: boolean
 }

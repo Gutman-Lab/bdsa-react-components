@@ -54,6 +54,7 @@ export function SingleBoxSlideEditor({
     disableVisibilityCheck,
     osdOptions,
     onApiError,
+    autoZoomToBox = false,
 }: SingleBoxSlideEditorProps) {
     const hostRef = useRef<HTMLDivElement>(null)
     const viewerRef = useRef<OsdViewerLike | null>(null)
@@ -273,15 +274,16 @@ export function SingleBoxSlideEditor({
     }, [strokeColor, boxLabel, syncActiveTool])
 
     const syncViewerToCurrentBox = useCallback(
-        (viewer?: OsdViewerLike | null, options?: { tight?: boolean }) => {
+        (viewer?: OsdViewerLike | null, options?: { tight?: boolean; force?: boolean }) => {
             if (activeSlideKeyRef.current !== slideViewerKeyRef.current) return
+            if (!autoZoomToBox && !options?.force) return
             runZoomToSelection(viewer, {
                 tight: options?.tight,
                 waitForOpen: false,
                 expectedBoxKey: boxKeyRef.current,
             })
         },
-        [runZoomToSelection],
+        [runZoomToSelection, autoZoomToBox],
     )
 
     const loadBoxOverlayAndSync = useCallback(
@@ -521,7 +523,7 @@ export function SingleBoxSlideEditor({
                     <button
                         type="button"
                         className="single-box-slide-editor__mode-btn"
-                        onClick={() => syncViewerToCurrentBox(undefined, { tight: true })}
+                        onClick={() => syncViewerToCurrentBox(undefined, { tight: true, force: true })}
                     >
                         Zoom to box
                     </button>

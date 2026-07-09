@@ -135,6 +135,11 @@ export interface AnnotationEditorConfig {
      * Defaults to {@link annotationTypes} names when omitted.
      */
     boxCountLabels?: string[]
+    /**
+     * Pan/zoom to fit the selected ROI when the ROI dropdown or M/N hotkeys change it.
+     * Default: false (use explicit zoom actions instead).
+     */
+    zoomToSelectedRoi?: boolean
 }
 
 export interface AnnotationEditorProps {
