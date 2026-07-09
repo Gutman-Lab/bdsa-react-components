@@ -1393,6 +1393,7 @@ function AnnotationEditor({
     useEffect(() => {
         if (!contextMenu) return
         const handleMouseDown = (e: MouseEvent) => {
+            if (e.button !== 0) return
             const menu = document.querySelector('.annotation-editor__context-menu')
             if (menu && menu.contains(e.target as Node)) return
             setContextMenu(null)
@@ -1504,24 +1505,26 @@ function AnnotationEditor({
     // ── Right-click context menu for label items (add-labels + review mode) ─
     useEffect(() => {
         if (!toolkit || (workflowMode !== 'add-labels' && workflowMode !== 'review')) return
-        const overlayCanvas: HTMLElement | undefined = (toolkit as any).overlay?.canvas()
-        if (!overlayCanvas) return
+        const viewerRoot: HTMLElement | undefined = (toolkit as any).viewer?.element
+        if (!viewerRoot) return
 
         const handleContextMenu = (event: MouseEvent) => {
-            event.preventDefault()
-
             const itemIdx = resolveLabelItemIdxAtClientPoint(event.clientX, event.clientY)
-            if (itemIdx < 0) { setContextMenu(null); return }
+            if (itemIdx < 0) return
+
+            event.preventDefault()
+            event.stopPropagation()
 
             const hitItem = labelItemsRef.current[itemIdx]
-            if (!hitItem) { setContextMenu(null); return }
+            if (!hitItem) return
 
             setActiveLabelItemIdx(itemIdx)
             setContextMenu({ x: event.clientX, y: event.clientY, itemIdx, item: hitItem })
         }
 
-        overlayCanvas.addEventListener('contextmenu', handleContextMenu)
-        return () => overlayCanvas.removeEventListener('contextmenu', handleContextMenu)
+        // Capture on the full viewer root — Paper and OSD canvases both live here.
+        viewerRoot.addEventListener('contextmenu', handleContextMenu, true)
+        return () => viewerRoot.removeEventListener('contextmenu', handleContextMenu, true)
     }, [toolkit, workflowMode, resolveLabelItemIdxAtClientPoint])
 
     // ── Add-labels hover: select existing boxes for edit / delete / reclassify ─

@@ -62,7 +62,7 @@ export default defineConfig({
                 warn(warning)
             },
         },
-        sourcemap: true,
+        sourcemap: 'hidden',
         emptyOutDir: true,
         cssCodeSplit: false,
         minify: 'esbuild',

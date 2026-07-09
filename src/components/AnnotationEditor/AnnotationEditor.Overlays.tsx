@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import type { AnnotationType, LocalAnnotationElement } from './AnnotationEditor.types'
 
 export type LabelHoverActionsProps = {
@@ -44,15 +45,17 @@ export function AnnotationEditorOverlays({
 }: OverlaysProps) {
     return (
         <>
-            {/* Label right-click context menu */}
-            {contextMenu && (
+            {/* Label right-click context menu — portal avoids overflow/stacking clips in host apps */}
+            {contextMenu && createPortal(
                 <div
                     className="annotation-editor__context-menu"
                     style={{ left: contextMenu.x, top: contextMenu.y }}
+                    onContextMenu={(e) => e.preventDefault()}
                 >
                     {annotationTypes.map((t, i) => (
                         <button
                             key={i}
+                            type="button"
                             className="annotation-editor__context-menu__item"
                             onClick={() => handleContextMenuChangeType(i)}
                         >
@@ -62,25 +65,29 @@ export function AnnotationEditorOverlays({
                     ))}
                     <div className="annotation-editor__context-menu__divider" />
                     <button
+                        type="button"
                         className="annotation-editor__context-menu__item"
                         onClick={handleContextMenuEditShape}
                     >
                         &#9998; Edit Shape
                     </button>
                     <button
+                        type="button"
                         className="annotation-editor__context-menu__item annotation-editor__context-menu__item--danger"
                         onClick={handleContextMenuDelete}
                     >
                         &#128465; Delete
                     </button>
-                </div>
+                </div>,
+                document.body,
             )}
 
-            {labelHoverActions && (
+            {labelHoverActions && createPortal(
                 <div
                     className="annotation-editor__label-hover-panel"
                     style={{ left: labelHoverActions.x + 16, top: labelHoverActions.y + 16 }}
                     onMouseDown={(e) => e.stopPropagation()}
+                    onContextMenu={(e) => e.preventDefault()}
                 >
                     <div className="annotation-editor__label-hover-panel__title">
                         {labelHoverActions.labelName}
@@ -118,7 +125,8 @@ export function AnnotationEditorOverlays({
                     <div className="annotation-editor__label-hover-panel__hint">
                         Del · right-click for menu
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
 
             {/* Save notification toast */}
