@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Button** component and its public exports (`Button`, `ButtonProps`). It was a demo-only control; use your app’s design system or native `<button>` instead.
 
+## [0.2.2] - 2026-07-09
+
+### Changed
+
+- **AnnotationEditor** faster slide open: uses Girder exact-name lookup (`GET /annotation?itemId=&name=`) instead of listing every slide annotation; loads the first matching doc only. Duplicate-name warning still shown when count > 1.
+
 ## [0.1.23] - 2026-01-10
 
 ### Fixed

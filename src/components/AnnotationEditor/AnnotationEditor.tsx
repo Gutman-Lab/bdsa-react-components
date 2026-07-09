@@ -27,7 +27,7 @@ import {
     getToolkitTiledImage,
     MODEL_PREDICTION_OVERLAY_NAME,
 } from './annotationGeoJson'
-import { normalizeCssColor, resolveItemId, resolveRoiLabelValue, fitViewerToElements, centerViewerOnElement, isFormFieldKeyboardTarget, findAnnotationTypeIndexForKey, shouldBlockOpenSeadragonKey, isFinishShapeEditKey, isEditLabelShapeKey, documentElementsSnapshot, normalizeKnownDsaElements, countKnownAnnotationElements, isRoiElementForConfig, wouldRegressServerAnnotation, AnnotationSaveConflictError, AnnotationSaveRegressionError, resolveAutoSaveSettings, elementToRoiBounds, clampRoiTopLeft, translatePaperRoiItem, effectiveRoiFillOpacity, applyRoiFillVisibilityToPaperItem, findTopmostLabelItemIdxAtImagePoint } from './AnnotationEditor.utils'
+import { normalizeCssColor, resolveItemId, resolveRoiLabelValue, fitViewerToElements, centerViewerOnElement, isFormFieldKeyboardTarget, findAnnotationTypeIndexForKey, shouldBlockOpenSeadragonKey, isFinishShapeEditKey, isEditLabelShapeKey, documentElementsSnapshot, normalizeKnownDsaElements, countKnownAnnotationElements, isRoiElementForConfig, wouldRegressServerAnnotation, AnnotationSaveConflictError, AnnotationSaveRegressionError, resolveAutoSaveSettings, elementToRoiBounds, clampRoiTopLeft, translatePaperRoiItem, effectiveRoiFillOpacity, applyRoiFillVisibilityToPaperItem, findTopmostLabelItemIdxAtImagePoint, annotationFindByNameUrl } from './AnnotationEditor.utils'
 import { findOverlappingBoxDocIndices, type OverlapBox } from './overlapUtils'
 import { AnnotationEditorToolbar } from './AnnotationEditor.Toolbar'
 import { AnnotationEditorOverlays } from './AnnotationEditor.Overlays'
@@ -336,50 +336,28 @@ function AnnotationEditor({
 
         ;(async () => {
             try {
-                // 1. List all annotations for this item
-                const listRes = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, { headers, cache: 'no-store' })
+                // 1. Look up annotation list rows by exact project document name (not every slide doc).
+                const listRes = await doFetch(
+                    annotationFindByNameUrl(apiBaseUrl, itemId, config.annotationDocumentName),
+                    { headers, cache: 'no-store' },
+                )
                 if (cancelled) return
                 if (!listRes.ok) throw new Error(`${listRes.status} ${listRes.statusText}`)
-                const annotationList: any[] = await listRes.json()
+                const matching: any[] = await listRes.json()
                 if (cancelled) return
-
-                // 2. Filter to those matching the configured document name
-                const matching = annotationList.filter(
-                    (a: any) => a.annotation?.name === config.annotationDocumentName
-                )
-
-                if (matching.length === 0) return // No existing document — start fresh
+                if (!Array.isArray(matching) || matching.length === 0) return // No existing document — start fresh
 
                 if (matching.length > 1) {
                     setShowDuplicateWarning(true)
                 }
 
-                let docFull: any = null
-                let docId: string | null = null
-                let bestRoi = -1
-                let bestBox = -1
-
-                for (const row of matching) {
-                    const candidateRes = await doFetch(`${apiBaseUrl}/annotation/${row._id}`, { headers, cache: 'no-store' })
-                    if (cancelled) return
-                    if (!candidateRes.ok) continue
-                    const candidate: any = await candidateRes.json()
-                    if (cancelled) return
-                    const rawElements: any[] = candidate.annotation?.elements ?? []
-                    const elements = normalizeKnownDsaElements(rawElements, config)
-                    const counts = countKnownAnnotationElements(elements, config)
-                    const better =
-                        counts.roiCount > bestRoi
-                        || (counts.roiCount === bestRoi && counts.boxCount > bestBox)
-                    if (better) {
-                        bestRoi = counts.roiCount
-                        bestBox = counts.boxCount
-                        docFull = candidate
-                        docId = row._id
-                    }
-                }
-
-                if (!docFull || !docId) return
+                const row = matching[0]!
+                const candidateRes = await doFetch(`${apiBaseUrl}/annotation/${row._id}`, { headers, cache: 'no-store' })
+                if (cancelled) return
+                if (!candidateRes.ok) return
+                const docFull: any = await candidateRes.json()
+                if (cancelled) return
+                const docId: string = row._id
 
                 // 4. Partition DSA elements into known (ROI / annotation types) and foreign.
                 // Foreign elements are preserved verbatim so save never strips them.
@@ -1959,11 +1937,13 @@ function AnnotationEditor({
 
                 if (!newId) {
                     try {
-                        const listRes = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, { headers, cache: 'no-store' })
+                        const listRes = await doFetch(
+                            annotationFindByNameUrl(apiBaseUrl, itemId, doc.name),
+                            { headers, cache: 'no-store' },
+                        )
                         if (listRes.ok) {
                             const list: any[] = await listRes.json()
-                            const match = list.find((a: any) => a.annotation?.name === doc.name)
-                            newId = match?._id
+                            newId = Array.isArray(list) ? list[0]?._id : undefined
                         }
                     } catch {
                         /* ignore */

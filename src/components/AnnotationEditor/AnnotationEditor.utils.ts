@@ -11,6 +11,20 @@ import type {
     RoiImageBounds,
 } from './AnnotationEditor.types'
 
+/** Girder GET /annotation?itemId=&name= — exact name match without listing every slide doc. */
+export function annotationFindByNameUrl(
+    apiBaseUrl: string,
+    itemId: string,
+    documentName: string,
+): string {
+    const base = apiBaseUrl.replace(/\/$/, '')
+    const params = new URLSearchParams({
+        itemId,
+        name: documentName,
+    })
+    return `${base}/annotation?${params}`
+}
+
 /**
  * Converts any CSS color string to a format accepted by DSA's schema
  * (#rrggbb, #rrggbbaa, rgb(...), rgba(...)).
