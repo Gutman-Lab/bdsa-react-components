@@ -47,8 +47,7 @@ export function useSlideViewerInitialization(
             // Component not visible and not yet initialized, don't initialize yet
             return
         }
-        if (isInitializedRef.current) {
-            // Already initialized, don't re-initialize unless imageKey changed
+        if (isInitializedRef.current && lastImageKeyRef.current === imageKey) {
             return
         }
 
@@ -248,8 +247,7 @@ export function useSlideViewerInitialization(
                     }
                 }
 
-                // Only reset initialization flag if actually unmounting or image changed
-                if (!isMountedRef.current) {
+                if (!isMountedRef.current || imageKeyChanged) {
                     isInitializedRef.current = false
                 }
             }

@@ -12,6 +12,7 @@ import type {
     LocalAnnotationElement,
     RoiImageBounds,
     GroundTruthBox,
+    RemoveOverlappingLabelsOptions,
 } from './AnnotationEditor.types'
 import {
     featureCollectionToLocalDocument,
@@ -26,7 +27,8 @@ import {
     getToolkitTiledImage,
     MODEL_PREDICTION_OVERLAY_NAME,
 } from './annotationGeoJson'
-import { normalizeCssColor, resolveItemId, resolveRoiLabelValue, fitViewerToElements, centerViewerOnElement, isFormFieldKeyboardTarget, findAnnotationTypeIndexForKey, shouldBlockOpenSeadragonKey, isFinishShapeEditKey, isEditLabelShapeKey, documentElementsSnapshot, resolveAutoSaveSettings, elementToRoiBounds, clampRoiTopLeft, translatePaperRoiItem, effectiveRoiFillOpacity, applyRoiFillVisibilityToPaperItem, findTopmostLabelItemIdxAtImagePoint } from './AnnotationEditor.utils'
+import { normalizeCssColor, resolveItemId, resolveRoiLabelValue, fitViewerToElements, centerViewerOnElement, isFormFieldKeyboardTarget, findAnnotationTypeIndexForKey, shouldBlockOpenSeadragonKey, isFinishShapeEditKey, isEditLabelShapeKey, documentElementsSnapshot, normalizeKnownDsaElements, countKnownAnnotationElements, isRoiElementForConfig, wouldRegressServerAnnotation, AnnotationSaveConflictError, AnnotationSaveRegressionError, resolveAutoSaveSettings, elementToRoiBounds, clampRoiTopLeft, translatePaperRoiItem, effectiveRoiFillOpacity, applyRoiFillVisibilityToPaperItem, findTopmostLabelItemIdxAtImagePoint } from './AnnotationEditor.utils'
+import { findOverlappingBoxDocIndices, type OverlapBox } from './overlapUtils'
 import { AnnotationEditorToolbar } from './AnnotationEditor.Toolbar'
 import { AnnotationEditorOverlays } from './AnnotationEditor.Overlays'
 import { createApiError } from '../../utils/apiErrorHandling'
@@ -59,6 +61,7 @@ function AnnotationEditor({
     onApiError,
     autoSave,
     onAnnotationSaved,
+    onSaveConflict,
     disableVisibilityCheck,
     onViewerReady,
     onViewportChange,
@@ -73,9 +76,10 @@ function AnnotationEditor({
     overlayCollectionName = MODEL_PREDICTION_OVERLAY_NAME,
 }: AnnotationEditorProps, ref) {
     const autoSaveSettings = useMemo(() => resolveAutoSaveSettings(autoSave), [autoSave])
+    const initialWorkflowMode = config.defaultWorkflowMode ?? 'edit-rois'
     const [selectedRoiIndex, setSelectedRoiIndex] = useState<number>(-1)
     const [markComplete, setMarkComplete] = useState(false)
-    const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('edit-rois')
+    const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(initialWorkflowMode)
     const [activeMode, setActiveMode] = useState<EditorMode | null>(null)
     const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
     // DSA document ID — null until saved/loaded for the first time
@@ -89,7 +93,9 @@ function AnnotationEditor({
     const [confidenceThreshold, setConfidenceThreshold] = useState(0)
 
     // Fixed-size ROI placement
-    const [fixedSizeEnabled, setFixedSizeEnabled] = useState(false)
+    const [fixedSizeEnabled, setFixedSizeEnabled] = useState(
+        () => config.roiSettings?.defaultFixedSizeEnabled ?? false,
+    )
     const [fixedWidth, setFixedWidth] = useState(() => config.roiSettings?.width ?? 1000)
     const [fixedHeight, setFixedHeight] = useState(() => config.roiSettings?.height ?? 1000)
     const [roiFillVisible, setRoiFillVisible] = useState(defaultRoiFillVisible)
@@ -111,8 +117,8 @@ function AnnotationEditor({
     const [labelFixedSizeEnabled, setLabelFixedSizeEnabled] = useState(false)
     const labelFixedSizeEnabledRef = useRef(false)
     /** Add Labels: when false, default tool is active so the slide can be panned with the mouse. */
-    const [addLabelsDrawingEnabled, setAddLabelsDrawingEnabled] = useState(true)
-    const addLabelsDrawingEnabledRef = useRef(true)
+    const [addLabelsDrawingEnabled, setAddLabelsDrawingEnabled] = useState(false)
+    const addLabelsDrawingEnabledRef = useRef(false)
     // Tracks whether the add-labels drawing loop is still active
     const addLabelsActiveRef = useRef(false)
     // Paper.js item refs for label elements — parallel to the ordered label elements in localDocument
@@ -174,7 +180,7 @@ function AnnotationEditor({
     const reviewPreviousItemRef = useRef<() => void>(() => {})
     // Stable ref so workflowMode is readable inside finishEditingLabel / cancelEditingLabel
     // without adding toolkit to their dependency arrays.
-    const workflowModeRef = useRef<WorkflowMode>('edit-rois')
+    const workflowModeRef = useRef<WorkflowMode>(initialWorkflowMode)
     const toolkitRef = useRef<AnnotationToolkit | null>(null)
 
     // Paper.js item for the ROI currently being placed or edited (not yet committed)
@@ -313,6 +319,7 @@ function AnnotationEditor({
 
         let cancelled = false
         let disposeApply: (() => void) | undefined
+        annotationLoadSettledRef.current = false
         setIsLoadingAnnotation(true)
 
         const headers: Record<string, string> = {}
@@ -330,7 +337,7 @@ function AnnotationEditor({
         ;(async () => {
             try {
                 // 1. List all annotations for this item
-                const listRes = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, { headers })
+                const listRes = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, { headers, cache: 'no-store' })
                 if (cancelled) return
                 if (!listRes.ok) throw new Error(`${listRes.status} ${listRes.statusText}`)
                 const annotationList: any[] = await listRes.json()
@@ -344,45 +351,46 @@ function AnnotationEditor({
                 if (matching.length === 0) return // No existing document — start fresh
 
                 if (matching.length > 1) {
-                    setShowDuplicateWarning(true) // Warn user; we take the first one
+                    setShowDuplicateWarning(true)
                 }
 
-                const docId: string = matching[0]._id
+                let docFull: any = null
+                let docId: string | null = null
+                let bestRoi = -1
+                let bestBox = -1
 
-                // 3. Fetch the full annotation document (with elements)
-                const docRes = await doFetch(`${apiBaseUrl}/annotation/${docId}`, { headers })
-                if (cancelled) return
-                if (!docRes.ok) throw new Error(`${docRes.status} ${docRes.statusText}`)
-                const docFull: any = await docRes.json()
-                if (cancelled) return
+                for (const row of matching) {
+                    const candidateRes = await doFetch(`${apiBaseUrl}/annotation/${row._id}`, { headers, cache: 'no-store' })
+                    if (cancelled) return
+                    if (!candidateRes.ok) continue
+                    const candidate: any = await candidateRes.json()
+                    if (cancelled) return
+                    const rawElements: any[] = candidate.annotation?.elements ?? []
+                    const elements = normalizeKnownDsaElements(rawElements, config)
+                    const counts = countKnownAnnotationElements(elements, config)
+                    const better =
+                        counts.roiCount > bestRoi
+                        || (counts.roiCount === bestRoi && counts.boxCount > bestBox)
+                    if (better) {
+                        bestRoi = counts.roiCount
+                        bestBox = counts.boxCount
+                        docFull = candidate
+                        docId = row._id
+                    }
+                }
+
+                if (!docFull || !docId) return
 
                 // 4. Partition DSA elements into known (ROI / annotation types) and foreign.
                 // Foreign elements are preserved verbatim so save never strips them.
+                const rawElements: any[] = docFull.annotation?.elements ?? []
                 const knownGroups = new Set([
                     'ROI',
                     ...config.annotationTypes.map(t => t.name),
                 ])
-                const rawElements: any[] = docFull.annotation?.elements ?? []
-                const knownRaw = rawElements.filter(el => knownGroups.has(el.group ?? ''))
                 foreignElementsRef.current = rawElements.filter(el => !knownGroups.has(el.group ?? ''))
 
-                const elements: LocalAnnotationElement[] = knownRaw.map(
-                    (el: any): LocalAnnotationElement => ({
-                        type: 'rectangle',
-                        group: el.group ?? '',
-                        label: typeof el.label === 'string'
-                            ? { value: el.label }
-                            : (el.label ?? { value: '' }),
-                        center: el.center ?? [0, 0, 0],
-                        width: el.width ?? 0,
-                        height: el.height ?? 0,
-                        rotation: el.rotation ?? 0,
-                        lineColor: normalizeCssColor(el.lineColor ?? '#ffa500'),
-                        lineWidth: el.lineWidth ?? 1,
-                        fillColor: normalizeCssColor(el.fillColor ?? 'rgba(0,0,0,0.05)'),
-                        ...(el.user != null ? { user: el.user } : {}),
-                    })
-                )
+                const elements = normalizeKnownDsaElements(rawElements, config)
 
                 setLocalDocument({
                     name: docFull.annotation.name,
@@ -430,8 +438,16 @@ function AnnotationEditor({
             cancelled = true
             disposeApply?.()
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toolkit])
+    }, [
+        toolkit,
+        resolveItemId(imageInfo),
+        config.annotationDocumentName,
+        apiBaseUrl,
+        skipDsaAnnotationLoad,
+        initialGeoJson,
+        initialGeoJsonUrl,
+        authToken,
+    ])
 
     // Blank canvas when DSA load is skipped and no inline GeoJSON is provided.
     useEffect(() => {
@@ -539,19 +555,19 @@ function AnnotationEditor({
             return m ? parseInt(m[1], 10) : Infinity
         }
         return localDocument.elements
-            .filter(e => e.group === 'ROI')
+            .filter(e => isRoiElementForConfig(e, config))
             .map((e, roiIndex) => ({ label: e.label.value, roiIndex }))
             .sort((a, b) => {
                 const na = trailingNum(a.label)
                 const nb = trailingNum(b.label)
                 return na !== nb ? na - nb : a.label.localeCompare(b.label)
             })
-    }, [localDocument])
+    }, [localDocument, config])
 
     const roiCompletedCount = useMemo(() => {
         if (!localDocument) return 0
-        return localDocument.elements.filter(e => e.group === 'ROI' && e.user?.complete === true).length
-    }, [localDocument])
+        return localDocument.elements.filter(e => isRoiElementForConfig(e, config) && e.user?.complete === true).length
+    }, [localDocument, config])
 
     // ── Review mode: list of label items in the selected ROI ─────────────
     // Each entry has the Paper.js item and the index into localDocument.elements.
@@ -646,11 +662,6 @@ function AnnotationEditor({
     useEffect(() => { labelFixedSizeEnabledRef.current = labelFixedSizeEnabled }, [labelFixedSizeEnabled])
     useEffect(() => { workflowModeRef.current = workflowMode }, [workflowMode])
     useEffect(() => { addLabelsDrawingEnabledRef.current = addLabelsDrawingEnabled }, [addLabelsDrawingEnabled])
-    useEffect(() => {
-        if (workflowMode === 'add-labels') {
-            setAddLabelsDrawingEnabled(true)
-        }
-    }, [workflowMode])
     useEffect(() => { toolkitRef.current = toolkit }, [toolkit])
     useEffect(() => { reviewItemIndexRef.current = reviewItemIndex }, [reviewItemIndex])
     useEffect(() => { showInfoRef.current = showInfo }, [showInfo])
@@ -1828,7 +1839,10 @@ function AnnotationEditor({
 
     // ── Persist localDocument to DSA ──────────────────────────────────────
     const persistLocalDocument = useCallback(
-        async (doc: LocalAnnotationDocument): Promise<void> => {
+        async (
+            doc: LocalAnnotationDocument,
+            persistOptions?: { allowServerRegression?: boolean },
+        ): Promise<void> => {
             if (!apiBaseUrl) {
                 throw new Error('No API base URL configured — cannot save.')
             }
@@ -1858,6 +1872,52 @@ function AnnotationEditor({
 
             const doFetch = fetchFn ?? fetch
             const existingId = annotationDocumentIdRef.current
+
+            if (existingId) {
+                const checkRes = await doFetch(`${apiBaseUrl}/annotation/${existingId}`, { headers, cache: 'no-store' })
+                if (!checkRes.ok) {
+                    throw new Error(`${checkRes.status} ${checkRes.statusText}`)
+                }
+                const serverDoc: { annotation?: { elements?: unknown[] } } = await checkRes.json()
+                const serverElements = normalizeKnownDsaElements(
+                    serverDoc.annotation?.elements ?? [],
+                    config,
+                )
+                const serverCounts = countKnownAnnotationElements(serverElements, config)
+                const localCounts = countKnownAnnotationElements(doc.elements, config)
+
+                if (
+                    annotationLoadSettledRef.current
+                    && !persistOptions?.allowServerRegression
+                    && wouldRegressServerAnnotation(
+                        localCounts.roiCount,
+                        localCounts.boxCount,
+                        serverCounts.roiCount,
+                        serverCounts.boxCount,
+                    )
+                ) {
+                    throw new AnnotationSaveRegressionError({
+                        localRoiCount: localCounts.roiCount,
+                        localBoxCount: localCounts.boxCount,
+                        serverRoiCount: serverCounts.roiCount,
+                        serverBoxCount: serverCounts.boxCount,
+                    })
+                }
+
+                if (savedSnapshotRef.current != null) {
+                    const serverSnapshot = documentElementsSnapshot({ elements: serverElements })
+                    if (serverSnapshot !== savedSnapshotRef.current) {
+                        const baselineParsed = JSON.parse(savedSnapshotRef.current) as unknown
+                        const details = {
+                            serverElementCount: serverElements.length,
+                            baselineElementCount: Array.isArray(baselineParsed) ? baselineParsed.length : 0,
+                            localElementCount: doc.elements.length,
+                        }
+                        onSaveConflict?.(details)
+                        throw new AnnotationSaveConflictError(details)
+                    }
+                }
+            }
 
             let res: Response
             if (existingId) {
@@ -1899,7 +1959,7 @@ function AnnotationEditor({
 
                 if (!newId) {
                     try {
-                        const listRes = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, { headers })
+                        const listRes = await doFetch(`${apiBaseUrl}/annotation/item/${itemId}`, { headers, cache: 'no-store' })
                         if (listRes.ok) {
                             const list: any[] = await listRes.json()
                             const match = list.find((a: any) => a.annotation?.name === doc.name)
@@ -1913,7 +1973,7 @@ function AnnotationEditor({
                 if (newId) setAnnotationDocumentId(newId)
             }
         },
-        [apiBaseUrl, imageInfo, apiHeaders, authToken, fetchFn, config.documentAttributes],
+        [apiBaseUrl, imageInfo, apiHeaders, authToken, fetchFn, config.documentAttributes, config, onSaveConflict],
     )
 
     // ── Save localDocument to DSA or export GeoJSON ───────────────────────
@@ -1993,6 +2053,28 @@ function AnnotationEditor({
             await finish()
             return true
         } catch (err) {
+            if (err instanceof AnnotationSaveConflictError) {
+                documentDirtyRef.current = false
+                setSaveDirty(false)
+                setSaveStatus('error')
+                if (!options?.silent) {
+                    notify('error', err.message, 8000)
+                }
+                setTimeout(() => setSaveStatus('idle'), 4000)
+                await finish()
+                return false
+            }
+            if (err instanceof AnnotationSaveRegressionError) {
+                documentDirtyRef.current = false
+                setSaveDirty(false)
+                setSaveStatus('error')
+                if (!options?.silent) {
+                    notify('error', err.message, 8000)
+                }
+                setTimeout(() => setSaveStatus('idle'), 4000)
+                await finish()
+                return false
+            }
             const apiErr = createApiError(err)
             setSaveStatus('error')
             notify('error', `Save failed: ${apiErr.message}`, 4000)
@@ -2089,12 +2171,12 @@ function AnnotationEditor({
             setSelectedRoiIndex(-1)
             setReviewItemIndex(-1)
             setActiveMode(null)
-            setWorkflowMode('edit-rois')
+            setWorkflowMode(config.defaultWorkflowMode ?? 'edit-rois')
 
             if (saveToDsa && apiBaseUrl && !geoJsonExportMode) {
                 setSaveStatus('saving')
                 try {
-                    await persistLocalDocument(emptyDoc)
+                    await persistLocalDocument(emptyDoc, { allowServerRegression: true })
                     savedSnapshotRef.current = documentElementsSnapshot(emptyDoc)
                     documentDirtyRef.current = false
                     setSaveDirty(false)
@@ -2223,6 +2305,183 @@ function AnnotationEditor({
         return applyRoiTopLeft(entry.roiIndex, left, top)
     }, [resolveActiveRoiEntry, applyRoiTopLeft])
 
+    const removeOverlappingLabels = useCallback(
+        async (options?: RemoveOverlappingLabelsOptions) => {
+            const doc = localDocumentRef.current
+            if (!doc) {
+                return { status: 'none' as const, removed: 0, kept: 0 }
+            }
+
+            const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+            const scope = options?.scope ?? 'slide'
+            const iouThreshold = options?.iouThreshold ?? 0.5
+            const containedThreshold = options?.containedThreshold ?? 0.7
+            const saveToDsa = options?.saveToDsa !== false
+
+            let roiLabelFilter: string | null = null
+            if (scope === 'active-roi') {
+                const entry = resolveActiveRoiEntry()
+                if (!entry) {
+                    notify('error', 'No ROI selected — choose an ROI first or use whole-slide cleanup.', 3000)
+                    return { status: 'none' as const, removed: 0, kept: 0 }
+                }
+                roiLabelFilter = entry.label
+            }
+
+            const candidateBoxes: OverlapBox[] = []
+            for (let i = 0; i < doc.elements.length; i++) {
+                const el = doc.elements[i]!
+                if (!knownTypeNames.has(el.group)) continue
+                if (roiLabelFilter && el.user?.roiLabel !== roiLabelFilter) continue
+                candidateBoxes.push({
+                    docIdx: i,
+                    className: el.group,
+                    ...elementToRoiBounds(el),
+                })
+            }
+
+            const dropIndices = findOverlappingBoxDocIndices(candidateBoxes, {
+                iouThreshold,
+                containedThreshold,
+            })
+
+            if (dropIndices.length === 0) {
+                notify('success', 'No overlapping detection boxes found.', 2500)
+                return { status: 'none' as const, removed: 0, kept: candidateBoxes.length }
+            }
+
+            const scopeLabel =
+                scope === 'active-roi' && roiLabelFilter
+                    ? `ROI "${roiLabelFilter}"`
+                    : 'this slide'
+            if (!options?.skipConfirm) {
+                const confirmMessage = saveToDsa
+                    ? `Remove ${dropIndices.length} overlapping detection box(es) from ${scopeLabel}? Keeps the larger box when same-class boxes overlap, then saves to DSA.`
+                    : `Remove ${dropIndices.length} overlapping detection box(es) from ${scopeLabel}? Keeps the larger box when same-class boxes overlap.`
+                if (!window.confirm(confirmMessage)) {
+                    return { status: 'cancelled' as const, removed: 0, kept: candidateBoxes.length }
+                }
+            }
+
+            setContextMenu(null)
+            setIsEditingLabel(false)
+            editingLabelRef.current = null
+
+            const dropSet = new Set(dropIndices)
+            const filteredElements = doc.elements.filter((_, i) => !dropSet.has(i))
+            const newDoc = { ...doc, elements: filteredElements }
+
+            if (toolkit) {
+                loadLocalElementsOntoAnnotationToolkit(
+                    toolkit as any,
+                    config,
+                    filteredElements,
+                    roiItemsRef,
+                    labelItemsRef,
+                    { clear: true },
+                )
+                refreshDisplayAndSyncRoiFill(toolkit as any)
+            }
+
+            setLocalDocument(newDoc)
+            localDocumentRef.current = newDoc
+            setActiveLabelItemIdx(-1)
+            setHoveredLabelItemIdx(-1)
+            setHoveredLabelPointer(null)
+            setReviewItemIndex(-1)
+
+            if (saveToDsa && apiBaseUrl && !geoJsonExportMode) {
+                setSaveStatus('saving')
+                try {
+                    await persistLocalDocument(newDoc)
+                    savedSnapshotRef.current = documentElementsSnapshot(newDoc)
+                    documentDirtyRef.current = false
+                    setSaveDirty(false)
+                    setSaveStatus('saved')
+                    notify(
+                        'success',
+                        `Removed ${dropIndices.length} overlapping box(es) and saved to DSA.`,
+                        3000,
+                    )
+                    onAnnotationSaved?.()
+                    setTimeout(() => setSaveStatus('idle'), 2500)
+                    return {
+                        status: 'removed' as const,
+                        removed: dropIndices.length,
+                        kept: candidateBoxes.length - dropIndices.length,
+                    }
+                } catch (err) {
+                    const apiErr = createApiError(err)
+                    setSaveStatus('error')
+                    notify(
+                        'error',
+                        `Removed overlapping boxes on screen but save failed: ${apiErr.message}`,
+                        5000,
+                    )
+                    onApiError?.(apiErr, () => { void removeOverlappingLabels(options) }, {
+                        operation: annotationDocumentIdRef.current ? 'update' : 'create',
+                        endpoint: apiBaseUrl,
+                    })
+                    setTimeout(() => setSaveStatus('idle'), 4000)
+                    return {
+                        status: 'error' as const,
+                        removed: dropIndices.length,
+                        kept: candidateBoxes.length - dropIndices.length,
+                    }
+                }
+            }
+
+            notify('success', `Removed ${dropIndices.length} overlapping box(es).`, 2500)
+            return {
+                status: 'removed' as const,
+                removed: dropIndices.length,
+                kept: candidateBoxes.length - dropIndices.length,
+            }
+        },
+        [
+            apiBaseUrl,
+            config,
+            geoJsonExportMode,
+            notify,
+            onAnnotationSaved,
+            onApiError,
+            persistLocalDocument,
+            refreshDisplayAndSyncRoiFill,
+            resolveActiveRoiEntry,
+            toolkit,
+        ],
+    )
+
+    const getSyncSnapshot = useCallback(() => {
+        const doc = localDocumentRef.current
+        const counts = countKnownAnnotationElements(doc?.elements ?? [], config)
+        const settled = annotationLoadSettledRef.current
+        const loading = isLoadingAnnotation && !settled
+        return {
+            roiCount: counts.roiCount,
+            boxCount: counts.boxCount,
+            dirty: documentDirtyRef.current,
+            saveStatus,
+            ready: settled,
+            loading,
+        }
+    }, [config, saveStatus, isLoadingAnnotation])
+
+    const saveToDsa = useCallback(async () => {
+        return performSaveRef.current({ silent: false })
+    }, [])
+
+    const fitViewerToElementDocIndices = useCallback((docIndices: number[]): boolean => {
+        const viewer = toolkitRef.current ? (toolkitRef.current as any).viewer : null
+        const doc = localDocumentRef.current
+        if (!viewer || !doc?.elements?.length || docIndices.length === 0) return false
+        const elements = docIndices
+            .map(idx => doc.elements[idx])
+            .filter((el): el is LocalAnnotationElement => el != null)
+        if (elements.length === 0) return false
+        return fitViewerToElements(viewer, elements, OpenSeadragon as any)
+    }, [])
+
     useImperativeHandle(
         ref,
         () => ({
@@ -2231,8 +2490,12 @@ function AnnotationEditor({
             getActiveRoiGroundTruthBoxes,
             nudgeSelectedRoi,
             setSelectedRoiTopLeft,
+            getSyncSnapshot,
+            saveToDsa,
+            removeOverlappingLabels,
+            fitViewerToElementDocIndices,
         }),
-        [clearAllAnnotations, getActiveRoiBounds, getActiveRoiGroundTruthBoxes, nudgeSelectedRoi, setSelectedRoiTopLeft],
+        [clearAllAnnotations, getActiveRoiBounds, getActiveRoiGroundTruthBoxes, nudgeSelectedRoi, setSelectedRoiTopLeft, getSyncSnapshot, saveToDsa, removeOverlappingLabels, fitViewerToElementDocIndices],
     )
 
     // ── Activate / deactivate RectangleTool based on mode ────────────────
@@ -2491,6 +2754,7 @@ function AnnotationEditor({
                 cancelEditingLabel={cancelEditingLabel}
                 deleteActiveLabel={deleteActiveLabel}
                 canDeleteActiveLabel={isEditingLabel || hoveredLabelItemIdx >= 0 || activeLabelItemIdx >= 0}
+                onRemoveOverlappingLabels={() => { void removeOverlappingLabels() }}
                 labelFixedSizeEnabled={labelFixedSizeEnabled}
                 setLabelFixedSizeEnabled={setLabelFixedSizeEnabled}
                 addLabelsDrawingEnabled={addLabelsDrawingEnabled}

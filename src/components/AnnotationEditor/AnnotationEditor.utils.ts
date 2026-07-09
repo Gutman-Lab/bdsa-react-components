@@ -1,4 +1,15 @@
-import type { LocalAnnotationElement, AnnotationEditorProps, AnnotationType, AutoSaveSettings, HotkeySettings, WorkflowMode, RoiSettings, RoiImageBounds } from './AnnotationEditor.types'
+import type {
+    LocalAnnotationElement,
+    AnnotationEditorConfig,
+    AnnotationEditorProps,
+    AnnotationSaveConflictDetails,
+    AnnotationType,
+    AutoSaveSettings,
+    HotkeySettings,
+    WorkflowMode,
+    RoiSettings,
+    RoiImageBounds,
+} from './AnnotationEditor.types'
 
 /**
  * Converts any CSS color string to a format accepted by DSA's schema
@@ -348,6 +359,135 @@ export function documentElementsSnapshot(
     doc: { elements: LocalAnnotationElement[] } | null | undefined,
 ): string {
     return JSON.stringify(doc?.elements ?? [])
+}
+
+/** Known ROI / label elements from a Girder annotation payload (excludes foreign groups). */
+export function normalizeKnownDsaElements(
+    rawElements: unknown[],
+    config: AnnotationEditorConfig,
+): LocalAnnotationElement[] {
+    const knownGroups = new Set([
+        'ROI',
+        ...config.annotationTypes.map(t => t.name),
+    ])
+    return rawElements
+        .filter((el): el is Record<string, unknown> => typeof el === 'object' && el !== null)
+        .filter(el => knownGroups.has(String(el.group ?? '')))
+        .map((el): LocalAnnotationElement => ({
+            type: 'rectangle',
+            group: String(el.group ?? ''),
+            label: {
+                value:
+                    typeof el.label === 'string'
+                        ? el.label
+                        : String((el.label as { value?: string } | undefined)?.value ?? ''),
+            },
+            center: (el.center as [number, number, number] | undefined) ?? [0, 0, 0],
+            width: Number(el.width ?? 0),
+            height: Number(el.height ?? 0),
+            rotation: Number(el.rotation ?? 0),
+            lineColor: normalizeCssColor(String(el.lineColor ?? '#ffa500')),
+            lineWidth: Number(el.lineWidth ?? 1),
+            fillColor: normalizeCssColor(String(el.fillColor ?? 'rgba(0,0,0,0.05)')),
+            ...(el.user != null && typeof el.user === 'object'
+                ? { user: el.user as Record<string, unknown> }
+                : {}),
+        }))
+}
+
+export type AnnotationSaveRegressionDetails = {
+    localRoiCount: number
+    localBoxCount: number
+    serverRoiCount: number
+    serverBoxCount: number
+}
+
+export function isRoiElementForConfig(
+    el: LocalAnnotationElement,
+    config: AnnotationEditorConfig,
+): boolean {
+    if (el.group === 'ROI') return true
+    if (!config.roiCountLabels?.length) return false
+    const label = el.label?.value?.trim()
+    return label != null && label !== '' && config.roiCountLabels.includes(label)
+}
+
+export function countKnownAnnotationElements(
+    elements: LocalAnnotationElement[],
+    config: AnnotationEditorConfig,
+): { roiCount: number; boxCount: number } {
+    const roiSet = config.roiCountLabels?.length
+        ? new Set(config.roiCountLabels)
+        : null
+    const boxSet = new Set(
+        config.boxCountLabels?.length
+            ? config.boxCountLabels
+            : config.annotationTypes.map(t => t.name),
+    )
+    const knownTypeNames = new Set(config.annotationTypes.map(t => t.name))
+
+    let roiCount = 0
+    let boxCount = 0
+    for (const el of elements) {
+        const label = el.label?.value?.trim()
+        const isRoi = el.group === 'ROI' || (roiSet != null && label != null && roiSet.has(label))
+        if (isRoi) {
+            roiCount++
+            continue
+        }
+        if (label && boxSet.has(label)) {
+            boxCount++
+        } else if (knownTypeNames.has(el.group)) {
+            boxCount++
+        }
+    }
+    return { roiCount, boxCount }
+}
+
+/** True when saving local would remove ROIs or wipe a non-empty Girder document. */
+export function wouldRegressServerAnnotation(
+    localRoiCount: number,
+    localBoxCount: number,
+    serverRoiCount: number,
+    serverBoxCount: number,
+): boolean {
+    if (localRoiCount < serverRoiCount) return true
+    if (
+        localRoiCount === 0
+        && localBoxCount === 0
+        && (serverRoiCount > 0 || serverBoxCount > 0)
+    ) {
+        return true
+    }
+    return false
+}
+
+export class AnnotationSaveRegressionError extends Error {
+    readonly details: AnnotationSaveRegressionDetails
+
+    constructor(details: AnnotationSaveRegressionDetails) {
+        super(
+            `Save blocked: editor has ${details.localRoiCount} ROI and ${details.localBoxCount} boxes, `
+            + `but Girder has ${details.serverRoiCount} ROI and ${details.serverBoxCount} boxes. `
+            + 'Reload from Girder — saving now would erase server annotations.',
+        )
+        this.name = 'AnnotationSaveRegressionError'
+        this.details = details
+    }
+}
+
+export class AnnotationSaveConflictError extends Error {
+    readonly details: AnnotationSaveConflictDetails
+
+    constructor(details: AnnotationSaveConflictDetails) {
+        super(
+            `DSA has a newer version of this annotation (${details.serverElementCount} elements) `
+            + `than this editor loaded (${details.baselineElementCount}). `
+            + 'Reload to see the latest — your unsaved edits were not written.',
+        )
+        this.name = 'AnnotationSaveConflictError'
+        this.details = details
+    }
 }
 
 export type ResolvedAutoSaveSettings = {

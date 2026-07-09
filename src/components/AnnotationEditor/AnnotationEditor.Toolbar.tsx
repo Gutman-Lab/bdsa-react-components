@@ -21,6 +21,7 @@ export interface ToolbarProps {
     cancelEditingLabel: () => void
     deleteActiveLabel: () => void
     canDeleteActiveLabel: boolean
+    onRemoveOverlappingLabels: () => void
     labelFixedSizeEnabled: boolean
     setLabelFixedSizeEnabled: (v: boolean) => void
     addLabelsDrawingEnabled: boolean
@@ -93,6 +94,7 @@ export function AnnotationEditorToolbar({
     workflowMode, setWorkflowMode,
     isEditingLabel, finishEditingLabel, cancelEditingLabel,
     deleteActiveLabel, canDeleteActiveLabel,
+    onRemoveOverlappingLabels,
     labelFixedSizeEnabled, setLabelFixedSizeEnabled,
     addLabelsDrawingEnabled, setAddLabelsDrawingEnabled, drawToggleHotkey,
     finishShapeEditHotkey, editLabelShapeHotkey,
@@ -131,6 +133,90 @@ export function AnnotationEditorToolbar({
                 : selectedRoiIndex + 1,
         )
     }
+
+    const addLabelsHotkeyHint =
+        workflowMode === 'add-labels' && !isEditingLabel && annotationTypes.length > 0
+            ? addLabelsDrawingEnabled
+                ? `${formatTypeHotkeyHint(annotationTypes, 'add-labels')} · ${drawToggleHotkey} draw off · ${editLabelShapeHotkey} edit`
+                : `${drawToggleHotkey} draw · WASD/arrows pan · ${editLabelShapeHotkey} edit`
+            : null
+
+    const reviewHotkeyHint =
+        workflowMode === 'review' && !isEditingLabel
+            ? formatTypeHotkeyHint(annotationTypes)
+            : null
+
+    const toolbarRight = (
+        <div className="annotation-editor__toolbar-right">
+            {addLabelsHotkeyHint ? (
+                <span
+                    className="annotation-editor__roi-label annotation-editor__toolbar-hotkey-hint"
+                    style={{ opacity: 0.55 }}
+                >
+                    {addLabelsHotkeyHint}
+                </span>
+            ) : null}
+            {reviewHotkeyHint ? (
+                <span
+                    className="annotation-editor__roi-label annotation-editor__toolbar-hotkey-hint"
+                    style={{ opacity: 0.55 }}
+                >
+                    {reviewHotkeyHint}
+                </span>
+            ) : null}
+
+            {showInfoControl && (
+                <button
+                    className={`annotation-editor__mode-btn${showInfo ? ' annotation-editor__mode-btn--active' : ''}`}
+                    onClick={() => setShowInfo(!showInfo)}
+                    title="Hover over elements to see their info"
+                >
+                    Show Info
+                </button>
+            )}
+
+            {roiTotal > 0 && (() => {
+                const mod = roiCompletedCount === 0
+                    ? ''
+                    : roiCompletedCount === roiTotal
+                        ? ' annotation-editor__roi-progress--complete'
+                        : ' annotation-editor__roi-progress--partial'
+                return (
+                    <div className={`annotation-editor__roi-progress${mod}`}>
+                        ROI Progress
+                        <span className="annotation-editor__roi-progress__count">
+                            {roiCompletedCount}&thinsp;/&thinsp;{roiTotal}
+                        </span>
+                    </div>
+                )
+            })()}
+
+            {isLoadingAnnotation && (
+                <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+                    Loading annotations…
+                </span>
+            )}
+
+            <button
+                className={`annotation-editor__mode-btn annotation-editor__mode-btn--save${saveStatus === 'error' ? ' annotation-editor__mode-btn--save--error' : saveStatus === 'saved' ? ' annotation-editor__mode-btn--save--saved' : ''}${autoSaveEnabled && saveDirty && saveStatus === 'idle' ? ' annotation-editor__mode-btn--save--dirty' : ''}`}
+                onClick={saveAnnotation}
+                disabled={
+                    saveStatus === 'saving'
+                    || !canSave
+                    || (autoSaveEnabled && !saveDirty && saveStatus !== 'error')
+                }
+                title={saveButtonTitle}
+            >
+                {saveStatus === 'saving'
+                    ? saveSavingLabel
+                    : saveStatus === 'saved'
+                      ? 'Saved ✓'
+                      : saveStatus === 'error'
+                        ? 'Save failed'
+                        : saveIdleLabel}
+            </button>
+        </div>
+    )
 
     return (
         <div className="annotation-editor__toolbar">
@@ -220,6 +306,8 @@ export function AnnotationEditorToolbar({
                 </select>
             </div>
 
+            {toolbarRight}
+
             <div className="annotation-editor__toolbar-divider" />
 
             {/* Add Labels / Review: shape-edit buttons (while editing an existing label shape) */}
@@ -293,7 +381,6 @@ export function AnnotationEditorToolbar({
                             <option key={i} value={i}>{t.name}</option>
                         ))}
                     </select>
-                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>{formatTypeHotkeyHint(annotationTypes)}</span>
                     <button
                         className="annotation-editor__mode-btn"
                         onClick={startReviewEditShape}
@@ -366,11 +453,6 @@ export function AnnotationEditorToolbar({
                             <option key={i} value={i}>{t.name}</option>
                         ))}
                     </select>
-                    <span className="annotation-editor__roi-label" style={{ opacity: 0.55 }}>
-                        {addLabelsDrawingEnabled
-                            ? `${formatTypeHotkeyHint(annotationTypes, 'add-labels')} · ${drawToggleHotkey} draw off · ${editLabelShapeHotkey} edit`
-                            : `${drawToggleHotkey} draw · WASD/arrows pan · ${editLabelShapeHotkey} edit`}
-                    </span>
                     <button
                         className="annotation-editor__mode-btn annotation-editor__mode-btn--danger"
                         onClick={deleteActiveLabel}
@@ -378,6 +460,13 @@ export function AnnotationEditorToolbar({
                         title="Delete the hovered label (Delete / Backspace). Hover a box or right-click for more actions."
                     >
                         Delete label
+                    </button>
+                    <button
+                        className="annotation-editor__mode-btn"
+                        onClick={onRemoveOverlappingLabels}
+                        title="Remove overlapping detection boxes on this slide (keeps the larger box)"
+                    >
+                        Remove overlaps
                     </button>
                 </div>
             )}
@@ -497,59 +586,6 @@ export function AnnotationEditorToolbar({
                     )}
                 </div>
             )}
-
-            <div className="annotation-editor__toolbar-right">
-                {showInfoControl && (
-                    <button
-                        className={`annotation-editor__mode-btn${showInfo ? ' annotation-editor__mode-btn--active' : ''}`}
-                        onClick={() => setShowInfo(!showInfo)}
-                        title="Hover over elements to see their info"
-                    >
-                        Show Info
-                    </button>
-                )}
-
-                {roiTotal > 0 && (() => {
-                    const mod = roiCompletedCount === 0
-                        ? ''
-                        : roiCompletedCount === roiTotal
-                            ? ' annotation-editor__roi-progress--complete'
-                            : ' annotation-editor__roi-progress--partial'
-                    return (
-                        <div className={`annotation-editor__roi-progress${mod}`}>
-                            ROI Progress
-                            <span className="annotation-editor__roi-progress__count">
-                                {roiCompletedCount}&thinsp;/&thinsp;{roiTotal}
-                            </span>
-                        </div>
-                    )
-                })()}
-
-                {isLoadingAnnotation && (
-                    <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
-                        Loading annotations…
-                    </span>
-                )}
-
-                <button
-                    className={`annotation-editor__mode-btn annotation-editor__mode-btn--save${saveStatus === 'error' ? ' annotation-editor__mode-btn--save--error' : saveStatus === 'saved' ? ' annotation-editor__mode-btn--save--saved' : ''}${autoSaveEnabled && saveDirty && saveStatus === 'idle' ? ' annotation-editor__mode-btn--save--dirty' : ''}`}
-                    onClick={saveAnnotation}
-                    disabled={
-                        saveStatus === 'saving'
-                        || !canSave
-                        || (autoSaveEnabled && !saveDirty && saveStatus !== 'error')
-                    }
-                    title={saveButtonTitle}
-                >
-                    {saveStatus === 'saving'
-                        ? saveSavingLabel
-                        : saveStatus === 'saved'
-                          ? 'Saved ✓'
-                          : saveStatus === 'error'
-                            ? 'Save failed'
-                            : saveIdleLabel}
-                </button>
-            </div>
         </div>
     )
 }

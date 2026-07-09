@@ -11,6 +11,7 @@ import {
     centerViewerOnElement,
     clampRoiTopLeft,
     findTopmostLabelItemIdxAtImagePoint,
+    wouldRegressServerAnnotation,
 } from './AnnotationEditor.utils'
 import type { AnnotationType } from './AnnotationEditor.types'
 
@@ -162,6 +163,22 @@ describe('formatRoiDropdownLabel', () => {
         const labels = ['roi1', 'roi2', 'roi3']
         expect(formatRoiDropdownLabel('roi1', 0, labels)).toBe('roi1')
         expect(formatRoiDropdownLabel('roi2', 1, labels)).toBe('roi2')
+    })
+})
+
+describe('wouldRegressServerAnnotation', () => {
+    it('blocks fewer ROIs on server', () => {
+        expect(wouldRegressServerAnnotation(0, 0, 2, 43)).toBe(true)
+        expect(wouldRegressServerAnnotation(1, 10, 2, 43)).toBe(true)
+    })
+
+    it('allows equal or greater local ROI counts', () => {
+        expect(wouldRegressServerAnnotation(2, 43, 2, 43)).toBe(false)
+        expect(wouldRegressServerAnnotation(6, 98, 2, 43)).toBe(false)
+    })
+
+    it('blocks empty local doc over non-empty server', () => {
+        expect(wouldRegressServerAnnotation(0, 0, 0, 5)).toBe(true)
     })
 })
 

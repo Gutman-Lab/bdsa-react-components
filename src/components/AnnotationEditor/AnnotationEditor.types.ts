@@ -34,6 +34,8 @@ export interface RoiSettings {
     width?: number
     /** Default height in image pixels for fixed-size ROI placement. Default: 1000 */
     height?: number
+    /** When true, the Edit ROIs “Fixed size” checkbox starts checked. Default: false */
+    defaultFixedSizeEnabled?: boolean
     /**
      * When set, every ROI uses this exact `label.value` (YOLO `roi_labels` compatibility).
      * Without this, labels are `{label}{n}` e.g. `roi1`, `roi2`.
@@ -96,6 +98,10 @@ export interface HotkeySettings {
     editLabelShape?: string
 }
 
+export type EditorMode = 'add-roi' | 'drawing-roi' | 'edit-roi' | 'delete-roi'
+
+export type WorkflowMode = 'edit-rois' | 'add-labels' | 'review' | 'filter'
+
 export interface AnnotationEditorConfig {
     /**
      * Name of the DSA annotation document to load/save.
@@ -112,13 +118,24 @@ export interface AnnotationEditorConfig {
     documentAttributes?: Record<string, unknown>
     /** Keyboard shortcut configuration */
     hotkeys?: HotkeySettings
+    /**
+     * Toolbar workflow on load and after clear-all. Default: `edit-rois`.
+     * Use `add-labels` when ROIs are usually already placed.
+     */
+    defaultWorkflowMode?: WorkflowMode
     /** Additional OpenSeadragon options passed through to SlideViewer */
     viewerOptions?: Record<string, unknown>
+    /**
+     * `label.value` strings that count as ROI (YOLO `roi_labels`).
+     * When set, ROI counting matches DSA / project slide lists instead of `group === 'ROI'` only.
+     */
+    roiCountLabels?: string[]
+    /**
+     * `label.value` strings that count as detection boxes (YOLO `box_labels`).
+     * Defaults to {@link annotationTypes} names when omitted.
+     */
+    boxCountLabels?: string[]
 }
-
-export type EditorMode = 'add-roi' | 'drawing-roi' | 'edit-roi' | 'delete-roi'
-
-export type WorkflowMode = 'edit-rois' | 'add-labels' | 'review' | 'filter'
 
 export interface AnnotationEditorProps {
     /** Image to display in the viewer */
@@ -169,6 +186,11 @@ export interface AnnotationEditorProps {
     autoSave?: boolean | AutoSaveSettings
     /** Called after a successful manual or automatic save. */
     onAnnotationSaved?: () => void
+    /**
+     * Called when a save is blocked because the DSA document changed on the server
+     * since this editor last synced. Host apps typically reload the editor from DSA.
+     */
+    onSaveConflict?: (details: AnnotationSaveConflictDetails) => void
     /** Passed to SlideViewer. Use `true` in Storybook iframes so OSD initializes when not intersecting. */
     disableVisibilityCheck?: boolean
     /** Passed through to the underlying SlideViewer. */
@@ -217,6 +239,23 @@ export interface AnnotationEditorProps {
 /** Imperative API for host apps (e.g. testing utilities in the slide workspace). */
 export type ClearAllAnnotationsResult = 'cleared' | 'cancelled' | 'empty' | 'error'
 
+export type RemoveOverlappingLabelsOptions = {
+    /** Limit cleanup to boxes stamped to the active ROI. Default: whole slide. */
+    scope?: 'active-roi' | 'slide'
+    /** IoU threshold for greedy NMS (0 disables). Default 0.5. */
+    iouThreshold?: number
+    /** Drop smaller same-class boxes mostly inside a larger one (0 disables). Default 0.7. */
+    containedThreshold?: number
+    saveToDsa?: boolean
+    skipConfirm?: boolean
+}
+
+export type RemoveOverlappingLabelsResult = {
+    status: 'removed' | 'none' | 'cancelled' | 'error'
+    removed: number
+    kept: number
+}
+
 export type RoiImageBounds = {
     left: number
     top: number
@@ -233,6 +272,22 @@ export type GroundTruthBox = {
     height: number
 }
 
+export type AnnotationSaveConflictDetails = {
+    serverElementCount: number
+    baselineElementCount: number
+    localElementCount: number
+}
+
+export type AnnotationEditorSyncSnapshot = {
+    roiCount: number
+    boxCount: number
+    dirty: boolean
+    saveStatus: 'idle' | 'saving' | 'saved' | 'error'
+    /** False while the editor ref or DSA load has not settled. */
+    ready: boolean
+    loading: boolean
+}
+
 export interface AnnotationEditorHandle {
     /** Remove every ROI and detection label; optionally persist empty doc to DSA. */
     clearAllAnnotations: (options?: {
@@ -246,4 +301,14 @@ export interface AnnotationEditorHandle {
     nudgeSelectedRoi: (dx: number, dy: number) => boolean
     /** Move the selected ROI top-left (no-op when none selected). */
     setSelectedRoiTopLeft: (left: number, top: number) => boolean
+    /** In-memory editor counts and save state (compare to DSA for sync checks). */
+    getSyncSnapshot: () => AnnotationEditorSyncSnapshot
+    /** Flush the current annotation document to DSA immediately. */
+    saveToDsa: () => Promise<boolean>
+    /** Remove overlapping detection boxes (keeps the larger box per overlap cluster). */
+    removeOverlappingLabels: (
+        options?: RemoveOverlappingLabelsOptions,
+    ) => Promise<RemoveOverlappingLabelsResult>
+    /** Pan/zoom to fit one or more document elements by index (slide-pixel bounds). */
+    fitViewerToElementDocIndices: (docIndices: number[]) => boolean
 }

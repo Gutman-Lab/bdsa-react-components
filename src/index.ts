@@ -34,7 +34,9 @@ export { SlideViewer } from './components/SlideViewer/SlideViewer'
 export type { SlideViewerProps } from './components/SlideViewer/SlideViewer.types'
 export { AnnotationBrowser } from './components/AnnotationBrowser/AnnotationBrowser'
 export { AnnotationEditor } from './components/AnnotationEditor/AnnotationEditor'
-export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationEditorHandle, AutoSaveSettings, GroundTruthBox, RoiImageBounds, AnnotationType, RoiSettings, HotkeySettings, EditorMode } from './components/AnnotationEditor/AnnotationEditor.types'
+export { SingleBoxSlideEditor } from './components/SingleBoxSlideEditor/SingleBoxSlideEditor'
+export type { SingleBoxSlideEditorProps, SlideImageBox } from './components/SingleBoxSlideEditor/SingleBoxSlideEditor.types'
+export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationEditorHandle, AutoSaveSettings, GroundTruthBox, RoiImageBounds, AnnotationType, RoiSettings, HotkeySettings, EditorMode, RemoveOverlappingLabelsOptions, RemoveOverlappingLabelsResult } from './components/AnnotationEditor/AnnotationEditor.types'
 export {
     localDocumentToFeatureCollection,
     featureCollectionToLocalDocument,

@@ -33,6 +33,10 @@
   justify-content: flex-end;
 }
 
+.annotation-editor__toolbar-hotkey-hint {
+  white-space: nowrap;
+}
+
 .annotation-editor__toolbar-group {
   display: flex;
   align-items: center;

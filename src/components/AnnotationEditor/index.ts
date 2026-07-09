@@ -1,2 +1,2 @@
 export { AnnotationEditor } from './AnnotationEditor'
-export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationEditorHandle, AutoSaveSettings, RoiImageBounds, GroundTruthBox, AnnotationType, RoiSettings, HotkeySettings, EditorMode, LocalAnnotationDocument, LocalAnnotationElement } from './AnnotationEditor.types'
+export type { AnnotationEditorProps, AnnotationEditorConfig, AnnotationEditorHandle, AnnotationEditorSyncSnapshot, AnnotationSaveConflictDetails, AutoSaveSettings, RoiImageBounds, GroundTruthBox, AnnotationType, RoiSettings, HotkeySettings, EditorMode, LocalAnnotationDocument, LocalAnnotationElement, RemoveOverlappingLabelsOptions, RemoveOverlappingLabelsResult } from './AnnotationEditor.types'
