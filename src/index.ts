@@ -7,7 +7,8 @@ export type { UseDsaResolvedApiOptions } from './auth'
 
 export { FolderBrowser } from './components/FolderBrowser/FolderBrowser'
 export type { FolderBrowserProps, FolderBrowserSyntheticData } from './components/FolderBrowser/FolderBrowser'
-export type { Collection, FolderItem, Item, NodeChildren } from './components/FolderBrowser/types'
+export type { Collection, FolderItem, NodeChildren } from './components/FolderBrowser/types'
+export type { Item as FolderBrowserItem } from './components/FolderBrowser/types'
 export type {
   FolderBrowserRenderCollection,
   FolderBrowserRenderFolder,
@@ -16,7 +17,7 @@ export type {
   FolderBrowserVisualStyle,
 } from './components/FolderBrowser/types'
 export { hasLargeImage, isAIModel, filterLargeImages, filterAIModels } from './utils/itemUtils'
-export type { ItemWithMeta } from './utils/itemUtils'
+export type { Item, ItemWithMeta } from './utils/itemUtils'
 export { ThumbnailGrid } from './components/ThumbnailGrid/ThumbnailGrid'
 export type { ThumbnailGridProps } from './components/ThumbnailGrid/ThumbnailGrid'
 export { OSDThumbnailBrowser } from './components/OSDThumbnailBrowser/OSDThumbnailBrowser'

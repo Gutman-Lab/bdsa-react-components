@@ -26,6 +26,7 @@ import type {
     AutoSaveSettings,
     Collection,
     DsaAuthManagerProps,
+    FolderBrowserItem,
     FolderBrowserProps,
     FolderItem,
     Item,
@@ -45,9 +46,10 @@ import type {
 
 const collection: Collection = { _id: 'collection-1', name: 'Histology' }
 const folder: FolderItem = { _id: 'folder-1', name: 'Case 001' }
+const folderItem: FolderBrowserItem = { _id: 'item-1', name: 'slide.svs' }
 const item: Item = { _id: 'item-1', name: 'slide.svs' }
 const itemWithMeta: ItemWithMeta = { _id: 'item-1', name: 'slide.svs', largeImage: true }
-const children: NodeChildren = { folders: [folder], items: [item] }
+const children: NodeChildren = { folders: [folder], items: [folderItem] }
 const autoSave: AutoSaveSettings = { enabled: true, debounceMs: 2500 }
 const polygon: LocalPolylineElement = {
     type: 'polyline',
@@ -63,7 +65,7 @@ const polygon: LocalPolylineElement = {
 const authProps: DsaAuthManagerProps = { compact: true }
 const folderBrowserProps: FolderBrowserProps = {
     allowedExtensions: ['svs'],
-    onItemSelect: (selected: Item) => selected.name,
+    onItemSelect: (selected: FolderBrowserItem) => selected.name,
     syntheticData: {
         collections: [collection],
         getChildren: () => children,
