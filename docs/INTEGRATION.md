@@ -34,6 +34,7 @@ npm install react@^18.0.0 react-dom@^18.0.0
 
 ```tsx
 import { SlideViewer, Button, Card } from 'bdsa-react-components'
+// Public CSS export; resolves to the built dist/index.css.
 import 'bdsa-react-components/styles.css'
 
 function App() {

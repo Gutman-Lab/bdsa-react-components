@@ -297,7 +297,7 @@ This creates optimized production builds in the `dist` folder with:
 - ESM format (`index.js`)
 - CommonJS format (`index.cjs`)
 - TypeScript definitions (`index.d.ts`)
-- Bundled CSS (`style.css`)
+- Bundled CSS (`index.css`, published as the `bdsa-react-components/styles.css` export)
 
 ## Project Structure
 

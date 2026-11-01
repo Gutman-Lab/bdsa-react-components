@@ -412,6 +412,8 @@ Import the CSS file to get default styling:
 import 'bdsa-react-components/styles.css'
 ```
 
+That public subpath resolves to the built `dist/index.css` file. Consumers should always import `bdsa-react-components/styles.css`, not a file under `dist/`.
+
 Components use BEM-like naming with `bdsa-` prefix:
 - Block: `.bdsa-component`
 - Element: `.bdsa-component__element`
