@@ -15,6 +15,7 @@ describe('DsaAuthManager', () => {
     // Mock fetch to return a successful promise for logout
     ;(global.fetch as any).mockResolvedValue({
       ok: true,
+      text: async () => '{}',
       json: async () => ({}),
     })
     
@@ -88,6 +89,10 @@ describe('DsaAuthManager', () => {
     // Mock successful authentication
     ;(global.fetch as any).mockResolvedValueOnce({
       ok: true,
+      text: async () => JSON.stringify({
+        authToken: { token: 'test-token' },
+        user: { _id: '123', login: 'testuser' },
+      }),
       json: async () => ({
         authToken: { token: 'test-token' },
         user: { _id: '123', login: 'testuser' },
@@ -142,6 +147,7 @@ describe('DsaAuthManager', () => {
     // Mock a failed authentication response
     ;(global.fetch as any).mockResolvedValueOnce({
       ok: false,
+      text: async () => JSON.stringify({ message: 'Invalid username or password' }),
       json: async () => ({ message: 'Invalid username or password' }),
     })
 

@@ -694,8 +694,8 @@ function buildOverlayPointRectangleFeature(
             ...props,
             strokeColor: props.strokeColor ?? props.lineColor ?? '#ff00aa',
             strokeWidth,
-            fillColor: props.fillColor ?? 'rgba(255, 0, 170, 0.06)',
-            fillOpacity: typeof props.fillOpacity === 'number' ? props.fillOpacity : 0.06,
+            fillColor: props.fillColor ?? 'rgba(255, 0, 170, 0.08)',
+            fillOpacity: typeof props.fillOpacity === 'number' ? props.fillOpacity : 0.08,
             rescale: { strokeWidth },
         },
     }

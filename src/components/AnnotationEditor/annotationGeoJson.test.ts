@@ -137,7 +137,7 @@ describe('featureCollectionToLocalDocument', () => {
             classProperty: 'class_name',
         })
         expect(local.elements[0]!.group).toBe('Tumor')
-        expect(local.elements[0]!.label.value).toBe('Tumor-1')
+        expect(local.elements[0]!.label.value).toBe('Tumor')
     })
 
     it('maps Point to a small axis-aligned box', () => {

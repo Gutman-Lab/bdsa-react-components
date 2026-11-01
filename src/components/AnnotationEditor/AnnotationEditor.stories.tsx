@@ -98,6 +98,9 @@ const meta = {
     parameters: {
         layout: 'fullscreen',
         docs: {
+            // OSD + Paper canvases exhaust WebGL contexts when every story is
+            // rendered inline on the autodocs page; render them in iframes instead.
+            story: { inline: false, iframeHeight: '700px' },
             description: {
                 component:
                     'Protocol-driven ROI and label editing on top of SlideViewer. Requires network access to the DSA host in `imageInfo` / `apiBaseUrl`. Use **WithDsaAuthManager** for the standard login + annotate flow, or **WithDsaAuthManagerWithoutShowInfo** to hide the toolbar "Show Info" button. Storybook manager shortcuts are disabled in `.storybook/manager.ts` so Q/W, D/F/G/H, and review keys are not stolen by the Storybook UI.',

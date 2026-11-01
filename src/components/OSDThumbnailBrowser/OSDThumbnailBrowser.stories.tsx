@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState, useEffect } from 'react'
+import { fn } from 'storybook/test'
 import { OSDThumbnailBrowser } from './OSDThumbnailBrowser'
 import { DsaAuthManager } from '../DsaAuthManager/DsaAuthManager'
 
@@ -7,6 +8,13 @@ const meta: Meta<typeof OSDThumbnailBrowser> = {
     title: 'Components/OSDThumbnailBrowser',
     component: OSDThumbnailBrowser,
     tags: ['autodocs'],
+    args: {
+        // Explicit spy: implicit action args are deprecated during render, and
+        // OSDThumbnailBrowser fires these callbacks while loading.
+        onApiError: fn(),
+        onItemsLoaded: fn(),
+        onAnnotationOpacityChange: fn(),
+    },
     argTypes: {
         folderId: {
             control: 'text',

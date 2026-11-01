@@ -17,6 +17,9 @@ applyPaperJsPatches()
 applyOsdPaperJsAnnotationPatches()
 import './SlideViewer.css'
 
+/** Stable default so the init effect doesn't tear down the viewer every render. */
+const EMPTY_OSD_OPTIONS: NonNullable<SlideViewerProps['osdOptions']> = {}
+
 // Re-export types for backward compatibility
 export type { SlideImageInfo, AnnotationFeature, AnnotationInfoProperty, AnnotationInfoConfig, SlideViewerProps, ViewportBounds, OverlayTileSource } from './SlideViewer.types'
 
@@ -37,7 +40,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             onViewportChange,
             defaultAnnotationColor = '#ff0000',
             strokeWidth = 2,
-            osdOptions = {},
+            osdOptions = EMPTY_OSD_OPTIONS,
             className = '',
             height = '600px',
             width = '100%',

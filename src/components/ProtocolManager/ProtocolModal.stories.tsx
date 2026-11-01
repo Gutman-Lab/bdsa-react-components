@@ -1,9 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { ProtocolModal } from './ProtocolModal'
+import { ProtocolProvider } from './ProtocolContext'
+import { InMemoryProtocolStorage } from './storage/protocolStorage'
 import { sampleStainProtocols, sampleRegionProtocols } from './testData'
 import { SchemaValidator, BDSA_SCHEMA_DEFAULT_OPTIONS } from './utils/schemaValidator'
 import type { ProtocolModalProps } from './ProtocolManager.types'
+
+// ProtocolModal reads region protocols from context.
+const storageWithData = new InMemoryProtocolStorage()
+storageWithData.save([...sampleStainProtocols, ...sampleRegionProtocols])
 
 // Create schema validator instance — load bundled npm schema for Storybook
 const schemaValidator = new SchemaValidator()
@@ -18,6 +24,13 @@ const meta = {
         layout: 'centered',
     },
     tags: ['autodocs'],
+    decorators: [
+        (Story) => (
+            <ProtocolProvider storage={storageWithData}>
+                <Story />
+            </ProtocolProvider>
+        ),
+    ],
     argTypes: {
         type: {
             control: 'select',

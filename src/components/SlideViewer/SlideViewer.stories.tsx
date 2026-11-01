@@ -9,6 +9,8 @@ const meta = {
   parameters: {
     layout: 'fullscreen',
     docs: {
+      // Many OSD viewers inline on the autodocs page exhaust WebGL contexts.
+      story: { inline: false, iframeHeight: '700px' },
       description: {
         component:
           'A slide viewer that integrates OpenSeadragon with Paper.js annotations for DSA slides and overlays.',

@@ -2,9 +2,15 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { ProtocolList } from './ProtocolList';
 import { ProtocolModal } from './ProtocolModal';
+import { ProtocolProvider } from './ProtocolContext';
+import { InMemoryProtocolStorage } from './storage/protocolStorage';
 import { sampleStainProtocols, sampleRegionProtocols } from './testData';
 import { SchemaValidator, BDSA_SCHEMA_DEFAULT_OPTIONS } from './utils/schemaValidator';
 import type { Protocol, ProtocolListProps } from './ProtocolManager.types'
+
+// ProtocolList/ProtocolCard read region protocols from context.
+const storageWithData = new InMemoryProtocolStorage()
+storageWithData.save([...sampleStainProtocols, ...sampleRegionProtocols])
 
 const schemaValidator = new SchemaValidator()
 schemaValidator.loadSchemas(undefined, undefined, BDSA_SCHEMA_DEFAULT_OPTIONS).catch(() => {
@@ -18,6 +24,13 @@ const meta = {
         layout: 'padded',
     },
     tags: ['autodocs'],
+    decorators: [
+        (Story) => (
+            <ProtocolProvider storage={storageWithData}>
+                <Story />
+            </ProtocolProvider>
+        ),
+    ],
     argTypes: {
         type: {
             control: 'select',

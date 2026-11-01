@@ -2,9 +2,15 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { ProtocolCard } from './ProtocolCard';
 import { ProtocolModal } from './ProtocolModal';
+import { ProtocolProvider } from './ProtocolContext';
+import { InMemoryProtocolStorage } from './storage/protocolStorage';
 import { sampleStainProtocols, sampleRegionProtocols } from './testData';
 import { SchemaValidator, BDSA_SCHEMA_DEFAULT_OPTIONS } from './utils/schemaValidator';
 import type { Protocol, ProtocolCardProps } from './ProtocolManager.types'
+
+// ProtocolCard reads region protocols from context, so every story needs a provider.
+const storageWithData = new InMemoryProtocolStorage()
+storageWithData.save([...sampleStainProtocols, ...sampleRegionProtocols])
 
 const schemaValidator = new SchemaValidator()
 // Load schemas - will use fallbacks if schema file doesn't exist (normal in Storybook)
@@ -19,6 +25,13 @@ const meta = {
         layout: 'centered',
     },
     tags: ['autodocs'],
+    decorators: [
+        (Story) => (
+            <ProtocolProvider storage={storageWithData}>
+                <Story />
+            </ProtocolProvider>
+        ),
+    ],
     argTypes: {
         readOnly: {
             control: 'boolean',
