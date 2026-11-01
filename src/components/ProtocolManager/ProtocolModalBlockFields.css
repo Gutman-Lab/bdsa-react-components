@@ -1,0 +1,94 @@
+.block-protocol-fields {
+    margin-top: 8px;
+}
+
+.block-protocol-hint {
+    margin: 0 0 16px;
+    color: #555;
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.block-protocol-warning {
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    color: #856404;
+    font-size: 0.9rem;
+}
+
+.block-slots-header {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 48px;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #444;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.block-slot-row {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 48px;
+    gap: 10px;
+    margin-bottom: 8px;
+    align-items: start;
+}
+
+.block-slot-row input,
+.block-slot-row select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+.block-slot-row input.error,
+.block-slot-row select.error {
+    border-color: #dc3545;
+}
+
+.block-slot-errors {
+    grid-column: 1 / -1;
+}
+
+.block-slots-global-error {
+    display: block;
+    margin-bottom: 12px;
+}
+
+.block-slot-remove {
+    width: 40px;
+    height: 38px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #f8f9fa;
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.block-slot-remove:hover {
+    background: #fee;
+    border-color: #dc3545;
+}
+
+.block-slot-add {
+    margin-top: 8px;
+    padding: 8px 14px;
+    border: 1px dashed #1976d2;
+    border-radius: 6px;
+    background: #f0f7ff;
+    color: #1976d2;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.block-slot-add:hover {
+    background: #e3f2fd;
+}

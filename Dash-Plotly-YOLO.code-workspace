@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../Dash-Plotly-YOLO"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../DSA-Annotation-Browser"
+		}
+	],
+	"settings": {}
+}

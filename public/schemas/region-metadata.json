@@ -1,0 +1,513 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.com/product.schema.json",
+    "title": "BDSA Region Schema",
+    "type": "object",
+    "required": [
+        "bdsa_region_ids"
+    ],
+    "properties": {
+        "bdsa_region_ids": {
+            "type": "object",
+            "title": "Region Information",
+            "required": [
+                "regions"
+            ],
+            "properties": {
+                "regions": {
+                    "type": "object",
+                    "title": "Regions",
+                    "minItems": 1,
+                    "additionalProperties": false,
+                    "properties": {
+                        "Midbrain": {
+                            "type": "array",
+                            "title": "Midbrain",
+                            "abbreviation": "MB",
+                            "regionCategory": "brainstem",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "3rd cranial nerve",
+                                    "Substantia nigra",
+                                    "Red nucleus",
+                                    "Superior colliculus"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Pons": {
+                            "type": "array",
+                            "title": "Pons",
+                            "abbreviation": "PONS",
+                            "regionCategory": "brainstem",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Superior cerebellar peduncle",
+                                    "Inferior colliculus",
+                                    "Locus coeruleus",
+                                    "Pontine base / fibers"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Medulla": {
+                            "type": "array",
+                            "title": "Medulla",
+                            "abbreviation": "MED",
+                            "regionCategory": "brainstem",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Dorsal motor nucleus of vagus",
+                                    "Hypoglossal nucleus",
+                                    "Inferior olive",
+                                    "Medullary velum",
+                                    "Pyramid"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Olfactory": {
+                            "type": "array",
+                            "description": "Olfactory bulb region.",
+                            "title": "Olfactory",
+                            "abbreviation": "OB",
+                            "regionCategory": "special",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Bulb",
+                                    "Tract"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Parietal": {
+                            "type": "array",
+                            "title": "Parietal",
+                            "description": "Parietal lobe region.",
+                            "abbreviation": "PAR",
+                            "regionCategory": "cortical",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Super",
+                                    "Middle",
+                                    "Inferior",
+                                    "Angular gyrus",
+                                    "Supramarginal gyrus"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Temporal_pole": {
+                            "type": "array",
+                            "title": "Temporal Pole",
+                            "description": "Temporal pole region.",
+                            "abbreviation": "TempPole",
+                            "regionCategory": "special",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": []
+                            },
+                            "minItems": 0,
+                            "maxItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Frontal": {
+                            "type": "array",
+                            "description": "Frontal lobe region.",
+                            "title": "Frontal",
+                            "abbreviation": "FRCTX",
+                            "regionCategory": "cortical",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Superior",
+                                    "Middle",
+                                    "Inferior"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Temporal": {
+                            "type": "array",
+                            "description": "Temporal lobe region.",
+                            "title": "Temporal",
+                            "abbreviation": "TEMP",
+                            "regionCategory": "cortical",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Superior",
+                                    "Middle",
+                                    "Inferior"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Hippocampus": {
+                            "type": "array",
+                            "title": "Hippocampus",
+                            "abbreviation": "HIPP",
+                            "regionCategory": "subcortical",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "CA1-4 with dentate gyrus",
+                                    "Parahippocampal gyrus",
+                                    "Tail of caudate",
+                                    "Lateral geniculate nucleus",
+                                    "Occipital temporal gyrus"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Ant_Cingulate": {
+                            "type": "array",
+                            "title": "Anterior Cingulate",
+                            "abbreviation": "ACg",
+                            "regionCategory": "subcortical",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Corpus callosum",
+                                    "Superior frontal"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Post_Cingulate": {
+                            "type": "array",
+                            "title": "Posterior Cingulate",
+                            "abbreviation": "PCg",
+                            "regionCategory": "subcortical",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Corpus callosum",
+                                    "Superior frontal"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Amygdala": {
+                            "type": "array",
+                            "title": "Amygdala",
+                            "abbreviation": "AMYG",
+                            "regionCategory": "subcortical",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Entorhinal cortex"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Thalamus": {
+                            "type": "array",
+                            "title": "Thalamus",
+                            "abbreviation": "THAL",
+                            "regionCategory": "subcortical",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Mammillary body",
+                                    "Subthalamic nucleus",
+                                    "Mammilo-thalmaic tract",
+                                    "Anterior nucleus of thalamus",
+                                    "Pulvinar"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "White_matter": {
+                            "type": "array",
+                            "title": "White Matter",
+                            "abbreviation": "WM",
+                            "regionCategory": "white_matter",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Frontal",
+                                    "Parietal",
+                                    "Temporal",
+                                    "Occipital"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Cerebellum": {
+                            "type": "array",
+                            "title": "Cerebellum",
+                            "abbreviation": "CB",
+                            "regionCategory": "cerebellar",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": [
+                                    "Dentate",
+                                    "Vermis",
+                                    "Cortex"
+                                ]
+                            },
+                            "minItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Basal_Ganglia": {
+                            "type": "array",
+                            "title": "Basal Ganglia",
+                            "abbreviation": "BG",
+                            "regionCategory": "subcortical",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": []
+                            },
+                            "minItems": 0,
+                            "maxItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Occipital": {
+                            "type": "array",
+                            "title": "Occipital",
+                            "description": "Occipital cortex region.",
+                            "abbreviation": "OCC",
+                            "regionCategory": "cortical",
+                            "recommended": true,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": []
+                            },
+                            "minItems": 0,
+                            "maxItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Motor_cortex": {
+                            "type": "array",
+                            "title": "Motor Cortex",
+                            "description": "Primary motor cortex region.",
+                            "abbreviation": "MC",
+                            "regionCategory": "cortical",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": []
+                            },
+                            "minItems": 0,
+                            "maxItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Insula": {
+                            "type": "array",
+                            "title": "Insula",
+                            "abbreviation": "INS",
+                            "regionCategory": "cortical",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": []
+                            },
+                            "minItems": 0,
+                            "maxItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Frontal_pole": {
+                            "type": "array",
+                            "title": "Frontal Pole",
+                            "abbreviation": "FP",
+                            "regionCategory": "cortical",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": []
+                            },
+                            "minItems": 0,
+                            "maxItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Spinal_cord": {
+                            "type": "array",
+                            "title": "Spinal Cord",
+                            "abbreviation": "SC",
+                            "regionCategory": "special",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": []
+                            },
+                            "minItems": 0,
+                            "maxItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Hypothalamus": {
+                            "type": "array",
+                            "title": "Hypothalamus",
+                            "abbreviation": "HYP",
+                            "regionCategory": "special",
+                            "recommended": false,
+                            "items": {
+                                "type": "string",
+                                "description": "Anatomical landmarks present:",
+                                "enum": []
+                            },
+                            "minItems": 0,
+                            "maxItems": 0,
+                            "uniqueItems": true
+                        },
+                        "Other": {
+                            "type": "object",
+                            "title": "Other",
+                            "abbreviation": "OTHER_REGION",
+                            "regionCategory": null,
+                            "recommended": false,
+                            "required": [
+                                "name"
+                            ],
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "title": "Region Name",
+                                    "required": true
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "title": "Description"
+                                },
+                                "regionCategory": {
+                                    "type": "string",
+                                    "title": "Region Category",
+                                    "enum": [
+                                        "cortical",
+                                        "subcortical",
+                                        "brainstem",
+                                        "cerebellar",
+                                        "white_matter",
+                                        "special"
+                                    ]
+                                }
+                            }
+                        },
+                        "Lesion": {
+                            "type": "object",
+                            "title": "Lesion",
+                            "abbreviation": "LESION",
+                            "regionCategory": null,
+                            "recommended": false,
+                            "required": [
+                                "name"
+                            ],
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "title": "Lesion Name",
+                                    "required": true
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "title": "Description"
+                                },
+                                "regionCategory": {
+                                    "type": "string",
+                                    "title": "Region Category",
+                                    "enum": [
+                                        "cortical",
+                                        "subcortical",
+                                        "brainstem",
+                                        "cerebellar",
+                                        "white_matter",
+                                        "special"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "hemisphere": {
+                    "type": "string",
+                    "title": "Laterality",
+                    "enum": [
+                        "left",
+                        "right",
+                        "bilateral"
+                    ]
+                },
+                "sliceOrientation": {
+                    "title": "Slice Orientation",
+                    "type": "string",
+                    "enum": [
+                        "axial",
+                        "coronal",
+                        "sagittal",
+                        "other or N/A"
+                    ]
+                },
+                "damage": {
+                    "type": "array",
+                    "title": "Damage",
+                    "description": "Specifies tissue damage in this region and the cause of it.",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "Infarct",
+                            "Lacune",
+                            "Microinfarct",
+                            "CTE",
+                            "TBI"
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}

@@ -135,7 +135,7 @@ export function useAnnotationFetching(
                     debugLog.log(`Fetching annotation ${id} from: ${url}`)
 
                     // Build request options with custom headers if provided
-                    const fetchOptions: RequestInit = {}
+                    const fetchOptions: RequestInit = { cache: 'no-store' }
                     if (apiHeaders) {
                         fetchOptions.headers = apiHeaders
                     }

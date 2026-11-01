@@ -54,6 +54,10 @@ if (targets.length === 0) {
 const failures = []
 
 for (const target of [...new Set(targets)].sort()) {
+    // Subpath patterns (e.g. "./schemas/*") are resolved by the package
+    // manager at import time; the expanded targets below verify the files.
+    if (target.includes('*')) continue
+
     const absolute = join(packageRoot, target)
 
     let stat

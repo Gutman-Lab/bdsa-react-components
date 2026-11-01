@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDsaResolvedApi } from '../../auth/useDsaResolvedApi'
 import { PaperOverlay, AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { FeatureCollection, Feature } from 'geojson'
 import OpenSeadragon from 'openseadragon'
 import type { Viewer as OpenSeadragonViewer } from 'openseadragon'
 import { IndexedDBAnnotationCache } from '../../cache'
-import { applyPaperJsPatches } from '../../utils/patchOsdPaperjs'
+import { applyPaperJsPatches, applyOsdPaperJsAnnotationPatches, isPaperViewReady } from '../../utils/patchOsdPaperjs'
 import { createDebugLogger } from '../../utils/debugLog'
 import type { SlideViewerProps, AnnotationFeature } from './SlideViewer.types'
 import { extractToken, appendTokenToUrl, DEFAULT_ANNOTATION_INFO_CONFIG } from './SlideViewer.utils'
@@ -13,7 +14,11 @@ import { useAnnotationFetching, useAnnotationRendering, useAnnotationOpacity, us
 // Apply patches IMMEDIATELY when this module loads (not in a component lifecycle)
 // This must happen before any Paper.js operations
 applyPaperJsPatches()
+applyOsdPaperJsAnnotationPatches()
 import './SlideViewer.css'
+
+/** Stable default so the init effect doesn't tear down the viewer every render. */
+const EMPTY_OSD_OPTIONS: NonNullable<SlideViewerProps['osdOptions']> = {}
 
 // Re-export types for backward compatibility
 export type { SlideImageInfo, AnnotationFeature, AnnotationInfoProperty, AnnotationInfoConfig, SlideViewerProps, ViewportBounds, OverlayTileSource } from './SlideViewer.types'
@@ -35,7 +40,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             onViewportChange,
             defaultAnnotationColor = '#ff0000',
             strokeWidth = 2,
-            osdOptions = {},
+            osdOptions = EMPTY_OSD_OPTIONS,
             className = '',
             height = '600px',
             width = '100%',
@@ -48,6 +53,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             authToken,
             tokenQueryParam = false,
             showAnnotationControls = false,
+            manageAnnotationsExternally = false,
             defaultAnnotationOpacity = 1,
             annotationOpacities,
             visibleAnnotations,
@@ -63,6 +69,12 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         },
         ref
     ) => {
+        const {
+            apiBaseUrl: effectiveApiBaseUrl,
+            apiHeaders: effectiveApiHeaders,
+            authToken: effectiveAuthToken,
+        } = useDsaResolvedApi({ apiBaseUrl, apiHeaders, authToken })
+
         const containerRef = useRef<HTMLDivElement>(null)
         const [viewer, setViewer] = useState<OpenSeadragonViewer | null>(null)
         const [overlay, setOverlay] = useState<InstanceType<typeof PaperOverlay> | null>(null)
@@ -230,15 +242,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
 
         // Helper function to check if Paper.js is fully initialized and ready
         const isPaperJsReady = useCallback((paperScope: InstanceType<typeof PaperOverlay>['paperScope']): boolean => {
-            if (!paperScope) return false
-            if (!paperScope.view) return false
-            // Check if _transformBounds exists (Paper.js internal property indicating initialization)
-            const view = paperScope.view as any
-            if (view._transformBounds === null || view._transformBounds === undefined) {
-                return false
-            }
-            if (typeof paperScope.view.draw !== 'function') return false
-            return true
+            if (!paperScope?.view) return false
+            return isPaperViewReady(paperScope.view)
         }, [])
 
         // Safe wrapper for Paper.js view.draw() that checks initialization
@@ -292,10 +297,9 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             onAnnotationClickRef.current = onAnnotationClick
         }, [onAnnotationClick])
 
-        // Extract token from authToken or apiHeaders (memoized)
         const token = useMemo(() => {
-            return extractToken(authToken, apiHeaders)
-        }, [authToken, apiHeaders])
+            return extractToken(effectiveAuthToken, effectiveApiHeaders)
+        }, [effectiveAuthToken, effectiveApiHeaders])
 
         // Create wrapped fetch function that appends token to URLs when tokenQueryParam is true
         const wrappedFetch = useMemo(() => {
@@ -339,14 +343,14 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
         // Fetch annotations from DSA API if annotationIds are provided
         const { fetchedAnnotations, annotationDocuments } = useAnnotationFetching(
             annotationIds,
-            apiBaseUrl,
+            effectiveApiBaseUrl,
             defaultAnnotationColor,
             maxPointsPerAnnotation,
             maxTotalPoints,
             wrappedFetch,
             cache,
             annotationHeaders,
-            apiHeaders,
+            effectiveApiHeaders,
             isMountedRef,
             debug,
             onApiError
@@ -414,7 +418,7 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             imageInfo,
             token,
             tokenQueryParam,
-            apiHeaders,
+            effectiveApiHeaders,
             osdOptions,
             onViewerReadyRef,
             setViewer,
@@ -444,7 +448,8 @@ export const SlideViewer = React.forwardRef<HTMLDivElement, SlideViewerProps>(
             tiledImageRef,
             lastRenderedAnnotationsRef,
             safeDrawPaperView,
-            debugLog
+            debugLog,
+            manageAnnotationsExternally,
         )
 
         // Update opacity on existing annotations when opacity changes

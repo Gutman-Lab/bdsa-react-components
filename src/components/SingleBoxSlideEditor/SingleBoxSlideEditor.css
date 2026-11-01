@@ -1,0 +1,105 @@
+.single-box-slide-editor {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.single-box-slide-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.single-box-slide-editor__mode-btn {
+  border: 1px solid #475569;
+  border-radius: 0.375rem;
+  background: #334155;
+  color: #f1f5f9;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.single-box-slide-editor__mode-btn:hover:not(:disabled) {
+  background: #475569;
+}
+
+.single-box-slide-editor__mode-btn--active {
+  background: #2563eb;
+  border-color: #3b82f6;
+}
+
+.single-box-slide-editor__mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.single-box-slide-editor__coords {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+  color: #f1f5f9;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.single-box-slide-editor__hint {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: #94a3b8;
+}
+
+.single-box-slide-editor__viewer-host {
+  min-height: 0;
+  flex: 1;
+}
+
+.single-box-slide-editor__viewer-host .bdsa-slide-viewer {
+  height: 100%;
+}
+
+.single-box-slide-editor__viewer-host .bdsa-slide-viewer__info-bar {
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  color: #f1f5f9;
+}
+
+.single-box-slide-editor__viewer-host .bdsa-slide-viewer__mouse-coords,
+.single-box-slide-editor__viewer-host .bdsa-slide-viewer__zoom-display {
+  color: #f1f5f9;
+}
+
+.single-box-slide-editor__viewer-host .bdsa-slide-viewer__zoom-btn {
+  border-color: #475569;
+  background: #334155;
+  color: #f1f5f9;
+}
+
+.single-box-slide-editor__viewer-host .bdsa-slide-viewer__zoom-btn:hover {
+  background: #475569;
+  border-color: #64748b;
+}
+
+.single-box-slide-editor--pan .paper-overlay {
+  pointer-events: none !important;
+}
+
+.single-box-slide-editor--shape-edit .paper-overlay {
+  pointer-events: auto !important;
+}
+
+.single-box-slide-editor--shape-edit .openseadragon-canvas > :not(.paper-overlay) {
+  pointer-events: none !important;
+}
+
+.single-box-slide-editor--shape-edit .openseadragon-canvas > canvas {
+  pointer-events: none !important;
+}

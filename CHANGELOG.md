@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Storybook** stories for **SlideViewer** under `Components/SlideViewer` (basic slide, inline annotations, API-loaded annotations, GeoJSON, OSD options, viewport/zoom HUDs, overlay tile playground). Default story args set `disableVisibilityCheck` so the viewer initializes reliably inside the Storybook iframe.
+- **FolderBrowser** `visualStyle` prop (`'modern' | 'legacy'`) for classic tree styling (neutral panel, ▶/▼, Collection/Folder badges) aligned with the pre-refactor library; optional `showVisualStyleToggle` + `onVisualStyleChange` for an in-header Modern/Classic control.
+- **FolderBrowser** render props: `renderCollection`, `renderFolder`, and `renderItem` to customize rows. Collection/folder renderers replace **only the row**; expansion and children are still managed by the component (fixes the old full-node replacement footgun). Default item rows again use `largeImage` and AI-model metadata via **`itemUtils`** (`hasLargeImage`, `isAIModel`, etc.), re-exported from the package root.
+- **FolderBrowser** `onResourceSelect` / `onSelectionChange` with exported **`FolderBrowserResource`**; **single-click** collection/folder rows selects (and items still call these plus `onItemSelect`). **Double-click** a row or **single-click** the chevron to expand/collapse.
+- **FolderBrowser** deep linking: **`rootId`** + **`rootType`** (`'collection' \| 'folder'`) loads `GET /api/v1/collection/:id` or `/folder/:id` (collection not found via direct URL falls back to listing collections). **`startCollectionId`** / **`startFolderId`** auto-expand when browsing the full collection list.
+- **FolderBrowser** **`persistExpansion`** / **`persistSelection`** (optional `localStorage` keys) to keep expanded nodes and last selected resource across refresh; hydration reloads children for saved ids (collections first). **`scrollSelectedIntoView`** (default `true`) scrolls the selected row into the panel; rows set **`data-resource-id`** for collections, folders, and items.
+
+### Removed
+
+- **Button** component and its public exports (`Button`, `ButtonProps`). It was a demo-only control; use your app’s design system or native `<button>` instead.
+
 ### Fixed
 
 #### Trustworthy test baseline
@@ -15,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Consumer package/API contract
 - The `./styles.css` package export now points at the built `dist/index.css` file (matching the published `0.2.5` metadata) across `package.json` and the docs.
-- Exported public props types for all seven components and the shared FolderBrowser data types from `src/index.ts`.
+- Exported public props types for every component, the shared FolderBrowser data types, and the schema subpath exports from `src/index.ts` / `package.json`.
 - Added `scripts/check-exports.mjs` (`check:exports`) to verify every `package.json#exports` target after a build, wired into `prepublishOnly`.
 - Added a consumer typecheck fixture that imports every component and props type from the built package.
 
@@ -24,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Version reconciliation:** the repository declared `0.2.0` and the changelog ended at `0.1.23`, while npm already published `0.2.5` (with `./styles.css` mapped to `./dist/index.css`) and no git tags existed. The repository now declares `0.2.5` to match the published baseline. Releases `0.2.0` through `0.2.5` have no changelog entries or tags here, and this file does not invent their contents. Any release containing the unreleased changes above will need a new version bump.
+
+## [0.2.2] - 2026-07-09
+
+### Changed
+
+- **AnnotationEditor** faster slide open: uses Girder exact-name lookup (`GET /annotation?itemId=&name=`) instead of listing every slide annotation; loads the first matching doc only. Duplicate-name warning still shown when count > 1.
 
 ## [0.1.23] - 2026-01-10
 
