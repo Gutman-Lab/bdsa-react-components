@@ -14,7 +14,7 @@ interface DsaAnnotation {
   }
 }
 
-interface AnnotationBrowserProps {
+export interface AnnotationBrowserProps {
   itemId?: string
   onAnnotationSelect?: (geojson: FeatureCollection) => void
   className?: string

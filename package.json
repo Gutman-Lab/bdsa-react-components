@@ -1,6 +1,6 @@
 {
     "name": "bdsa-react-components",
-    "version": "0.2.0",
+    "version": "0.2.5",
     "description": "Reusable React components for the Digital Slide Archive project",
     "type": "module",
     "main": "./dist/index.cjs",
@@ -12,7 +12,7 @@
             "import": "./dist/index.js",
             "require": "./dist/index.cjs"
         },
-        "./styles.css": "./dist/style.css"
+        "./styles.css": "./dist/index.css"
     },
     "files": [
         "dist",
@@ -24,7 +24,7 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
-        "prepublishOnly": "npm run build",
+        "prepublishOnly": "npm run build && npm run check:exports",
         "preview": "vite preview",
         "test": "vitest --watch=false",
         "test:watch": "vitest",
@@ -35,7 +35,9 @@
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "version": "npm run build",
         "postversion": "git push && git push --tags",
-        "postinstall": "patch-package"
+        "postinstall": "patch-package",
+        "check:exports": "node scripts/check-exports.mjs",
+        "check:consumer-types": "tsc -p fixtures/consumer-typecheck/tsconfig.json --noEmit"
     },
     "peerDependencies": {
         "openseadragon": "^5.0.0",

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+#### Trustworthy test baseline
+- Added an in-memory `localStorage`/`sessionStorage` stub with per-test reset in `src/test/setup.ts`; the suite no longer needs Node's experimental Web Storage flag.
+- Restored click-to-collapse in `useResizablePanel` with an explicit 3px click/drag threshold, plus focused hook tests for click versus drag.
+
+#### Consumer package/API contract
+- The `./styles.css` package export now points at the built `dist/index.css` file (matching the published `0.2.5` metadata) across `package.json` and the docs.
+- Exported public props types for all seven components and the shared FolderBrowser data types from `src/index.ts`.
+- Added `scripts/check-exports.mjs` (`check:exports`) to verify every `package.json#exports` target after a build, wired into `prepublishOnly`.
+- Added a consumer typecheck fixture that imports every component and props type from the built package.
+
+## [0.2.5] - 2026-11-01
+
+### Changed
+
+- **Version reconciliation:** the repository declared `0.2.0` and the changelog ended at `0.1.23`, while npm already published `0.2.5` (with `./styles.css` mapped to `./dist/index.css`) and no git tags existed. The repository now declares `0.2.5` to match the published baseline. Releases `0.2.0` through `0.2.5` have no changelog entries or tags here, and this file does not invent their contents. Any release containing the unreleased changes above will need a new version bump.
+
 ## [0.1.23] - 2026-01-10
 
 ### Fixed

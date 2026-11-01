@@ -13,7 +13,7 @@ export interface FolderBrowserSyntheticData {
   getChildren: (id: string, parentType: 'collection' | 'folder') => NodeChildren
 }
 
-interface FolderBrowserProps {
+export interface FolderBrowserProps {
   onItemSelect?: (item: Item) => void
   selectedItemId?: string
   /** Only show items whose filename extension matches this list. Empty array shows all items. */
@@ -116,6 +116,7 @@ export function FolderBrowser({ onItemSelect, selectedItemId, allowedExtensions 
       <div
         className={`folder-browser folder-browser--collapsed ${className}`}
         style={{ ...style, width: '36px', minWidth: '36px' }}
+        onClick={() => setCollapsed(false)}
       >
         <button className="folder-browser__collapse-btn" onClick={() => setCollapsed(false)} title="Expand panel">
           <ChevronRight size={22} />

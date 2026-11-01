@@ -9,7 +9,7 @@ import '../../styles/browserPanel.css'
 /** Shape of the manifest.json file served from public/. */
 type Manifest = Record<string, string[]>
 
-interface ManifestBrowserProps {
+export interface ManifestBrowserProps {
   onItemSelect?: (item: Item) => void
   selectedItemId?: string
   className?: string
