@@ -23,69 +23,6 @@
   },
   "components": [
     {
-      "name": "Button",
-      "export": "Button",
-      "description": "A versatile button component with multiple variants and states",
-      "type": "ButtonProps",
-      "props": [
-        {
-          "name": "variant",
-          "type": "'primary' | 'secondary' | 'danger' | 'success'",
-          "default": "primary",
-          "required": false,
-          "description": "Button style variant"
-        },
-        {
-          "name": "size",
-          "type": "'small' | 'medium' | 'large'",
-          "default": "medium",
-          "required": false,
-          "description": "Button size"
-        },
-        {
-          "name": "fullWidth",
-          "type": "boolean",
-          "default": false,
-          "required": false,
-          "description": "Whether button takes full width of its container"
-        },
-        {
-          "name": "loading",
-          "type": "boolean",
-          "default": false,
-          "required": false,
-          "description": "Whether button is in loading state"
-        },
-        {
-          "name": "className",
-          "type": "string",
-          "default": "",
-          "required": false,
-          "description": "Custom CSS class"
-        },
-        {
-          "name": "disabled",
-          "type": "boolean",
-          "required": false,
-          "description": "Whether button is disabled"
-        },
-        {
-          "name": "onClick",
-          "type": "(event: React.MouseEvent<HTMLButtonElement>) => void",
-          "required": false,
-          "description": "Click handler"
-        },
-        {
-          "name": "children",
-          "type": "React.ReactNode",
-          "required": true,
-          "description": "Button content"
-        }
-      ],
-      "extends": "React.ButtonHTMLAttributes<HTMLButtonElement>",
-      "example": "<Button variant=\"primary\" size=\"large\" onClick={() => {}}>Click Me</Button>"
-    },
-    {
       "name": "Card",
       "export": "Card",
       "description": "A flexible card component for displaying content in a contained format",

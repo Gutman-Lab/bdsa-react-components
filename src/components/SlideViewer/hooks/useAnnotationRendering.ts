@@ -28,9 +28,11 @@ export function useAnnotationRendering(
     tiledImageRef: React.MutableRefObject<{ addPaperItem: (item: unknown) => void; paperItems?: unknown[] } | null>,
     lastRenderedAnnotationsRef: React.MutableRefObject<string>,
     safeDrawPaperView: (paperScope: PaperOverlay['paperScope']) => void,
-    debugLog: DebugLogger
+    debugLog: DebugLogger,
+    manageAnnotationsExternally = false,
 ) {
     useEffect(() => {
+        if (manageAnnotationsExternally) return
         if (!viewer || !overlay || !toolkit) return
 
         const paperScope = overlay.paperScope
@@ -311,6 +313,7 @@ export function useAnnotationRendering(
         lastRenderedAnnotationsRef,
         safeDrawPaperView,
         debugLog,
+        manageAnnotationsExternally,
     ])
 }
 

@@ -7,7 +7,6 @@ This document provides a comprehensive API reference for all components, types, 
 - [Installation](#installation)
 - [Exports](#exports)
 - [Components](#components)
-  - [Button](#button)
   - [Card](#card)
   - [SlideViewer](#slideviewer)
   - [AnnotationManager](#annotationmanager)
@@ -29,7 +28,6 @@ All components and types are exported from the main package entry point:
 
 ```tsx
 import { 
-  Button, 
   Card, 
   SlideViewer, 
   AnnotationManager,
@@ -40,38 +38,6 @@ import 'bdsa-react-components/styles.css'
 ```
 
 ## Components
-
-### Button
-
-A versatile button component with multiple variants and states.
-
-**Export:** `Button`  
-**Type:** `ButtonProps`
-
-**Props:**
-
-| Prop | Type | Default | Required | Description |
-|------|------|---------|----------|-------------|
-| `variant` | `'primary' \| 'secondary' \| 'danger' \| 'success'` | `'primary'` | No | Button style variant |
-| `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | No | Button size |
-| `fullWidth` | `boolean` | `false` | No | Whether button takes full width |
-| `loading` | `boolean` | `false` | No | Whether button is in loading state |
-| `className` | `string` | `''` | No | Custom CSS class |
-| `disabled` | `boolean` | - | No | Whether button is disabled |
-| `onClick` | `(event: React.MouseEvent<HTMLButtonElement>) => void` | - | No | Click handler |
-| `children` | `React.ReactNode` | - | Yes | Button content |
-
-**Extends:** All standard HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`)
-
-**Usage:**
-
-```tsx
-<Button variant="primary" size="large" loading={false} onClick={() => {}}>
-  Click Me
-</Button>
-```
-
----
 
 ### Card
 
@@ -371,7 +337,6 @@ All TypeScript types and interfaces are exported and can be imported:
 
 ```tsx
 import type {
-  ButtonProps,
   CardProps,
   SlideViewerProps,
   SlideImageInfo,

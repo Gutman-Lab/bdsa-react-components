@@ -1,0 +1,24 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.com/product.schema.json",
+    "title": "BDSA Slide-Level Schema",
+    "type": "object",
+    "required": [
+        "bdsa_case_id",
+        "block_id"
+    ],
+    "properties": {
+        "bdsa_case_id": {
+            "type": "string",
+            "title": "BDSA ID",
+            "pattern": "^BDSA\\d+\\.\\d+$",
+            "description": "Unique BDSA case identifier of specified format: \"BDSA-01-0001\", where 01 is the BDSA institution ID, and 0001 is the BDSA case ID within the institution."
+        },
+        "block_id": {
+            "type": "string",
+            "title": "Block ID",
+            "pattern": "^\\w+$",
+            "description": "Unique institutional block identifier, can be any format."
+        }
+    }
+}

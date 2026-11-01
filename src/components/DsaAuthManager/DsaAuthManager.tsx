@@ -127,6 +127,16 @@ export interface DsaAuthManagerProps {
    * ```
    */
   compact?: boolean
+  /**
+   * When set, the Login control is a link to this URL (e.g. Girder web UI with `?dialog=login`)
+   * instead of opening the in-app modal. Logout behavior is unchanged.
+   */
+  externalLoginUrl?: string
+  /**
+   * Show a companion control that opens the username/password REST login modal (next to `externalLoginUrl`).
+   * Requires a configured `serverUrl` (for example via env or calling `dsaAuthStore.updateConfig`).
+   */
+  embeddedApiLogin?: boolean
 }
 
 export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
@@ -134,6 +144,8 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
   allowServerConfig = true,
   className = '',
   compact = false,
+  externalLoginUrl,
+  embeddedApiLogin = false,
 }) => {
   const { authStatus, login, logout, updateConfig } = useDsaAuth()
   const [showLoginModal, setShowLoginModal] = useState(false)
@@ -188,6 +200,40 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
   }
 
   const status = getStatusDisplay()
+  const loginDisabled = !externalLoginUrl && !authStatus.isConfigured && !allowServerConfig
+
+  const loginCompact =
+    externalLoginUrl && !authStatus.isAuthenticated ? (
+      <div className="dsa-external-login-group">
+        <a
+          href={externalLoginUrl}
+          className="login-button"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open Girder sign-in in a new tab"
+        >
+          Login
+        </a>
+        {embeddedApiLogin && (
+          <button
+            type="button"
+            className="dsa-api-login-button"
+            onClick={handleOpenLoginModal}
+            title="DSA REST authentication (stores a token for this portal)"
+          >
+            API
+          </button>
+        )}
+      </div>
+    ) : (
+      <button
+        className={authStatus.isAuthenticated ? 'logout-button' : 'login-button'}
+        onClick={authStatus.isAuthenticated ? logout : handleOpenLoginModal}
+        disabled={loginDisabled}
+      >
+        {authStatus.isAuthenticated ? 'Logout' : 'Login'}
+      </button>
+    )
 
   if (compact) {
     return (
@@ -198,13 +244,7 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
             <span className="user-name">{authStatus.user.name}</span>
           )}
         </div>
-        <button
-          className={authStatus.isAuthenticated ? 'logout-button' : 'login-button'}
-          onClick={authStatus.isAuthenticated ? logout : handleOpenLoginModal}
-          disabled={!authStatus.isConfigured && !allowServerConfig}
-        >
-          {authStatus.isAuthenticated ? 'Logout' : 'Login'}
-        </button>
+        {loginCompact}
 
         {showLoginModal && (
           <LoginModal
@@ -244,12 +284,34 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
           <button className="logout-button" onClick={logout} title="Logout from DSA server">
             Logout
           </button>
+        ) : externalLoginUrl ? (
+          <div className="dsa-external-login-group">
+            <a
+              href={externalLoginUrl}
+              className="login-button"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open Girder sign-in in a new tab"
+            >
+              Login
+            </a>
+            {embeddedApiLogin && (
+              <button
+                type="button"
+                className="dsa-api-login-button"
+                onClick={handleOpenLoginModal}
+                title="DSA REST authentication (stores a token for this portal)"
+              >
+                API
+              </button>
+            )}
+          </div>
         ) : (
           <button
             className="login-button"
             onClick={handleOpenLoginModal}
-            disabled={!authStatus.isConfigured && !allowServerConfig}
-            title={!authStatus.isConfigured && !allowServerConfig ? 'Configure DSA server first' : 'Login to DSA server'}
+            disabled={loginDisabled}
+            title={loginDisabled ? 'Configure DSA server first' : 'Login to DSA server'}
           >
             Login
           </button>

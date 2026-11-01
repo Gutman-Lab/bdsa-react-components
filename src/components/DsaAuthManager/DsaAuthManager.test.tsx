@@ -15,6 +15,7 @@ describe('DsaAuthManager', () => {
     // Mock fetch to return a successful promise for logout
     ;(global.fetch as any).mockResolvedValue({
       ok: true,
+      text: async () => '{}',
       json: async () => ({}),
     })
     
@@ -88,6 +89,10 @@ describe('DsaAuthManager', () => {
     // Mock successful authentication
     ;(global.fetch as any).mockResolvedValueOnce({
       ok: true,
+      text: async () => JSON.stringify({
+        authToken: { token: 'test-token' },
+        user: { _id: '123', login: 'testuser' },
+      }),
       json: async () => ({
         authToken: { token: 'test-token' },
         user: { _id: '123', login: 'testuser' },
@@ -142,6 +147,7 @@ describe('DsaAuthManager', () => {
     // Mock a failed authentication response
     ;(global.fetch as any).mockResolvedValueOnce({
       ok: false,
+      text: async () => JSON.stringify({ message: 'Invalid username or password' }),
       json: async () => ({ message: 'Invalid username or password' }),
     })
 
@@ -157,6 +163,37 @@ describe('DsaAuthManager', () => {
     await waitFor(() => {
       expect(screen.getByText('Invalid username or password')).toBeInTheDocument()
     })
+  })
+
+  it('renders Login as external link when externalLoginUrl is set', () => {
+    dsaAuthStore.updateConfig({ baseUrl: 'http://test.example.com' })
+
+    render(<DsaAuthManager externalLoginUrl="https://pub-data.example/#collections?dialog=login" />)
+
+    const link = screen.getByRole('link', { name: 'Login' })
+    expect(link).toHaveAttribute('href', 'https://pub-data.example/#collections?dialog=login')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('shows API button and opens REST modal when embeddedApiLogin with externalLoginUrl', () => {
+    dsaAuthStore.updateConfig({ baseUrl: 'http://test.example.com' })
+
+    render(
+      <DsaAuthManager
+        compact
+        allowServerConfig={false}
+        externalLoginUrl="https://pub-data.example/#collections?dialog=login"
+        embeddedApiLogin
+      />,
+    )
+
+    const loginLink = screen.getByRole('link', { name: 'Login' })
+    expect(loginLink).toHaveAttribute('href', 'https://pub-data.example/#collections?dialog=login')
+
+    fireEvent.click(screen.getByRole('button', { name: 'API' }))
+    expect(screen.getByText('Login to DSA Server')).toBeInTheDocument()
+    expect(screen.getByText('http://test.example.com')).toBeInTheDocument()
+    expect(screen.queryByLabelText('DSA Server URL *')).not.toBeInTheDocument()
   })
 })
 

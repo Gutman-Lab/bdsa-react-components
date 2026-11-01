@@ -1,8 +1,56 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { DsaAuthManager } from './DsaAuthManager'
+import type { DsaAuthManagerProps } from './DsaAuthManager'
 import { dsaAuthStore } from '../../auth/DsaAuthStore'
+import { AnnotationEditor } from '../AnnotationEditor/AnnotationEditor'
+import type { AnnotationEditorConfig } from '../AnnotationEditor/AnnotationEditor.types'
+import type { SlideImageInfo } from '../SlideViewer/SlideViewer.types'
 
-const meta: Meta<typeof DsaAuthManager> = {
+const exampleApiBaseUrl = 'http://bdsa.pathology.emory.edu:8080/api/v1'
+
+const exampleImageInfo: SlideImageInfo = {
+  dziUrl: `${exampleApiBaseUrl}/item/6903df8dd26a6d93de19a9b2/tiles/dzi.dzi`,
+}
+
+const exampleEditorConfig: AnnotationEditorConfig = {
+  annotationDocumentName: 'storybook-demo',
+  annotationDescription: 'Storybook demo document',
+  annotationTypes: [
+    {
+      name: 'Positive',
+      color: '#c62828',
+      strokeWidth: 2,
+      key: '1',
+      defaultWidth: 96,
+      defaultHeight: 72,
+    },
+    {
+      name: 'Negative',
+      color: '#1565c0',
+      strokeWidth: 2,
+      key: '2',
+      defaultWidth: 96,
+      defaultHeight: 72,
+    },
+  ],
+  roiSettings: {
+    label: 'roi',
+    color: '#ef6c00',
+    strokeWidth: 2,
+    fillOpacity: 0.08,
+    width: 900,
+    height: 700,
+  },
+}
+
+type DsaAuthManagerStoryArgs = DsaAuthManagerProps & {
+  /** Passed to AnnotationEditor — show the toolbar "Show Info" toggle. Default: true. */
+  showInfoControl?: boolean
+  /** Passed to AnnotationEditor — show SlideViewer coords/zoom bar. Default: true. */
+  showInfoBar?: boolean
+}
+
+const meta: Meta<DsaAuthManagerStoryArgs> = {
   title: 'Components/DsaAuthManager',
   component: DsaAuthManager,
   parameters: {
@@ -30,7 +78,7 @@ const meta: Meta<typeof DsaAuthManager> = {
 }
 
 export default meta
-type Story = StoryObj<typeof DsaAuthManager>
+type Story = StoryObj<DsaAuthManagerStoryArgs>
 
 /**
  * Default authentication manager with all features enabled.
@@ -238,3 +286,88 @@ export const WithCallbacks: Story = {
   ],
 }
 
+/**
+ * Full app shell: log in via DsaAuthManager, then annotate with AnnotationEditor.
+ * Use Controls to opt into/out of editor UI features (`showInfoControl`, `showInfoBar`).
+ */
+export const WithAnnotationEditor: Story = {
+  args: {
+    allowServerConfig: true,
+    compact: false,
+    showInfoControl: true,
+    showInfoBar: true,
+  },
+  argTypes: {
+    showInfoControl: {
+      control: 'boolean',
+      description: 'Show the AnnotationEditor toolbar "Show Info" hover-tooltip toggle.',
+      table: { category: 'AnnotationEditor' },
+    },
+    showInfoBar: {
+      control: 'boolean',
+      description: 'Show the SlideViewer info bar (coords, zoom, preset zoom buttons).',
+      table: { category: 'AnnotationEditor' },
+    },
+  },
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        story:
+          'Configure the server URL and log in, then use AnnotationEditor below. Toggle `showInfoControl` off in Controls to hide the "Show Info" toolbar button (default: on).',
+      },
+    },
+  },
+  render: ({
+    showInfoControl = true,
+    showInfoBar = true,
+    allowServerConfig,
+    compact,
+    className,
+    onAuthChange,
+    externalLoginUrl,
+  }) => (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <DsaAuthManager
+        allowServerConfig={allowServerConfig}
+        compact={compact}
+        className={className}
+        onAuthChange={onAuthChange}
+        externalLoginUrl={externalLoginUrl}
+      />
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <AnnotationEditor
+          imageInfo={exampleImageInfo}
+          config={exampleEditorConfig}
+          apiBaseUrl={exampleApiBaseUrl}
+          disableVisibilityCheck
+          showInfoControl={showInfoControl}
+          showInfoBar={showInfoBar}
+        />
+      </div>
+    </div>
+  ),
+}
+
+/**
+ * Same as WithAnnotationEditor but with the toolbar "Show Info" button hidden.
+ */
+export const WithAnnotationEditorWithoutShowInfo: Story = {
+  args: {
+    allowServerConfig: true,
+    compact: false,
+    showInfoControl: false,
+    showInfoBar: true,
+  },
+  argTypes: WithAnnotationEditor.argTypes,
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        story:
+          'DsaAuthManager + AnnotationEditor with `showInfoControl={false}` — no "Show Info" toolbar toggle.',
+      },
+    },
+  },
+  render: WithAnnotationEditor.render,
+}

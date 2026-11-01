@@ -10,8 +10,8 @@ expect.extend(matchers)
  *
  * Node 26 does not expose an ambient `localStorage`, and the test suite must
  * not depend on the experimental `--experimental-webstorage` flag. Components
- * such as DsaAuthStore use the Web Storage API directly, so tests get a real
- * per-test storage implementation instead.
+ * such as DsaAuthStore and ProtocolManager use the Web Storage API directly,
+ * so tests get a real per-test storage implementation instead.
  */
 class MemoryStorage implements Storage {
     private store = new Map<string, string>()
