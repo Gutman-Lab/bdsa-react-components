@@ -1,6 +1,6 @@
 import type { Feature, FeatureCollection, Polygon } from 'geojson'
 import type { AnnotationEditorConfig, LocalAnnotationDocument, LocalAnnotationElement } from './AnnotationEditor.types'
-import { normalizeCssColor, resolveRoiLabelValue, getElementsImageBounds, resolveStrokeColor, resolveRoiStrokeColor, resolveRoiFillColor, resolveRoiFillOpacity } from './AnnotationEditor.utils'
+import { normalizeCssColor, resolveRoiLabelValue, getElementsImageBounds, elementToRoiBounds, resolveStrokeColor, resolveRoiStrokeColor, resolveRoiFillColor, resolveRoiFillOpacity } from './AnnotationEditor.utils'
 
 type ToolkitLike = {
     loadGeoJSON: (collections: unknown[], clear: boolean, parentImage?: unknown) => void
@@ -311,7 +311,9 @@ export function featureCollectionToLocalDocument(
  * YOLO / flat GeoJSON often has label boxes with no ROI. The editor review workflow
  * expects labels under an ROI (`user.roiLabel`). When there are labels but no ROI,
  * synthesize a wrapper ROI around them and stamp `roiLabel` on each label.
- * When ROIs exist, stamp any unassigned labels onto the first ROI.
+ * When a usable ROI exists, stamp any unassigned labels onto the first ROI.
+ * When the first ROI is degenerate or does not overlap any label (for example a
+ * persisted `[0,0]` default), rebuild it from the label bounds.
  */
 export function wrapOrphanLabelsInRoi(
     doc: LocalAnnotationDocument,
@@ -324,16 +326,47 @@ export function wrapOrphanLabelsInRoi(
 
     if (labelElements.length === 0) return doc
 
+    const labelBounds = getElementsImageBounds(labelElements, 0)
+
     if (roiElements.length > 0) {
-        const primaryRoiLabel = roiElements[0]!.label.value
-        const needsStamp = labelElements.some(l => l.user?.roiLabel !== primaryRoiLabel)
-        if (!needsStamp) return doc
-        const stamped = labelElements.map(l =>
-            l.user?.roiLabel
-                ? l
-                : { ...l, user: { ...(l.user ?? {}), roiLabel: primaryRoiLabel } },
+        const primaryRoi = roiElements[0]!
+        const primaryBounds = elementToRoiBounds(primaryRoi)
+        const primaryUsable =
+            primaryRoi.width > 0 &&
+            primaryRoi.height > 0 &&
+            (labelBounds == null || boundsOverlap(primaryBounds, labelBounds))
+
+        if (primaryUsable) {
+            const primaryRoiLabel = primaryRoi.label.value
+            const needsStamp = labelElements.some(l => l.user?.roiLabel !== primaryRoiLabel)
+            if (!needsStamp) return doc
+            const stamped = labelElements.map(l =>
+                l.user?.roiLabel
+                    ? l
+                    : { ...l, user: { ...(l.user ?? {}), roiLabel: primaryRoiLabel } },
+            )
+            return { ...doc, elements: [...roiElements, ...stamped, ...otherElements] }
+        }
+
+        if (!labelBounds) return doc
+
+        const rebuiltBounds = getElementsImageBounds(labelElements, 0.12)
+        if (!rebuiltBounds) return doc
+
+        const rebuiltRoi = roiElementFromBounds(
+            clampBoundsToOrigin(rebuiltBounds),
+            primaryRoi.label.value,
+            { lineColor: primaryRoi.lineColor, lineWidth: primaryRoi.lineWidth, fillColor: primaryRoi.fillColor },
         )
-        return { ...doc, elements: [...roiElements, ...stamped, ...otherElements] }
+        const stamped = labelElements.map(l => ({
+            ...l,
+            user: { ...(l.user ?? {}), roiLabel: primaryRoi.label.value },
+        }))
+
+        return {
+            ...doc,
+            elements: [rebuiltRoi, ...roiElements.slice(1), ...stamped, ...otherElements],
+        }
     }
 
     const bounds = getElementsImageBounds(labelElements, 0.12)
@@ -341,22 +374,7 @@ export function wrapOrphanLabelsInRoi(
 
     const roiLabelValue = resolveRoiLabelValue([], config.roiSettings)
     const style = resolveStyleForGroup('ROI', config)
-    const wrapperRoi: LocalAnnotationElement = {
-        type: 'rectangle',
-        group: 'ROI',
-        label: { value: roiLabelValue },
-        center: [
-            Math.round(bounds.x + bounds.width / 2),
-            Math.round(bounds.y + bounds.height / 2),
-            0,
-        ],
-        width: Math.round(bounds.width),
-        height: Math.round(bounds.height),
-        rotation: 0,
-        lineColor: style.lineColor,
-        lineWidth: style.lineWidth,
-        fillColor: style.fillColor,
-    }
+    const wrapperRoi = roiElementFromBounds(clampBoundsToOrigin(bounds), roiLabelValue, style)
 
     const stampedLabels = labelElements.map(l => ({
         ...l,
@@ -366,6 +384,55 @@ export function wrapOrphanLabelsInRoi(
     return {
         ...doc,
         elements: [wrapperRoi, ...stampedLabels, ...otherElements],
+    }
+}
+
+function boundsOverlap(
+    a: { left: number; top: number; width: number; height: number },
+    b: { x: number; y: number; width: number; height: number },
+): boolean {
+    return (
+        a.left < b.x + b.width &&
+        a.left + a.width > b.x &&
+        a.top < b.y + b.height &&
+        a.top + a.height > b.y
+    )
+}
+
+/** Keep synthesized ROIs on the slide: padding must not produce negative origins. */
+function clampBoundsToOrigin(bounds: { x: number; y: number; width: number; height: number }): {
+    left: number
+    top: number
+    width: number
+    height: number
+} {
+    const left = Math.max(0, Math.round(bounds.x))
+    const top = Math.max(0, Math.round(bounds.y))
+    const right = Math.max(left + 1, Math.round(bounds.x + bounds.width))
+    const bottom = Math.max(top + 1, Math.round(bounds.y + bounds.height))
+    return { left, top, width: right - left, height: bottom - top }
+}
+
+function roiElementFromBounds(
+    bounds: { left: number; top: number; width: number; height: number },
+    labelValue: string,
+    style: { lineColor: string; lineWidth: number; fillColor: string },
+): LocalAnnotationElement {
+    return {
+        type: 'rectangle',
+        group: 'ROI',
+        label: { value: labelValue },
+        center: [
+            Math.round(bounds.left + bounds.width / 2),
+            Math.round(bounds.top + bounds.height / 2),
+            0,
+        ],
+        width: Math.round(bounds.width),
+        height: Math.round(bounds.height),
+        rotation: 0,
+        lineColor: style.lineColor,
+        lineWidth: style.lineWidth,
+        fillColor: style.fillColor,
     }
 }
 
