@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { DsaAuthManager } from './DsaAuthManager'
 import { dsaAuthStore } from '../../auth/DsaAuthStore'
@@ -7,13 +8,15 @@ import { dsaAuthStore } from '../../auth/DsaAuthStore'
 // Mock fetch for authentication tests
 global.fetch = vi.fn()
 
+const fetchMock = () => global.fetch as unknown as ReturnType<typeof vi.fn>
+
 describe('DsaAuthManager', () => {
   beforeEach(() => {
     // Clear fetch mock first
     vi.clearAllMocks()
     
     // Mock fetch to return a successful promise for logout
-    ;(global.fetch as any).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       text: async () => '{}',
       json: async () => ({}),
@@ -87,7 +90,7 @@ describe('DsaAuthManager', () => {
     const onAuthChange = vi.fn()
 
     // Mock successful authentication
-    ;(global.fetch as any).mockResolvedValueOnce({
+    fetchMock().mockResolvedValueOnce({
       ok: true,
       text: async () => JSON.stringify({
         authToken: { token: 'test-token' },
@@ -145,7 +148,7 @@ describe('DsaAuthManager', () => {
 
   it('shows error message on failed login', async () => {
     // Mock a failed authentication response
-    ;(global.fetch as any).mockResolvedValueOnce({
+    fetchMock().mockResolvedValueOnce({
       ok: false,
       text: async () => JSON.stringify({ message: 'Invalid username or password' }),
       json: async () => ({ message: 'Invalid username or password' }),
@@ -194,6 +197,121 @@ describe('DsaAuthManager', () => {
     expect(screen.getByText('Login to DSA Server')).toBeInTheDocument()
     expect(screen.getByText('http://test.example.com')).toBeInTheDocument()
     expect(screen.queryByLabelText('DSA Server URL *')).not.toBeInTheDocument()
+  })
+
+  it('exposes the login modal as a labelled modal dialog', () => {
+    render(<DsaAuthManager allowServerConfig={true} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Login to DSA Server' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveAttribute('aria-labelledby', 'dsa-login-modal-title')
+  })
+
+  it('moves focus to the username field when the login modal opens', () => {
+    render(<DsaAuthManager allowServerConfig={true} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+
+    expect(screen.getByLabelText('Username')).toHaveFocus()
+  })
+
+  it('closes on Escape and restores focus to the element that opened it', async () => {
+    const user = userEvent.setup()
+    render(<DsaAuthManager allowServerConfig={true} />)
+
+    const loginButton = screen.getByRole('button', { name: 'Login' })
+    await user.click(loginButton)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(loginButton).toHaveFocus()
+  })
+
+  it('gives the close control an accessible name and closes the dialog', async () => {
+    const user = userEvent.setup()
+    render(<DsaAuthManager allowServerConfig={true} />)
+
+    await user.click(screen.getByRole('button', { name: 'Login' }))
+    await user.click(screen.getByRole('button', { name: 'Close login dialog' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps Tab focus inside the login dialog', async () => {
+    const user = userEvent.setup()
+    render(<DsaAuthManager allowServerConfig={true} />)
+
+    await user.click(screen.getByRole('button', { name: 'Login' }))
+    const dialog = screen.getByRole('dialog')
+    const closeButton = within(dialog).getByRole('button', { name: 'Close login dialog' })
+    const cancelButton = within(dialog).getByRole('button', { name: 'Cancel' })
+
+    cancelButton.focus()
+    await user.tab()
+    expect(closeButton).toHaveFocus()
+
+    await user.tab({ shift: true })
+    expect(cancelButton).toHaveFocus()
+  })
+
+  it('announces a failed login with an alert linked to the form fields', async () => {
+    fetchMock().mockResolvedValueOnce({
+      ok: false,
+      text: async () => JSON.stringify({ message: 'Invalid username or password' }),
+      json: async () => ({ message: 'Invalid username or password' }),
+    })
+
+    dsaAuthStore.updateConfig({ baseUrl: 'http://test.example.com' })
+    render(<DsaAuthManager allowServerConfig={true} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'wronguser' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrongpassword' } })
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Login' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Invalid username or password')
+    expect(screen.getByLabelText('Username')).toHaveAttribute('aria-describedby', alert.id)
+    expect(screen.getByLabelText('Password')).toHaveAttribute('aria-describedby', alert.id)
+  })
+
+  it('marks the submit button busy while logging in', async () => {
+    let resolveLogin: ((value: unknown) => void) | undefined
+    fetchMock().mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveLogin = resolve
+        }),
+    )
+
+    dsaAuthStore.updateConfig({ baseUrl: 'http://test.example.com' })
+    render(<DsaAuthManager allowServerConfig={true} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'testuser' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Login' }))
+
+    const busyButton = await screen.findByRole('button', { name: 'Logging in...' })
+    expect(busyButton).toHaveAttribute('aria-busy', 'true')
+
+    resolveLogin?.({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          authToken: { token: 'test-token' },
+          user: { _id: '123', login: 'testuser' },
+        }),
+      json: async () => ({}),
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
   })
 })
 

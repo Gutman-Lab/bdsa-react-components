@@ -220,6 +220,8 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
             className="dsa-api-login-button"
             onClick={handleOpenLoginModal}
             title="DSA REST authentication (stores a token for this portal)"
+            aria-haspopup="dialog"
+            aria-expanded={showLoginModal}
           >
             API
           </button>
@@ -227,9 +229,12 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
       </div>
     ) : (
       <button
+        type="button"
         className={authStatus.isAuthenticated ? 'logout-button' : 'login-button'}
         onClick={authStatus.isAuthenticated ? logout : handleOpenLoginModal}
         disabled={loginDisabled}
+        aria-haspopup={authStatus.isAuthenticated ? undefined : 'dialog'}
+        aria-expanded={authStatus.isAuthenticated ? undefined : showLoginModal}
       >
         {authStatus.isAuthenticated ? 'Logout' : 'Login'}
       </button>
@@ -239,7 +244,8 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
     return (
       <div className={`dsa-auth-manager compact ${className}`}>
         <div className="dsa-status-compact">
-          <span className={`status-indicator ${status.className}`}>{status.icon}</span>
+          <span className={`status-indicator ${status.className}`} aria-hidden="true">{status.icon}</span>
+          <span className="dsa-sr-only">{status.text}</span>
           {authStatus.isAuthenticated && authStatus.user && (
             <span className="user-name">{authStatus.user.name}</span>
           )}
@@ -265,7 +271,7 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
   return (
     <div className={`dsa-auth-manager ${className}`}>
       <div className="dsa-status">
-        <span className={`status-indicator ${status.className}`}>{status.icon}</span>
+        <span className={`status-indicator ${status.className}`} aria-hidden="true">{status.icon}</span>
         <div className="status-info">
           <div className="status-text">{status.text}</div>
           {authStatus.isAuthenticated && authStatus.user && (
@@ -281,7 +287,7 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
 
       <div className="dsa-actions">
         {authStatus.isAuthenticated ? (
-          <button className="logout-button" onClick={logout} title="Logout from DSA server">
+          <button type="button" className="logout-button" onClick={logout} title="Logout from DSA server">
             Logout
           </button>
         ) : externalLoginUrl ? (
@@ -301,6 +307,8 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
                 className="dsa-api-login-button"
                 onClick={handleOpenLoginModal}
                 title="DSA REST authentication (stores a token for this portal)"
+                aria-haspopup="dialog"
+                aria-expanded={showLoginModal}
               >
                 API
               </button>
@@ -308,10 +316,13 @@ export const DsaAuthManager: React.FC<DsaAuthManagerProps> = ({
           </div>
         ) : (
           <button
+            type="button"
             className="login-button"
             onClick={handleOpenLoginModal}
             disabled={loginDisabled}
             title={loginDisabled ? 'Configure DSA server first' : 'Login to DSA server'}
+            aria-haspopup="dialog"
+            aria-expanded={showLoginModal}
           >
             Login
           </button>
@@ -345,6 +356,15 @@ interface LoginModalProps {
   allowServerConfig: boolean
 }
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
 const LoginModal: React.FC<LoginModalProps> = ({
   onClose,
   onSubmit,
@@ -355,18 +375,94 @@ const LoginModal: React.FC<LoginModalProps> = ({
   error,
   allowServerConfig,
 }) => {
+  const dialogRef = React.useRef<HTMLDivElement>(null)
+  const previouslyFocusedRef = React.useRef<HTMLElement | null>(
+    typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
+  )
+
+  const headingId = 'dsa-login-modal-title'
+  const errorId = 'dsa-login-error'
+  const serverHelpId = 'dsa-login-server-help'
+
+  React.useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) {
+      return
+    }
+
+    const previouslyFocused = previouslyFocusedRef.current
+
+    const initialFocus =
+      dialog.querySelector<HTMLElement>('[data-autofocus]') ??
+      dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+    initialFocus?.focus()
+
+    return () => {
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function' && document.contains(previouslyFocused)) {
+        previouslyFocused.focus()
+      }
+    }
+  }, [])
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      event.preventDefault()
+      onClose()
+      return
+    }
+
+    if (event.key !== 'Tab') {
+      return
+    }
+
+    const dialog = dialogRef.current
+    if (!dialog) {
+      return
+    }
+
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    if (focusable.length === 0) {
+      event.preventDefault()
+      return
+    }
+
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    const active = document.activeElement
+
+    if (event.shiftKey && (active === first || !dialog.contains(active))) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content login-modal" onClick={e => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="modal-content login-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
         <div className="modal-header">
-          <h2>Login to DSA Server</h2>
-          <button className="close-button" onClick={onClose}>
-            ×
+          <h2 id={headingId}>Login to DSA Server</h2>
+          <button type="button" className="close-button" onClick={onClose} aria-label="Close login dialog">
+            <span aria-hidden="true">×</span>
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="login-form">
+        <form
+          onSubmit={onSubmit}
+          className="login-form"
+          aria-describedby={error ? errorId : undefined}
+        >
           {allowServerConfig && (
             <div className="form-group">
               <label htmlFor="serverUrl">DSA Server URL *</label>
@@ -376,9 +472,10 @@ const LoginModal: React.FC<LoginModalProps> = ({
                 value={loginForm.serverUrl}
                 onChange={e => setLoginForm(prev => ({ ...prev, serverUrl: e.target.value }))}
                 placeholder="http://bdsa.pathology.emory.edu:8080"
+                aria-describedby={serverHelpId}
                 required
               />
-              <div className="field-help">
+              <div className="field-help" id={serverHelpId}>
                 The base URL of your Digital Slide Archive server
                 <br />
                 <small>💡 Don't include /api/v1 - it will be added automatically</small>
@@ -401,6 +498,8 @@ const LoginModal: React.FC<LoginModalProps> = ({
               value={loginForm.username}
               onChange={e => setLoginForm(prev => ({ ...prev, username: e.target.value }))}
               placeholder="Enter your DSA username"
+              aria-describedby={error ? errorId : undefined}
+              data-autofocus
               required
             />
           </div>
@@ -413,19 +512,32 @@ const LoginModal: React.FC<LoginModalProps> = ({
               value={loginForm.password}
               onChange={e => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
               placeholder="Enter your password"
+              aria-describedby={error ? errorId : undefined}
               required
             />
           </div>
 
-          {error && <div className="error-message">{error}</div>}
+          {error && (
+            <div id={errorId} className="error-message" role="alert">
+              {error}
+            </div>
+          )}
 
           <div className="modal-actions">
             <button type="button" className="cancel-button" onClick={onClose} disabled={isLoading}>
               Cancel
             </button>
-            <button type="submit" className="login-submit-button" disabled={isLoading || !loginForm.username || !loginForm.password}>
+            <button
+              type="submit"
+              className="login-submit-button"
+              disabled={isLoading || !loginForm.username || !loginForm.password}
+              aria-busy={isLoading}
+            >
               {isLoading ? 'Logging in...' : 'Login'}
             </button>
+            <span className="dsa-sr-only" role="status" aria-live="polite">
+              {isLoading ? 'Logging in' : ''}
+            </span>
           </div>
         </form>
       </div>
