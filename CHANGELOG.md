@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **DsaAuthManager accessibility:** the login form now renders as a labelled modal dialog (`role="dialog"`, `aria-modal`, `aria-labelledby`), moves focus to the username field on open, traps Tab focus, closes on Escape, and restores focus to the control that opened it. The close control has an accessible name, failed logins are announced through `role="alert"` and linked to the username/password fields, and the submit button exposes `aria-busy` while authenticating. Compact status emoji are hidden from assistive technology in favour of the status text. Added `@storybook/addon-a11y` and `LoginModalOpen` / `LoginError` stories; all existing mouse behaviour and class names are unchanged.
 - Refreshed development dependencies within their existing semver ranges: Storybook `10.2.19` -> `10.6.5`, Vite `8.0.0` -> `8.3.5`, Vitest `4.1.0` -> `4.1.12`, `@vitejs/plugin-react` `6.0.1` -> `6.2.1`, `@types/node` `25.5.0` -> `25.9.9`, `@types/react` `18.3.28` -> `18.3.31`, `@testing-library/user-event` `14.6.1` -> `14.6.8`, and `paper` `0.12.18` -> `0.12.20`. No runtime dependencies or peer ranges changed.
 
 ### Added

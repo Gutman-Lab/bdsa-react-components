@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn, userEvent, within } from 'storybook/test'
 import { DsaAuthManager } from './DsaAuthManager'
 import type { DsaAuthManagerProps } from './DsaAuthManager'
 import { dsaAuthStore } from '../../auth/DsaAuthStore'
@@ -370,4 +371,48 @@ export const WithAnnotationEditorWithoutShowInfo: Story = {
     },
   },
   render: WithAnnotationEditor.render,
+}
+
+/**
+ * Login modal in its default open state.
+ * Shows the labelled dialog, initial focus, and the close control.
+ */
+export const LoginModalOpen: Story = {
+  args: {
+    allowServerConfig: true,
+    compact: false,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.click(canvas.getByRole('button', { name: 'Login' }))
+    await canvas.findByRole('dialog', { name: 'Login to DSA Server' })
+  },
+}
+
+/**
+ * Login modal after a failed sign-in.
+ * The error is announced as an alert and linked to the form fields.
+ */
+export const LoginError: Story = {
+  args: {
+    allowServerConfig: true,
+    compact: false,
+  },
+  play: async ({ canvasElement }) => {
+    dsaAuthStore.updateConfig({ baseUrl: 'http://bdsa.pathology.emory.edu:8080' })
+    window.fetch = fn(async () => ({
+      ok: false,
+      text: async () => JSON.stringify({ message: 'Invalid username or password' }),
+      json: async () => ({ message: 'Invalid username or password' }),
+    })) as unknown as typeof fetch
+
+    const canvas = within(canvasElement)
+    await userEvent.click(canvas.getByRole('button', { name: 'Login' }))
+    await userEvent.type(canvas.getByLabelText('Username'), 'reviewer')
+    await userEvent.type(canvas.getByLabelText('Password'), 'wrong-password')
+    await userEvent.click(
+      within(canvas.getByRole('dialog')).getByRole('button', { name: 'Login' })
+    )
+    await canvas.findByRole('alert')
+  },
 }
