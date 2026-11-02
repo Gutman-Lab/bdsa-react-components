@@ -65,7 +65,15 @@ export interface SimulatedYoloOptions {
     classNames: string[]
     /** When true, add one sample box per remaining class (index 2+). Default: false. */
     includeSampleBoxesForOtherClasses?: boolean
+    /** Top-left offset added to every box, in image pixels. Default: [0, 0]. */
+    origin?: [number, number]
 }
+
+/**
+ * Offset that moves the simulated scene from the slide's top-left corner to the
+ * middle of the large demo slide used by Storybook (`95615 x 84127`).
+ */
+const DEMO_SLIDE_CENTER_ORIGIN: [number, number] = [44300, 39860]
 
 /**
  * Fixed-layout fake YOLO output: a few boxes for class A and several for class B.
@@ -74,6 +82,7 @@ export interface SimulatedYoloOptions {
 export function buildSimulatedYoloGeoJson(options: SimulatedYoloOptions): FeatureCollection {
     const classA = options.classA ?? options.classNames[0] ?? 'class-a'
     const classB = options.classB ?? options.classNames[1] ?? 'class-b'
+    const [originX, originY] = options.origin ?? [0, 0]
 
     const classABoxes: Array<[number, number, number, number, number]> = [
         [1400, 1200, 420, 380, 0.94],
@@ -90,10 +99,10 @@ export function buildSimulatedYoloGeoJson(options: SimulatedYoloOptions): Featur
 
     const features: Feature<Polygon>[] = [
         ...classABoxes.map(([x, y, w, h, conf], i) =>
-            yoloRectFeature(classA, x, y, w, h, { confidence: conf, label: `${classA}-${i + 1}` }),
+            yoloRectFeature(classA, x + originX, y + originY, w, h, { confidence: conf, label: `${classA}-${i + 1}` }),
         ),
         ...classBBoxes.map(([x, y, w, h, conf], i) =>
-            yoloRectFeature(classB, x, y, w, h, { confidence: conf, label: `${classB}-${i + 1}` }),
+            yoloRectFeature(classB, x + originX, y + originY, w, h, { confidence: conf, label: `${classB}-${i + 1}` }),
         ),
     ]
 
@@ -104,7 +113,9 @@ export function buildSimulatedYoloGeoJson(options: SimulatedYoloOptions): Featur
         ].filter((row): row is [string, number, number, number, number, number] => Boolean(row[0]))
 
         for (const [className, x, y, w, h, conf] of extras) {
-            features.push(yoloRectFeature(className, x, y, w, h, { confidence: conf, label: `${className}-1` }))
+            features.push(
+                yoloRectFeature(className, x + originX, y + originY, w, h, { confidence: conf, label: `${className}-1` }),
+            )
         }
     }
 
@@ -114,7 +125,7 @@ export function buildSimulatedYoloGeoJson(options: SimulatedYoloOptions): Featur
 /** Build simulated YOLO output from an AnnotationEditor config (uses first two types as A/B). */
 export function buildSimulatedYoloGeoJsonFromConfig(
     config: AnnotationEditorConfig,
-    options?: { includeSampleBoxesForOtherClasses?: boolean },
+    options?: { includeSampleBoxesForOtherClasses?: boolean; origin?: [number, number] },
 ): FeatureCollection {
     const classNames = config.annotationTypes.map(t => t.name)
     return buildSimulatedYoloGeoJson({
@@ -122,6 +133,7 @@ export function buildSimulatedYoloGeoJsonFromConfig(
         classA: classNames[0],
         classB: classNames[1] ?? classNames[0],
         includeSampleBoxesForOtherClasses: options?.includeSampleBoxesForOtherClasses,
+        origin: options?.origin,
     })
 }
 
@@ -130,9 +142,11 @@ export const simulatedYoloPositiveNegative = buildSimulatedYoloGeoJson({
     classNames: ['Positive', 'Negative'],
     classA: 'Positive',
     classB: 'Negative',
+    origin: DEMO_SLIDE_CENTER_ORIGIN,
 })
 
 /** Simulated predictions for the Paper Annotator tau protocol (all four classes). */
 export const simulatedYoloTauPredictions = buildSimulatedYoloGeoJsonFromConfig(paperAnnotatorEditorConfig, {
     includeSampleBoxesForOtherClasses: true,
+    origin: DEMO_SLIDE_CENTER_ORIGIN,
 })

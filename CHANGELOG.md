@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Trustworthy test baseline
 - Added an in-memory `localStorage`/`sessionStorage` stub with per-test reset in `src/test/setup.ts`; the suite no longer needs Node's experimental Web Storage flag.
 - Restored click-to-collapse in `useResizablePanel` with an explicit 3px click/drag threshold, plus focused hook tests for click versus drag.
+- The simulated YOLO Storybook fixtures (`simulatedYoloPositiveNegative`, `simulatedYoloTauPredictions`) now sit near the middle of the demo slide instead of the top-left corner. `buildSimulatedYoloGeoJson` accepts an optional `origin` offset (default `[0, 0]`), and tests assert the demo fixtures stay within the central quarter of the slide.
 
 #### Consumer package/API contract
 - The `./styles.css` package export now points at the built `dist/index.css` file (matching the published `0.2.5` metadata) across `package.json` and the docs.
