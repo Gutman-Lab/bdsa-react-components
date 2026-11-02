@@ -10,6 +10,7 @@ import {
     overlayFeatureToImageRect,
 } from './annotationGeoJson'
 import type { AnnotationEditorConfig, LocalAnnotationDocument, LocalAnnotationElement } from './AnnotationEditor.types'
+import { elementToRoiBounds } from './AnnotationEditor.utils'
 
 const baseConfig = (): AnnotationEditorConfig => ({
     annotationDocumentName: 'test-doc',
@@ -323,5 +324,57 @@ describe('wrapOrphanLabelsInRoi', () => {
         expect(wrapped.elements[0]!.label.value).toBe('roi1')
         const labels = wrapped.elements.filter(e => e.group === 'Tumor' || e.group === 'Stroma')
         expect(labels.every(l => l.user?.roiLabel === 'roi1')).toBe(true)
+    })
+
+    it('keeps a pre-existing ROI that overlaps the labels', () => {
+        const doc: LocalAnnotationDocument = {
+            name: 'yolo',
+            description: '',
+            elements: [
+                rectEl({ group: 'ROI', label: { value: 'roi1' }, center: [1500, 1200, 0], width: 1400, height: 1000 }),
+                rectEl({ group: 'Tumor', label: { value: 'Tumor-1' }, center: [1000, 1000, 0], width: 100, height: 100 }),
+            ],
+        }
+        const wrapped = wrapOrphanLabelsInRoi(doc, baseConfig())
+        const roi = wrapped.elements.find(e => e.group === 'ROI')!
+        expect(elementToRoiBounds(roi)).toEqual({ left: 800, top: 700, width: 1400, height: 1000 })
+        expect(wrapped.elements.filter(e => e.group === 'Tumor').every(l => l.user?.roiLabel === 'roi1')).toBe(true)
+    })
+
+    it('rebuilds a degenerate [0,0] ROI from the label bounds', () => {
+        const doc: LocalAnnotationDocument = {
+            name: 'yolo',
+            description: '',
+            elements: [
+                rectEl({ group: 'ROI', label: { value: 'roi1' }, center: [0, 0, 0], width: 0, height: 0 }),
+                rectEl({ group: 'Tumor', label: { value: 'Tumor-1' }, center: [1000, 1000, 0], width: 100, height: 100 }),
+                rectEl({ group: 'Stroma', label: { value: 'Stroma-1' }, center: [2000, 1500, 0], width: 200, height: 150 }),
+            ],
+        }
+        const wrapped = wrapOrphanLabelsInRoi(doc, baseConfig())
+        const roiElements = wrapped.elements.filter(e => e.group === 'ROI')
+        expect(roiElements).toHaveLength(1)
+        const bounds = elementToRoiBounds(roiElements[0]!)
+        expect(bounds.left).toBeGreaterThan(0)
+        expect(bounds.top).toBeGreaterThan(0)
+        expect(bounds.left + bounds.width).toBeGreaterThan(2000)
+        expect(bounds.top + bounds.height).toBeGreaterThan(1500)
+        expect(wrapped.elements.filter(e => e.group === 'Tumor').every(l => l.user?.roiLabel === 'roi1')).toBe(true)
+    })
+
+    it('clamps a synthesized ROI at the image origin', () => {
+        const doc: LocalAnnotationDocument = {
+            name: 'yolo',
+            description: '',
+            elements: [
+                rectEl({ group: 'Tumor', label: { value: 'Tumor-1' }, center: [10, 10, 0], width: 20, height: 20 }),
+            ],
+        }
+        const wrapped = wrapOrphanLabelsInRoi(doc, baseConfig())
+        const bounds = elementToRoiBounds(wrapped.elements.find(e => e.group === 'ROI')!)
+        expect(bounds.left).toBe(0)
+        expect(bounds.top).toBe(0)
+        expect(bounds.width).toBeGreaterThan(20)
+        expect(bounds.height).toBeGreaterThan(20)
     })
 })
