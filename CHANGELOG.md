@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Refreshed development dependencies within their existing semver ranges: Storybook `10.2.19` -> `10.6.5`, Vite `8.0.0` -> `8.3.5`, Vitest `4.1.0` -> `4.1.12`, `@vitejs/plugin-react` `6.0.1` -> `6.2.1`, `@types/node` `25.5.0` -> `25.9.9`, `@types/react` `18.3.28` -> `18.3.31`, `@testing-library/user-event` `14.6.1` -> `14.6.8`, and `paper` `0.12.18` -> `0.12.20`. No runtime dependencies or peer ranges changed.
+
 ### Added
 
 - **Storybook** stories for **SlideViewer** under `Components/SlideViewer` (basic slide, inline annotations, API-loaded annotations, GeoJSON, OSD options, viewport/zoom HUDs, overlay tile playground). Default story args set `disableVisibilityCheck` so the viewer initializes reliably inside the Storybook iframe.
