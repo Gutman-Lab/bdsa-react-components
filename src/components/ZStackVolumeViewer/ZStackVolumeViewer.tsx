@@ -17,8 +17,8 @@ export interface ZStackVolumeViewerProps extends UseDsaResolvedApiOptions {
 const DEFAULT_COLORS = ['#0000ff', '#00ff00', '#ff0000', '#ffffff', '#ffff00', '#ff00ff']
 const DEFAULT_DEPTH = 8
 const DEFAULT_OPACITY = 0.55
-const DEFAULT_BRIGHTNESS = 0.75
-const DEFAULT_CONTRAST = 0.75
+export const DEFAULT_BRIGHTNESS = 0.75
+export const DEFAULT_CONTRAST = 0.75
 const DEFAULT_FLOOR = 8
 const DEFAULT_LIGHT: VolumeLight = { shade: false, ambient: 0.2, diffuse: 0.7, specular: 0.2 }
 
