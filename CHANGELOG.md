@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-11-03
+
+### Changed
+
+- **ZStackVolumeViewer** now defaults brightness and contrast to **0.75 / 0.75** (previously `0` / `0.4`), matching the display defaults used by the IHC z-stack viewer for dim stains. `Reset tone` returns to the same defaults. Apps that set their own values are unaffected.
+
 ## [0.3.0] - 2026-11-03
 
 ### Added

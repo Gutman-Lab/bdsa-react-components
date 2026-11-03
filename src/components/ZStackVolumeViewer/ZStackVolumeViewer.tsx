@@ -17,7 +17,8 @@ export interface ZStackVolumeViewerProps extends UseDsaResolvedApiOptions {
 const DEFAULT_COLORS = ['#0000ff', '#00ff00', '#ff0000', '#ffffff', '#ffff00', '#ff00ff']
 const DEFAULT_DEPTH = 8
 const DEFAULT_OPACITY = 0.55
-const DEFAULT_CONTRAST = 0.4
+const DEFAULT_BRIGHTNESS = 0.75
+const DEFAULT_CONTRAST = 0.75
 const DEFAULT_FLOOR = 8
 const DEFAULT_LIGHT: VolumeLight = { shade: false, ambient: 0.2, diffuse: 0.7, specular: 0.2 }
 
@@ -112,7 +113,7 @@ export function ZStackVolumeViewer({
   const [channels, setChannels] = useState<VolumeChannel[]>([])
   const [depth, setDepth] = useState(DEFAULT_DEPTH)
   const [opacity, setOpacity] = useState(DEFAULT_OPACITY)
-  const [brightness, setBrightness] = useState(0)
+  const [brightness, setBrightness] = useState(DEFAULT_BRIGHTNESS)
   const [contrast, setContrast] = useState(DEFAULT_CONTRAST)
   const [floor, setFloor] = useState(DEFAULT_FLOOR)
   const [interpolation, setInterpolation] = useState<VolumeInterpolation>('nearest')
@@ -422,7 +423,7 @@ export function ZStackVolumeViewer({
             step={0.02}
             value={contrast}
             disabled={!frames}
-            title="Multiplies the stain, same curve as the flat view. 0.4 is the default."
+            title="Multiplies the stain, same curve as the flat view. 0.75 is the default."
             onChange={(event) => setContrast(Number(event.target.value))}
           />
         </div>
@@ -637,7 +638,7 @@ export function ZStackVolumeViewer({
               className="zstack-volume__text"
               disabled={!frames}
               onClick={() => {
-                setBrightness(0)
+                setBrightness(DEFAULT_BRIGHTNESS)
                 setContrast(DEFAULT_CONTRAST)
                 setFloor(DEFAULT_FLOOR)
               }}
