@@ -3,7 +3,15 @@ import { ChannelHistograms } from '../ChannelHistograms/ChannelHistograms'
 import { histogramBins } from '../ChannelHistograms/histogramBins'
 import { useDsaResolvedApi } from '../../auth/useDsaResolvedApi'
 import type { UseDsaResolvedApiOptions } from '../../auth/useDsaResolvedApi'
-import { compositeVolume, stainedRange, type AxisRange, type StainedRange, type VolumeChannel } from './compositeVolume'
+import {
+  compositeVolume,
+  histogramRange,
+  stainedRange,
+  type AxisRange,
+  type ChannelRange,
+  type StainedRange,
+  type VolumeChannel,
+} from './compositeVolume'
 import type { VolumeBlend, VolumeCuts, VolumeInterpolation, VolumeLight, VolumeRenderer } from './createVolumeRenderer'
 import { loadStackFrames, type StackFrames } from './loadStackFrames'
 import './ZStackVolumeViewer.css'
@@ -15,7 +23,7 @@ export interface ZStackVolumeViewerProps extends UseDsaResolvedApiOptions {
 }
 
 const DEFAULT_COLORS = ['#0000ff', '#00ff00', '#ff0000', '#ffffff', '#ffff00', '#ff00ff']
-const DEFAULT_DEPTH = 8
+export const DEFAULT_DEPTH = 2
 const DEFAULT_OPACITY = 0.55
 export const DEFAULT_BRIGHTNESS = 0.75
 export const DEFAULT_CONTRAST = 0.75
@@ -116,6 +124,11 @@ export function ZStackVolumeViewer({
   const [brightness, setBrightness] = useState(DEFAULT_BRIGHTNESS)
   const [contrast, setContrast] = useState(DEFAULT_CONTRAST)
   const [floor, setFloor] = useState(DEFAULT_FLOOR)
+  const [normalize, setNormalize] = useState(false)
+  const channelSpans = useMemo<ChannelRange[]>(
+    () => volumeHistograms.map((histogram) => histogramRange(histogram.counts, { floor })),
+    [volumeHistograms, floor],
+  )
   const [interpolation, setInterpolation] = useState<VolumeInterpolation>('nearest')
   const [isolate, setIsolate] = useState(false)
   const [plane, setPlane] = useState(0)
@@ -141,6 +154,8 @@ export function ZStackVolumeViewer({
   const brightnessRef = useRef(brightness)
   const contrastRef = useRef(contrast)
   const floorRef = useRef(floor)
+  const normalizeRef = useRef(normalize)
+  const spansRef = useRef(channelSpans)
   const interpolationRef = useRef(interpolation)
   const isolateRef = useRef(isolate)
   const planeRef = useRef(plane)
@@ -163,6 +178,8 @@ export function ZStackVolumeViewer({
   brightnessRef.current = brightness
   contrastRef.current = contrast
   floorRef.current = floor
+  normalizeRef.current = normalize
+  spansRef.current = channelSpans
   interpolationRef.current = interpolation
   isolateRef.current = isolate
   planeRef.current = plane
@@ -194,6 +211,7 @@ export function ZStackVolumeViewer({
       contrast: contrastRef.current,
       floor: floorRef.current,
       plane: isolateRef.current ? planeRef.current : undefined,
+      normalize: normalizeRef.current ? spansRef.current : undefined,
     })
   }
 
@@ -288,7 +306,7 @@ export function ZStackVolumeViewer({
     const renderer = rendererRef.current
     if (!current || !renderer || channels.length !== current.channelCount) return
     renderer.updateScalars(compositeCurrent(current))
-  }, [channels, brightness, contrast, floor, isolate, plane])
+  }, [channels, brightness, contrast, floor, normalize, channelSpans, isolate, plane])
 
   useEffect(() => {
     rendererRef.current?.setDepth(depth)
@@ -336,7 +354,7 @@ export function ZStackVolumeViewer({
             step={1}
             value={depth}
             disabled={!frames}
-            title="Distance from one plane to the next, in pixels. 1 packs the stack flat. These files do not store a z step, so this is a viewing stretch, not microns."
+            title="Distance from one plane to the next, in pixels. 2 is the default because most of these stacks are isotropic; 1 packs the stack flat. These files do not store a z step, so this is a viewing stretch, not microns."
             onChange={(event) => setDepth(Number(event.target.value))}
           />
         </div>
@@ -465,6 +483,20 @@ export function ZStackVolumeViewer({
                 </li>
               ))}
             </ul>
+            <label className="zstack-volume__check">
+              <input
+                type="checkbox"
+                checked={normalize}
+                disabled={!frames}
+                onChange={(event) => setNormalize(event.target.checked)}
+              />
+              Normalize channels
+            </label>
+            <p className="zstack-volume__hint">
+              Stretches each channel from its own 0.5–99.5% stain range to 0–255 before
+              compositing, so a dim channel can contribute as strongly as a bright one. The
+              histogram still shows the stored counts.
+            </p>
           </section>
           <ChannelHistograms
             note="all planes"

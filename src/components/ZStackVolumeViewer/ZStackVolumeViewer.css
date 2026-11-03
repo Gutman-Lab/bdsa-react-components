@@ -90,6 +90,13 @@
   white-space: nowrap;
 }
 
+.zstack-volume__hint {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #78716c;
+}
+
 .zstack-volume__body {
   flex: 1 1 0;
   min-width: 0;

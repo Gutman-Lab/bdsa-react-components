@@ -12,11 +12,64 @@ export interface VolumeAdjust {
   floor?: number
   /** When set, every other z plane is left empty so one slice can be checked on its own. */
   plane?: number
+  /** Per-channel spans. When present, each channel is stretched to 0–255 before compositing. */
+  normalize?: ChannelRange[]
 }
 
 export interface AxisRange {
   min: number
   max: number
+}
+
+export interface ChannelRange {
+  min: number
+  max: number
+}
+
+export interface ChannelRangeOptions {
+  /** Stored counts at or below this are background and are left out of the span. */
+  floor?: number
+  /** Fraction trimmed from each end of the histogram, e.g. 0.005 for 0.5%. */
+  clip?: number
+}
+
+/**
+ * Robust intensity span for one channel, from its 0–255 histogram. Trimming a
+ * little from each tail keeps a handful of hot pixels from flattening the
+ * stretch, and ignoring the background floor keeps the surrounding haze from
+ * becoming the new black.
+ */
+export function histogramRange(
+  counts: ArrayLike<number>,
+  options: ChannelRangeOptions = {},
+): ChannelRange {
+  const floor = Math.max(0, Math.round(options.floor ?? 0))
+  const clip = Math.min(0.49, Math.max(0, options.clip ?? 0.005))
+  let total = 0
+  for (let value = floor + 1; value < counts.length; value += 1) total += counts[value] ?? 0
+  if (total === 0) return { min: 0, max: 255 }
+  const lowCount = Math.floor(total * clip)
+  const highCount = Math.ceil(total * (1 - clip))
+  let min = floor + 1
+  let max = Math.max(min, counts.length - 1)
+  let seen = 0
+  for (let value = floor + 1; value < counts.length; value += 1) {
+    seen += counts[value] ?? 0
+    if (seen > lowCount) {
+      min = value
+      break
+    }
+  }
+  seen = 0
+  for (let value = floor + 1; value < counts.length; value += 1) {
+    seen += counts[value] ?? 0
+    if (seen >= highCount) {
+      max = value
+      break
+    }
+  }
+  if (max <= min) max = Math.min(255, min + 1)
+  return { min, max }
 }
 
 /** Voxel index span of the stain, in the same axes as the volume cuts. */
@@ -92,7 +145,7 @@ export function hexToRgb(hex: string): [number, number, number] {
 function clampByte(value: number): number {
   if (value <= 0) return 0
   if (value >= 255) return 255
-  return value
+  return Math.round(value)
 }
 
 function mapLinear(value: number, fromMin: number, fromMax: number, toMin: number, toMax: number): number {
@@ -139,6 +192,9 @@ export function compositeVolume(
     const source = planes[channel.index]
     if (!source) continue
     const [red, green, blue] = hexToRgb(channel.color)
+    const range = adjust.normalize?.[channel.index]
+    const span = range ? range.max - range.min : 0
+    const stretch = range && span > 0 ? 255 / span : 0
     for (let z = 0; z < depth; z += 1) {
       if (adjust.plane !== undefined && z !== adjust.plane) continue
       const plane = source[z]
@@ -149,7 +205,9 @@ export function compositeVolume(
         for (let x = 0; x < width; x += 1) {
           const stored = plane[row + x]
           if (stored <= floor) continue
-          const intensity = table ? table[stored] : stored
+          const scaled = stretch ? clampByte((stored - (range as ChannelRange).min) * stretch) : stored
+          if (scaled === 0) continue
+          const intensity = table ? table[scaled] : scaled
           if (intensity === 0) continue
           const offset = ((z * height + yVolume) * width + x) * 4
           out[offset] = clampByte(out[offset] + (intensity * red) / 255)

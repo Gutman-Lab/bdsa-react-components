@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compositeVolume, stainedRange } from './compositeVolume'
+import { compositeVolume, histogramRange, stainedRange } from './compositeVolume'
 import { frameFor, outputSize } from './stackGeometry'
 
 describe('compositeVolume', () => {
@@ -52,6 +52,40 @@ describe('compositeVolume', () => {
     ], { floor: 8 })
     expect(Array.from(rgba.slice(0, 4))).toEqual([0, 0, 0, 0])
     expect(Array.from(rgba.slice(4, 8))).toEqual([20, 0, 0, 20])
+  })
+
+  it('stretches each channel from its own span when normalizing', () => {
+    const dim = [new Uint8Array([10, 20, 30])]
+    const rgba = compositeVolume([dim], 3, 1, 1, [
+      { index: 0, color: '#ff0000', visible: true },
+    ], { normalize: [{ min: 10, max: 30 }] })
+    expect(Array.from(rgba.slice(0, 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(rgba.slice(4, 8))).toEqual([128, 0, 0, 128])
+    expect(Array.from(rgba.slice(8, 12))).toEqual([255, 0, 0, 255])
+  })
+
+  it('normalizes channels independently so a dim channel catches up', () => {
+    const dim = [new Uint8Array([30])]
+    const bright = [new Uint8Array([200])]
+    const rgba = compositeVolume([dim, bright], 1, 1, 1, [
+      { index: 0, color: '#0000ff', visible: true },
+      { index: 1, color: '#ff0000', visible: true },
+    ], { normalize: [{ min: 10, max: 30 }, { min: 0, max: 200 }] })
+    // The dim channel reaches its own new maximum, so both contribute fully.
+    expect(Array.from(rgba)).toEqual([255, 0, 255, 255])
+  })
+})
+
+describe('histogramRange', () => {
+  it('ignores the background floor and trims the tails', () => {
+    const counts = new Array<number>(256).fill(0)
+    for (let value = 1; value <= 100; value += 1) counts[value] = 1
+    expect(histogramRange(counts, { floor: 8 })).toEqual({ min: 9, max: 100 })
+    expect(histogramRange(counts, { floor: 8, clip: 0.1 })).toEqual({ min: 18, max: 91 })
+  })
+
+  it('falls back to a full span for an empty histogram', () => {
+    expect(histogramRange(new Array<number>(256).fill(0), { floor: 8 })).toEqual({ min: 0, max: 255 })
   })
 })
 
