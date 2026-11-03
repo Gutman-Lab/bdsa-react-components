@@ -45,6 +45,7 @@
         "check:consumer-types": "tsc -p fixtures/consumer-typecheck/tsconfig.json --noEmit"
     },
     "peerDependencies": {
+        "@kitware/vtk.js": "^38.0.4",
         "openseadragon": "^5.0.0",
         "paper": "^0.12.0",
         "react": "^18.0.0",

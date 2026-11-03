@@ -1,0 +1,93 @@
+.channel-histograms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.channel-histograms__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.channel-histograms__toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #57534e;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.channel-histograms__head label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #44403c;
+}
+
+.channel-histograms__note {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: #78716c;
+}
+
+.channel-histograms__list {
+  display: flex;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+}
+
+.channel-histograms__list li {
+  flex: 1 1 8rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.channel-histograms__label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: #1c1917;
+}
+
+.channel-histograms__label span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.channel-histograms__label em {
+  margin-left: auto;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: #78716c;
+}
+
+.channel-histograms__plot {
+  width: 100%;
+  height: 3rem;
+  background: #fff;
+  border: 1px solid #e7e5e4;
+  display: block;
+}
+
+.channel-histograms__plot--empty {
+  background: repeating-linear-gradient(-45deg, #fafaf9, #fafaf9 4px, #f5f5f4 4px, #f5f5f4 8px);
+}

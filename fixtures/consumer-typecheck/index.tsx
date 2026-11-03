@@ -17,6 +17,7 @@ import {
     ProtocolManager,
     SingleBoxSlideEditor,
     SlideViewer,
+    ZStackVolumeViewer,
     ThumbnailGrid,
     ThumbnailViewer,
 } from 'bdsa-react-components'
@@ -40,6 +41,7 @@ import type {
     SingleBoxSlideEditorProps,
     SlideImageBox,
     SlideViewerProps,
+    ZStackVolumeViewerProps,
     ThumbnailGridProps,
     ThumbnailViewerProps,
 } from 'bdsa-react-components'
@@ -79,6 +81,7 @@ const slideViewerProps: SlideViewerProps = {
     imageInfo: { dziUrl: 'https://example.test/item/1/tiles/dzi.dzi' },
     height: '600px',
 }
+const volumeViewerProps: ZStackVolumeViewerProps = { itemId: 'item-1' }
 const annotationBrowserProps: AnnotationBrowserProps = {
     itemId: 'item-1',
     onAnnotationSelect: () => undefined,
@@ -105,6 +108,7 @@ export const consumerFixture = (
         <FolderBrowser {...folderBrowserProps} />
         <ManifestBrowser {...manifestBrowserProps} />
         <SlideViewer {...slideViewerProps} />
+        <ZStackVolumeViewer {...volumeViewerProps} />
         <AnnotationBrowser {...annotationBrowserProps} />
         <AnnotationEditor {...annotationEditorProps} />
         <AnnotationEditorPolygons {...annotationEditorProps} />

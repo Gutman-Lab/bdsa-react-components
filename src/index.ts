@@ -39,6 +39,14 @@ export type { ManifestBrowserProps } from './components/ManifestBrowser/Manifest
 export { SlideViewer } from './components/SlideViewer/SlideViewer'
 export type { SlideViewerProps } from './components/SlideViewer/SlideViewer.types'
 
+export { ZStackVolumeViewer } from './components/ZStackVolumeViewer/ZStackVolumeViewer'
+export type { ZStackVolumeViewerProps } from './components/ZStackVolumeViewer/ZStackVolumeViewer'
+export { ChannelHistograms } from './components/ChannelHistograms/ChannelHistograms'
+export type { ChannelHistogramSeries, ChannelHistogramsProps } from './components/ChannelHistograms/ChannelHistograms'
+export { fetchImageHistogram } from './components/ChannelHistograms/fetchImageHistogram'
+export { histogramBins, histogramMax, parseImageHistogram } from './components/ChannelHistograms/histogramBins'
+export type { ChannelHistogram } from './components/ChannelHistograms/histogramBins'
+
 export { AnnotationBrowser } from './components/AnnotationBrowser/AnnotationBrowser'
 export type { AnnotationBrowserProps } from './components/AnnotationBrowser/AnnotationBrowser'
 

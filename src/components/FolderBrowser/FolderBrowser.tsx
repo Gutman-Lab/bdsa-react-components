@@ -117,6 +117,12 @@ export interface FolderBrowserProps {
    * @default true
    */
   scrollSelectedIntoView?: boolean
+  /**
+   * Folder and collection ids to open, for a deep link. Merged into the expanded
+   * set; children load through the existing expansion fetch. Does not collapse
+   * anything the user already opened.
+   */
+  expandIds?: readonly string[]
 }
 
 export function FolderBrowser({
@@ -146,6 +152,7 @@ export function FolderBrowser({
   persistSelection = false,
   persistSelectionKey = DEFAULT_PERSIST_SELECTION_KEY,
   scrollSelectedIntoView = true,
+  expandIds,
 }: FolderBrowserProps) {
   const [internalVisualStyle, setInternalVisualStyle] = useState<FolderBrowserVisualStyle>(
     () => visualStyleProp ?? 'modern',
@@ -365,12 +372,16 @@ export function FolderBrowser({
             throw new Error(`Collection ${rootIdResolved} not found`)
           }
           if (cancelled) return
-          setCollections([found])
-          setRootFolder(null)
-          setExpanded(new Set([rootIdResolved]))
           const ch = await fetchChildren(rootIdResolved, 'collection')
           if (cancelled) return
-          setChildrenMap(new Map([[rootIdResolved, ch]]))
+          setCollections([found])
+          setRootFolder(null)
+          setExpanded(prev => {
+            const next = new Set(prev)
+            next.add(rootIdResolved)
+            return next
+          })
+          setChildrenMap(prev => new Map(prev).set(rootIdResolved, ch))
           return
         }
 
@@ -381,21 +392,25 @@ export function FolderBrowser({
         const entity = (await res.json()) as Collection | FolderItem
         if (cancelled) return
 
+        const ch = await fetchChildren(rootIdResolved, rootTypeResolved)
+        if (cancelled) return
+
         if (rootTypeResolved === 'collection') {
           setCollections([entity as Collection])
           setRootFolder(null)
-          setExpanded(new Set([rootIdResolved]))
-          const ch = await fetchChildren(rootIdResolved, 'collection')
-          if (cancelled) return
-          setChildrenMap(new Map([[rootIdResolved, ch]]))
         } else {
           setCollections([])
           setRootFolder(entity as FolderItem)
-          setExpanded(new Set([rootIdResolved]))
-          const ch = await fetchChildren(rootIdResolved, 'folder')
-          if (cancelled) return
-          setChildrenMap(new Map([[rootIdResolved, ch]]))
         }
+        // Apply expansion and children together. Setting expansion first lets the
+        // persisted-expansion effect start a second fetch, then cancel it and leave
+        // the node stuck on "Loading...".
+        setExpanded(prev => {
+          const next = new Set(prev)
+          next.add(rootIdResolved)
+          return next
+        })
+        setChildrenMap(prev => new Map(prev).set(rootIdResolved, ch))
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Failed to load root')
@@ -513,6 +528,12 @@ export function FolderBrowser({
     })()
     return () => {
       cancelled = true
+      setLoadingIds(prev => {
+        if (!prev.has(id)) return prev
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }, [persistExpansion, syntheticData, expanded, childrenMap, collections, rootFolder, fetchChildren])
 
@@ -541,9 +562,27 @@ export function FolderBrowser({
     }
   }, [selectedResource, persistSelection, persistSelectionKey, syntheticData])
 
+  const expandKey = expandIds?.join('\0') ?? ''
   useEffect(() => {
-    if (!scrollSelectedIntoView || !selectedResource || collapsed) return
-    const id = selectedResource._id
+    if (!expandKey) return
+    const ids = expandKey.split('\0').filter(Boolean)
+    setExpanded(prev => {
+      let changed = false
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (!next.has(id)) {
+          next.add(id)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [expandKey])
+
+  const scrollTargetId = selectedItemId ?? selectedResource?._id
+  useEffect(() => {
+    if (!scrollSelectedIntoView || !scrollTargetId || collapsed) return
+    const id = scrollTargetId
     const t = window.setTimeout(() => {
       const root = scrollContainerRef.current
       if (!root) return
@@ -552,7 +591,7 @@ export function FolderBrowser({
       el?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
     }, 100)
     return () => clearTimeout(t)
-  }, [scrollSelectedIntoView, selectedResource, collapsed, expanded, childrenMap, loading])
+  }, [scrollSelectedIntoView, scrollTargetId, collapsed, expanded, childrenMap, loading])
 
   const rootMods =
     effectiveVisualStyle === 'legacy' ? 'folder-browser--legacy' : ''

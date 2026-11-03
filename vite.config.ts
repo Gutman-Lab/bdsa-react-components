@@ -46,7 +46,12 @@ export default defineConfig({
             fileName: (format) => `index.${format === 'es' ? 'js' : 'cjs'}`,
         },
         rollupOptions: {
-            external: ['react', 'react-dom', 'react/jsx-runtime'],
+            external: (id) =>
+                id === 'react' ||
+                id === 'react-dom' ||
+                id === 'react/jsx-runtime' ||
+                id === '@kitware/vtk.js' ||
+                id.startsWith('@kitware/vtk.js/'),
             output: {
                 globals: {
                     react: 'React',
