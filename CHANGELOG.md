@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-03
+
+### Added
+
+- **ZStackVolumeViewer** renders a DSA multichannel z-stack as a vtk.js volume (composite, maximum-intensity, and orthogonal cuts). It needs the existing `@kitware/vtk.js` peer dependency.
+- **ChannelHistograms** charts per-channel pixel histograms. `fetchImageHistogram`, `histogramBins`, `histogramMax`, `parseImageHistogram`, and the `ChannelHistogram` type are exported for apps that draw their own charts.
 
 ### Changed
 

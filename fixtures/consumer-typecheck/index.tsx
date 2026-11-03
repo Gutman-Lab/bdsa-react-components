@@ -8,6 +8,7 @@
  */
 import {
     AnnotationBrowser,
+    ChannelHistograms,
     AnnotationEditor,
     AnnotationEditorPolygons,
     DsaAuthManager,
@@ -23,6 +24,7 @@ import {
 } from 'bdsa-react-components'
 import type {
     AnnotationBrowserProps,
+    ChannelHistogramsProps,
     AnnotationEditorProps,
     AutoSaveSettings,
     Collection,
@@ -82,6 +84,9 @@ const slideViewerProps: SlideViewerProps = {
     height: '600px',
 }
 const volumeViewerProps: ZStackVolumeViewerProps = { itemId: 'item-1' }
+const channelHistogramsProps: ChannelHistogramsProps = {
+    series: [{ id: 'dapi', label: 'DAPI', color: '#0000ff', histogram: null }],
+}
 const annotationBrowserProps: AnnotationBrowserProps = {
     itemId: 'item-1',
     onAnnotationSelect: () => undefined,
@@ -109,6 +114,7 @@ export const consumerFixture = (
         <ManifestBrowser {...manifestBrowserProps} />
         <SlideViewer {...slideViewerProps} />
         <ZStackVolumeViewer {...volumeViewerProps} />
+        <ChannelHistograms {...channelHistogramsProps} />
         <AnnotationBrowser {...annotationBrowserProps} />
         <AnnotationEditor {...annotationEditorProps} />
         <AnnotationEditorPolygons {...annotationEditorProps} />
