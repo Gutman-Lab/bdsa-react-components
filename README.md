@@ -373,11 +373,24 @@ Example:
 
 ## Publishing
 
-To publish this library to npm:
+Releases are published from CI with [npm trusted publishing](https://docs.npmjs.com/trusted-publishers)
+(OIDC). No npm token is stored in the repository or in GitHub secrets.
 
-1. Update version in `package.json`
-2. Build the library: `npm run build`
-3. Publish: `npm publish`
+1. Update `version` in `package.json` and `CHANGELOG.md`, merge to `main`.
+2. Tag the release commit and push the tag:
+
+   ```bash
+   git tag v0.3.1
+   git push origin v0.3.1
+   ```
+
+3. `.github/workflows/publish.yml` runs `npm ci`, `npm test`, verifies the tag
+   matches `package.json`, and runs `npm publish` (which rebuilds `dist/` via
+   `prepublishOnly`). Provenance is generated automatically.
+
+The npm trusted publisher for this repository must list workflow filename
+`publish.yml` and allow **npm publish**. Maintainers can still publish by hand
+with `npm publish` if CI is unavailable.
 
 ## License
 
