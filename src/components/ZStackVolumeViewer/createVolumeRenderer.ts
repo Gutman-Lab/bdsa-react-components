@@ -141,7 +141,7 @@ export function createVolumeRenderer(
     canvas.style.display = 'block'
   }
 
-  let depthScale = 8
+  let depthScale = 2
   let peakOpacity = 0.55
   let posed = false
   let cutState: VolumeCuts = {
