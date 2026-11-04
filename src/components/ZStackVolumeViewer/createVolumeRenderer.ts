@@ -1,4 +1,10 @@
 import '@kitware/vtk.js/Rendering/Profiles/Volume'
+// The volume profile registers volumes and image slices only. The annotation
+// overlay uses regular polydata actors, so register the OpenGL overrides for
+// vtkActor and vtkMapper explicitly instead of pulling in the whole geometry
+// profile (textures, scalar bars, skybox).
+import '@kitware/vtk.js/Rendering/OpenGL/Actor'
+import '@kitware/vtk.js/Rendering/OpenGL/PolyDataMapper'
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray'
 import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction'
 import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData'
@@ -9,8 +15,23 @@ import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper'
 import vtkImageMapper from '@kitware/vtk.js/Rendering/Core/ImageMapper'
 import vtkImageSlice from '@kitware/vtk.js/Rendering/Core/ImageSlice'
 import vtkPlane from '@kitware/vtk.js/Common/DataModel/Plane'
+import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData'
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor'
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper'
+import vtkTriangleFilter from '@kitware/vtk.js/Filters/General/TriangleFilter'
+import { buildOverlayGeometry, type OverlayPolygon } from './overlayGeometry'
+
+export type { OverlayPolygon } from './overlayGeometry'
 
 export type VolumeInterpolation = 'linear' | 'nearest'
+
+/** Flat, unlit styling for the segmentation overlay. */
+export interface OverlayStyle {
+  color?: [number, number, number]
+  /** Fill opacity. The outline is always drawn at full opacity. */
+  opacity?: number
+  lineWidth?: number
+}
 
 /** Ray combination. Composite is the default solid volume. Maximum is a MIP. */
 export type VolumeBlend = 'composite' | 'maximum' | 'average' | 'additive'
@@ -36,6 +57,11 @@ export interface VolumeCuts {
 
 export interface VolumeRenderer {
   updateScalars(rgba: Uint8Array): void
+  /**
+   * Draw translucent nuclei contours over the volume. Points are in slide base
+   * pixels; the renderer scales them to the loaded volume. Pass `null` to hide.
+   */
+  setOverlay(polygons: OverlayPolygon[] | null, style?: OverlayStyle): void
   setDepth(exaggeration: number): void
   setOpacity(opacity: number): void
   setInterpolation(mode: VolumeInterpolation): void
@@ -60,6 +86,8 @@ export function createVolumeRenderer(
   height: number,
   depth: number,
   rgba: Uint8Array,
+  sourceWidth: number = width,
+  sourceHeight: number = height,
 ): VolumeRenderer {
   const renderWindow = vtkGenericRenderWindow.newInstance({
     background: [0, 0, 0],
@@ -132,6 +160,22 @@ export function createVolumeRenderer(
     axial: vtkPlane.newInstance(),
   }
 
+  // The segmentation overlay is a separate pair of actors: a translucent fill
+  // (triangulated) and an opaque outline. Both are unlit so the stain colors
+  // do not tint the nuclei. One world unit is one x/y pixel; z uses the same
+  // spacing as the volume, applied with the actor transform.
+  const overlayFillMapper = vtkMapper.newInstance()
+  const overlayFillActor = vtkActor.newInstance()
+  overlayFillActor.setMapper(overlayFillMapper)
+  overlayFillActor.setVisibility(false)
+  renderer.addActor(overlayFillActor)
+  const overlayLineMapper = vtkMapper.newInstance()
+  const overlayLineActor = vtkActor.newInstance()
+  overlayLineActor.setMapper(overlayLineMapper)
+  overlayLineActor.setVisibility(false)
+  renderer.addActor(overlayLineActor)
+  const overlayTriangleFilter = vtkTriangleFilter.newInstance()
+
   const canvas = container.querySelector('canvas')
   if (canvas) {
     canvas.style.position = 'absolute'
@@ -163,11 +207,79 @@ export function createVolumeRenderer(
     opacity.addPoint(255, peakOpacity)
   }
 
+  function applyOverlayTransform() {
+    const origin = image.getOrigin()
+    const spacing = image.getSpacing()
+    // Overlay points store z as a plane index. Scaling the actors keeps the
+    // 1,200 contours cheap to re-place when the spacing slider moves.
+    for (const actor of [overlayFillActor, overlayLineActor]) {
+      actor.setPosition(0, 0, origin[2])
+      actor.setScale(1, 1, spacing[2])
+    }
+  }
+
   function applyDepth() {
     const z = depthScale
     image.setSpacing([1, 1, z])
     image.setOrigin([-width / 2, -height / 2, -((Math.max(depth, 1) - 1) * z) / 2])
     image.modified()
+    applyOverlayTransform()
+  }
+
+  let overlayPolygons: OverlayPolygon[] = []
+  let overlayStyle: Required<OverlayStyle> = {
+    color: [0, 1, 0],
+    opacity: 0.22,
+    lineWidth: 1.5,
+  }
+  let overlayFillData: ReturnType<typeof vtkPolyData.newInstance> | null = null
+  let overlayLineData: ReturnType<typeof vtkPolyData.newInstance> | null = null
+
+  function buildOverlay() {
+    const geometry = buildOverlayGeometry(overlayPolygons, width, height, sourceWidth, sourceHeight)
+
+    overlayFillData?.delete()
+    overlayFillData = vtkPolyData.newInstance()
+    overlayFillData.getPoints().setData(geometry.points, 3)
+    overlayFillData.getPolys().setData(geometry.polygons)
+    overlayTriangleFilter.setInputData(overlayFillData)
+    overlayTriangleFilter.update()
+    overlayFillMapper.setInputData(overlayTriangleFilter.getOutputData())
+
+    overlayLineData?.delete()
+    overlayLineData = vtkPolyData.newInstance()
+    overlayLineData.getPoints().setData(geometry.points, 3)
+    overlayLineData.getLines().setData(geometry.lines)
+    overlayLineMapper.setInputData(overlayLineData)
+
+    const fill = overlayFillActor.getProperty()
+    fill.setColor(overlayStyle.color)
+    fill.setOpacity(overlayStyle.opacity)
+    fill.setLighting(false)
+    fill.setAmbient(1)
+    fill.setDiffuse(0)
+    fill.setSpecular(0)
+
+    const line = overlayLineActor.getProperty()
+    line.setColor(overlayStyle.color)
+    line.setOpacity(1)
+    line.setLineWidth(overlayStyle.lineWidth)
+    line.setLighting(false)
+    line.setAmbient(1)
+    line.setDiffuse(0)
+    line.setSpecular(0)
+  }
+
+  function setOverlay(polygons: OverlayPolygon[] | null, style?: OverlayStyle) {
+    overlayPolygons = polygons ?? []
+    if (style) overlayStyle = { ...overlayStyle, ...style }
+    const visible = overlayPolygons.length > 0
+    overlayFillActor.setVisibility(visible)
+    overlayLineActor.setVisibility(visible)
+    if (visible) buildOverlay()
+    applyOverlayTransform()
+    if (posed) render()
+    else fit()
   }
 
   function axisPosition(axis: 0 | 1 | 2, index: number): [number, number, number] {
@@ -241,6 +353,7 @@ export function createVolumeRenderer(
       if (!posed) return
       view.render()
     },
+    setOverlay,
     setDepth(exaggeration) {
       depthScale = exaggeration
       applyDepth()
@@ -313,6 +426,15 @@ export function createVolumeRenderer(
         cut.actor.delete()
         cut.imageMapper.delete()
       }
+      renderer.removeActor(overlayFillActor)
+      renderer.removeActor(overlayLineActor)
+      overlayFillActor.delete()
+      overlayLineActor.delete()
+      overlayFillMapper.delete()
+      overlayLineMapper.delete()
+      overlayTriangleFilter.delete()
+      overlayFillData?.delete()
+      overlayLineData?.delete()
       for (const plane of Object.values(clipPlanes)) plane.delete()
       volume.delete()
       mapper.delete()

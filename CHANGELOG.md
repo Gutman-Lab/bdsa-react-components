@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-04
+
+### Added
+
+- **ZStackVolumeViewer** accepts an optional `annotationOverlay` prop. Each
+  polygon is drawn as a translucent, unlit surface with an opaque outline at
+  its own z plane, so DSA annotation documents (for example per-slice DAPI
+  nuclei segmentation) can be shown in the orbitable volume. This is additive:
+  apps that do not pass the prop render exactly as before. The new
+  `StackAnnotationOverlay` and `StackAnnotationPolygon` types are exported.
+  The overlay follows the `Spacing` slider and is on by default, with a toolbar
+  checkbox to hide it and a color picker to change the outline/fill color at
+  runtime.
+
+### Changed
+
+- `StackFrames` now carries the original tile `sizeX`/`sizeY` so overlays in
+  slide pixels can be scaled to the downsampled volume. This is an internal
+  type used by `ZStackVolumeViewer`.
+
 ## [0.4.0] - 2026-11-04
 
 ### Changed
