@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-11-04
+
+### Fixed
+
+- **ZStackVolumeViewer toolbar** no longer overlaps controls at narrow widths.
+  The toolbar now wraps onto additional rows instead of squeezing each slider
+  group below its content width, which had let the next group's label paint over
+  the previous group's range input.
+
 ## [0.4.2] - 2026-11-04
 
 ### Added
