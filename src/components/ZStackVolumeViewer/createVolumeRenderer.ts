@@ -1,4 +1,10 @@
 import '@kitware/vtk.js/Rendering/Profiles/Volume'
+// The volume profile registers volumes and image slices only. The annotation
+// overlay uses regular polydata actors, so register the OpenGL overrides for
+// vtkActor and vtkMapper explicitly instead of pulling in the whole geometry
+// profile (textures, scalar bars, skybox).
+import '@kitware/vtk.js/Rendering/OpenGL/Actor'
+import '@kitware/vtk.js/Rendering/OpenGL/PolyDataMapper'
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray'
 import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction'
 import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData'
