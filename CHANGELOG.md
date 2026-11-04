@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-04
 
 ### Changed
 
@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Per-component subpath entry points: `bdsa-react-components/components/*`, plus
+  `auth`, `cache`, and `utils`. The root barrel is unchanged. A consumer that
+  imports only `ChannelHistograms` now loads about 3 KB instead of ~2 MB
+  (unminified, peer dependencies external); the IHC z-stack viewer's application
+  chunk drops from 1.7 MB to 485 KB (gzip 498 KB to 133 KB) and its CSS from
+  54 KB to 19 KB when it switches to subpath imports.
+- `histogramRange`, `stainedRange`, `compositeVolume`, and the associated
+  `ChannelRange` types are exported, matching the 0.3.2 changelog claim.
 - CI workflow runs `npm ci`, tests, build, `check:exports`, and `check:consumer-types` on pull requests and pushes to `main`.
 
 ## [0.3.2] - 2026-11-03

@@ -52,14 +52,42 @@ function App() {
 
 ### Individual Component Import
 
-```tsx
-import { DsaAuthManager } from 'bdsa-react-components'
-import 'bdsa-react-components/styles.css'
+The package also exposes one entry point per component, plus `auth`, `cache`,
+and `utils`. Use these when you only need part of the library: importing from
+the root barrel pulls in every component (including the slide/volume viewers),
+while a subpath import pulls only that component and its dependencies.
 
-function MyComponent() {
-  return <DsaAuthManager allowServerConfig compact={false} />
-}
+```tsx
+import { DsaAuthManager } from 'bdsa-react-components/components/DsaAuthManager'
+import { FolderBrowser } from 'bdsa-react-components/components/FolderBrowser'
+import { ZStackVolumeViewer } from 'bdsa-react-components/components/ZStackVolumeViewer'
+import { ChannelHistograms, fetchImageHistogram } from 'bdsa-react-components/components/ChannelHistograms'
+import { dsaAuthStore, useDsaAuth } from 'bdsa-react-components/auth'
+import { hasLargeImage } from 'bdsa-react-components/utils'
 ```
+
+The full subpath list is the `components/*`, `auth`, `cache`, and `utils` keys
+in `package.json#exports`. The root import remains supported for compatibility.
+
+### Styles
+
+ESM chunks import the CSS they need automatically. If your setup does not
+process CSS imports (for example CommonJS or server-side rendering), import the
+aggregate stylesheet once:
+
+```tsx
+import 'bdsa-react-components/styles.css'
+```
+
+### Bundle size
+
+The root barrel is a single compatibility entry point; bundlers cannot drop the
+unused viewers because the library ships one chunk per component but the root
+entry re-exports all of them. For example, importing `ChannelHistograms` from
+the root adds roughly 2 MB to an unminified consumer bundle, while importing it
+from `bdsa-react-components/components/ChannelHistograms` adds about 3 KB
+(both measured with `esbuild`, with React/OpenSeadragon/Paper/VTK external).
+Prefer subpath imports in new code.
 
 ## Available Components
 

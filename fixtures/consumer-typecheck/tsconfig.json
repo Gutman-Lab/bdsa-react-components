@@ -1,7 +1,11 @@
 {
     "compilerOptions": {
         "target": "ES2020",
-        "lib": ["ES2020", "DOM", "DOM.Iterable"],
+        "lib": [
+            "ES2020",
+            "DOM",
+            "DOM.Iterable"
+        ],
         "module": "ESNext",
         "moduleResolution": "bundler",
         "jsx": "react-jsx",
@@ -10,8 +14,27 @@
         "noEmit": true,
         "baseUrl": ".",
         "paths": {
-            "bdsa-react-components": ["../../dist/index.d.ts"]
+            "bdsa-react-components": [
+                "../../dist/index.d.ts"
+            ],
+            "bdsa-react-components/components/FolderBrowser": [
+                "../../dist/entries/folder-browser.d.ts"
+            ],
+            "bdsa-react-components/components/ChannelHistograms": [
+                "../../dist/entries/channel-histograms.d.ts"
+            ],
+            "bdsa-react-components/components/ZStackVolumeViewer": [
+                "../../dist/entries/zstack-volume-viewer.d.ts"
+            ],
+            "bdsa-react-components/auth": [
+                "../../dist/entries/auth.d.ts"
+            ],
+            "bdsa-react-components/utils": [
+                "../../dist/entries/item-utils.d.ts"
+            ]
         }
     },
-    "include": ["index.tsx"]
+    "include": [
+        "index.tsx"
+    ]
 }

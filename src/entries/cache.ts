@@ -1,0 +1,6 @@
+export type { AnnotationCache } from '../cache/AnnotationCache'
+export { MemoryAnnotationCache } from '../cache/MemoryAnnotationCache'
+export { IndexedDBAnnotationCache } from '../cache/IndexedDBAnnotationCache'
+export { computeHash, computeVersionHash, extractVersionFields } from '../cache/hashUtils'
+export { measureAnnotationSizes, printSizeSummary } from '../cache/measureAnnotationSize'
+export { checkIndexedDBQuota, requestPersistentStorage, logQuotaInfo, formatBytes } from '../cache/indexedDBQuota'

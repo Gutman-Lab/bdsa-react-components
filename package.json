@@ -1,6 +1,6 @@
 {
     "name": "bdsa-react-components",
-    "version": "0.3.2",
+    "version": "0.4.0",
     "description": "Reusable React components for the Digital Slide Archive project",
     "type": "module",
     "sideEffects": [
@@ -21,7 +21,92 @@
         "./schemas/region-metadata.json": "./dist/schemas/region-metadata.json",
         "./schemas/stain-metadata.json": "./dist/schemas/stain-metadata.json",
         "./schemas/slide-level-metadata.json": "./dist/schemas/slide-level-metadata.json",
-        "./package.json": "./package.json"
+        "./package.json": "./package.json",
+        "./components/DsaAuthManager": {
+            "types": "./dist/entries/dsa-auth-manager.d.ts",
+            "import": "./dist/components/DsaAuthManager/index.js",
+            "require": "./dist/components/DsaAuthManager/index.cjs"
+        },
+        "./components/FolderBrowser": {
+            "types": "./dist/entries/folder-browser.d.ts",
+            "import": "./dist/components/FolderBrowser/index.js",
+            "require": "./dist/components/FolderBrowser/index.cjs"
+        },
+        "./components/OSDThumbnailBrowser": {
+            "types": "./dist/entries/osd-thumbnail-browser.d.ts",
+            "import": "./dist/components/OSDThumbnailBrowser/index.js",
+            "require": "./dist/components/OSDThumbnailBrowser/index.cjs"
+        },
+        "./components/ThumbnailGrid": {
+            "types": "./dist/entries/thumbnail-grid.d.ts",
+            "import": "./dist/components/ThumbnailGrid/index.js",
+            "require": "./dist/components/ThumbnailGrid/index.cjs"
+        },
+        "./components/ThumbnailViewer": {
+            "types": "./dist/entries/thumbnail-viewer.d.ts",
+            "import": "./dist/components/ThumbnailViewer/index.js",
+            "require": "./dist/components/ThumbnailViewer/index.cjs"
+        },
+        "./components/ManifestBrowser": {
+            "types": "./dist/entries/manifest-browser.d.ts",
+            "import": "./dist/components/ManifestBrowser/index.js",
+            "require": "./dist/components/ManifestBrowser/index.cjs"
+        },
+        "./components/SlideViewer": {
+            "types": "./dist/entries/slide-viewer.d.ts",
+            "import": "./dist/components/SlideViewer/index.js",
+            "require": "./dist/components/SlideViewer/index.cjs"
+        },
+        "./components/ZStackVolumeViewer": {
+            "types": "./dist/entries/zstack-volume-viewer.d.ts",
+            "import": "./dist/components/ZStackVolumeViewer/index.js",
+            "require": "./dist/components/ZStackVolumeViewer/index.cjs"
+        },
+        "./components/ChannelHistograms": {
+            "types": "./dist/entries/channel-histograms.d.ts",
+            "import": "./dist/components/ChannelHistograms/index.js",
+            "require": "./dist/components/ChannelHistograms/index.cjs"
+        },
+        "./components/AnnotationBrowser": {
+            "types": "./dist/entries/annotation-browser.d.ts",
+            "import": "./dist/components/AnnotationBrowser/index.js",
+            "require": "./dist/components/AnnotationBrowser/index.cjs"
+        },
+        "./components/AnnotationEditor": {
+            "types": "./dist/entries/annotation-editor.d.ts",
+            "import": "./dist/components/AnnotationEditor/index.js",
+            "require": "./dist/components/AnnotationEditor/index.cjs"
+        },
+        "./components/AnnotationEditorPolygons": {
+            "types": "./dist/entries/annotation-editor-polygons.d.ts",
+            "import": "./dist/components/AnnotationEditorPolygons/index.js",
+            "require": "./dist/components/AnnotationEditorPolygons/index.cjs"
+        },
+        "./components/SingleBoxSlideEditor": {
+            "types": "./dist/entries/single-box-slide-editor.d.ts",
+            "import": "./dist/components/SingleBoxSlideEditor/index.js",
+            "require": "./dist/components/SingleBoxSlideEditor/index.cjs"
+        },
+        "./components/ProtocolManager": {
+            "types": "./dist/entries/protocol-manager.d.ts",
+            "import": "./dist/components/ProtocolManager/index.js",
+            "require": "./dist/components/ProtocolManager/index.cjs"
+        },
+        "./auth": {
+            "types": "./dist/entries/auth.d.ts",
+            "import": "./dist/auth/index.js",
+            "require": "./dist/auth/index.cjs"
+        },
+        "./cache": {
+            "types": "./dist/entries/cache.d.ts",
+            "import": "./dist/cache/index.js",
+            "require": "./dist/cache/index.cjs"
+        },
+        "./utils": {
+            "types": "./dist/entries/item-utils.d.ts",
+            "import": "./dist/utils/index.js",
+            "require": "./dist/utils/index.cjs"
+        }
     },
     "files": [
         "dist",

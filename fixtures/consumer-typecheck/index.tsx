@@ -129,3 +129,21 @@ export const consumerFixture = (
 void polygon
 void box
 void protocolCardProps
+
+// Subpath entry points must expose the same public types as the root barrel.
+import { FolderBrowser as FolderBrowserSubpath } from 'bdsa-react-components/components/FolderBrowser'
+import { ChannelHistograms as ChannelHistogramsSubpath } from 'bdsa-react-components/components/ChannelHistograms'
+import { ZStackVolumeViewer as ZStackVolumeViewerSubpath } from 'bdsa-react-components/components/ZStackVolumeViewer'
+import type { FolderBrowserItem as FolderBrowserItemSubpath } from 'bdsa-react-components/components/FolderBrowser'
+import { dsaAuthStore as dsaAuthStoreSubpath } from 'bdsa-react-components/auth'
+import { hasLargeImage as hasLargeImageSubpath } from 'bdsa-react-components/utils'
+
+const subpathItem: FolderBrowserItemSubpath = { _id: 'subpath-item', name: 'slide.svs' }
+const subpathChecks = [
+    FolderBrowserSubpath,
+    ChannelHistogramsSubpath,
+    ZStackVolumeViewerSubpath,
+    dsaAuthStoreSubpath,
+    hasLargeImageSubpath(subpathItem),
+]
+void subpathChecks

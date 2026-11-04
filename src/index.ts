@@ -41,6 +41,8 @@ export type { SlideViewerProps } from './components/SlideViewer/SlideViewer.type
 
 export { ZStackVolumeViewer } from './components/ZStackVolumeViewer/ZStackVolumeViewer'
 export type { ZStackVolumeViewerProps } from './components/ZStackVolumeViewer/ZStackVolumeViewer'
+export { compositeVolume, histogramRange, stainedRange } from './components/ZStackVolumeViewer/compositeVolume'
+export type { ChannelRange, ChannelRangeOptions, StainedRange, VolumeAdjust, VolumeChannel } from './components/ZStackVolumeViewer/compositeVolume'
 export { ChannelHistograms } from './components/ChannelHistograms/ChannelHistograms'
 export type { ChannelHistogramSeries, ChannelHistogramsProps } from './components/ChannelHistograms/ChannelHistograms'
 export { fetchImageHistogram } from './components/ChannelHistograms/fetchImageHistogram'

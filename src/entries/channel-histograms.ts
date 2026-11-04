@@ -1,0 +1,5 @@
+export { ChannelHistograms } from '../components/ChannelHistograms/ChannelHistograms'
+export type { ChannelHistogramSeries, ChannelHistogramsProps } from '../components/ChannelHistograms/ChannelHistograms'
+export { fetchImageHistogram } from '../components/ChannelHistograms/fetchImageHistogram'
+export { histogramBins, histogramMax, parseImageHistogram } from '../components/ChannelHistograms/histogramBins'
+export type { ChannelHistogram } from '../components/ChannelHistograms/histogramBins'
