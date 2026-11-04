@@ -63,76 +63,37 @@ function MyComponent() {
 
 ## Available Components
 
-### Card
+These are the components exported from the package root:
 
-A flexible card component for displaying content in a contained format.
+| Component | Purpose |
+| --- | --- |
+| `DsaAuthManager` | Login/logout UI and DSA auth status; `dsaAuthStore`/`useDsaAuth` expose the session to other components. |
+| `FolderBrowser` | Collection/folder/item tree with deep links, persistence, and render props. |
+| `OSDThumbnailBrowser` | OpenSeadragon thumbnail grid for folders (`FolderThumbnailBrowser` is a deprecated alias). |
+| `ThumbnailGrid` | Simpler image thumbnail grid with pagination and sizing. |
+| `ThumbnailViewer` | Large thumbnail preview with adjustable annotation opacity. |
+| `ManifestBrowser` | Browse images listed by a IIIF manifest. |
+| `SlideViewer` | OpenSeadragon slide viewer with Paper.js annotation overlays. |
+| `AnnotationEditor` / `SingleBoxSlideEditor` | Protocol-driven annotation editing on top of `SlideViewer`. |
+| `AnnotationBrowser` | Annotation list/visibility panel for a slide. |
+| `ZStackVolumeViewer` | vtk.js multichannel z-stack volume viewer. |
+| `ChannelHistograms` | Per-channel histogram chart, plus `fetchImageHistogram` helpers. |
+| `ProtocolManager` (`ProtocolsTab`) | Stain/region/block protocol editor with BDSA schema validation. |
+
+Earlier releases also shipped `Card`, `Button`, and `AnnotationManager`; they are no
+longer exported. `Card` and `AnnotationManager` only remain in `old-src/` for
+historical reference, and `Button` was removed in 0.3.0. Use your application's
+design system for generic UI controls.
+
+### Peer dependencies
+
+`react` and `react-dom` are required. Components that render slides or volumes
+also expect `openseadragon` (`^5`), `paper` (`^0.12`), and/or `@kitware/vtk.js`
+(`^38`); install the ones your app uses. Import the stylesheet once:
 
 ```tsx
-<Card 
-  header="Card Title"
-  footer="Footer text"
-  shadow="medium"
-  hoverable
->
-  Card content goes here
-</Card>
-```
-
-**Props:**
-- `header`: ReactNode
-- `footer`: ReactNode
-- `shadow`: 'none' | 'small' | 'medium' | 'large'
-- `bordered`: boolean
-- `hoverable`: boolean
-- `padding`: 'none' | 'small' | 'medium' | 'large'
-- Plus all standard HTML div attributes
-
-### AnnotationManager
-
-A component for managing annotation loading, visibility, and opacity in conjunction with SlideViewer. Provides a simplified integration pattern with automatic state synchronization.
-
-```tsx
-import { AnnotationManager, SlideViewer, IndexedDBAnnotationCache } from 'bdsa-react-components'
 import 'bdsa-react-components/styles.css'
-import { useState, useCallback, useMemo } from 'react'
-
-function AnnotationViewer({ imageId, apiBaseUrl, dziUrl }) {
-  const cache = useMemo(() => new IndexedDBAnnotationCache(), [])
-  const [state, setState] = useState({
-    loadedIds: [],
-    opacities: new Map(),
-    visibility: new Map(),
-  })
-  const [headers, setHeaders] = useState(new Map())
-  const handleReady = useCallback((id) => console.log('Ready:', id), [])
-
-  return (
-    <div style={{ display: 'flex', height: '800px' }}>
-      <AnnotationManager
-        imageId={imageId}
-        apiBaseUrl={apiBaseUrl}
-        annotationCache={cache}
-        slideViewerOnAnnotationReady={handleReady}
-        onAnnotationStateChange={setState}
-        onAnnotationHeadersChange={setHeaders}
-      />
-      <SlideViewer
-        imageInfo={{ dziUrl }}
-        annotationIds={state.loadedIds}
-        annotationOpacities={state.opacities}
-        annotationHeaders={headers}
-        onAnnotationReady={handleReady}
-        height="800px"
-      />
-    </div>
-  )
-}
 ```
-
-**Key Props:**
-- `slideViewerOnAnnotationReady`: Callback shared with SlideViewer (no render props needed!)
-- `onAnnotationStateChange`: Unified callback that fires immediately on all state changes
-- `onAnnotationHeadersChange`: Automatic headers sync for cache versioning
 
 ### SlideViewer
 

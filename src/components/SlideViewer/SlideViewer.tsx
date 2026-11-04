@@ -5,16 +5,11 @@ import type { FeatureCollection, Feature } from 'geojson'
 import OpenSeadragon from 'openseadragon'
 import type { Viewer as OpenSeadragonViewer } from 'openseadragon'
 import { IndexedDBAnnotationCache } from '../../cache'
-import { applyPaperJsPatches, applyOsdPaperJsAnnotationPatches, isPaperViewReady } from '../../utils/patchOsdPaperjs'
+import { isPaperViewReady } from '../../utils/patchOsdPaperjs'
 import { createDebugLogger } from '../../utils/debugLog'
 import type { SlideViewerProps, AnnotationFeature } from './SlideViewer.types'
 import { extractToken, appendTokenToUrl, DEFAULT_ANNOTATION_INFO_CONFIG } from './SlideViewer.utils'
 import { useAnnotationFetching, useAnnotationRendering, useAnnotationOpacity, useSlideViewerInitialization, useViewportChange, useOverlayTileSources } from './hooks'
-
-// Apply patches IMMEDIATELY when this module loads (not in a component lifecycle)
-// This must happen before any Paper.js operations
-applyPaperJsPatches()
-applyOsdPaperJsAnnotationPatches()
 import './SlideViewer.css'
 
 /** Stable default so the init effect doesn't tear down the viewer every render. */

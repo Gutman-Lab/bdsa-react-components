@@ -10,6 +10,17 @@ export default defineConfig({
         testTimeout: 5000, // 5 second timeout per test
         hookTimeout: 5000, // 5 second timeout for hooks
         include: ['src/**/*.test.{ts,tsx}'],  // only check test files in src/
+        coverage: {
+            provider: 'v8',
+            reporter: ['text', 'html'],
+            include: ['src/**/*.{ts,tsx}'],
+            exclude: [
+                'src/**/*.test.{ts,tsx}',
+                'src/**/*.stories.{ts,tsx}',
+                'src/test/**',
+                'src/types/**',
+            ],
+        },
     },
 })
 

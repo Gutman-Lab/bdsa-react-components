@@ -5,7 +5,7 @@ import { AnnotationToolkit } from 'osd-paperjs-annotation'
 import type { Viewer as OpenSeadragonViewer, Options as OpenSeadragonOptions } from 'openseadragon'
 import OpenSeadragon from 'openseadragon'
 import type { DebugLogger } from '../../../utils/debugLog'
-import { hardenPaperOverlayInstance } from '../../../utils/patchOsdPaperjs'
+import { applyPaperJsPatches, applyOsdPaperJsAnnotationPatches, hardenPaperOverlayInstance } from '../../../utils/patchOsdPaperjs'
 
 /**
  * Hook to handle OpenSeadragon viewer initialization
@@ -41,6 +41,12 @@ export function useSlideViewerInitialization(
     debugLog: DebugLogger
 ) {
     useEffect(() => {
+        // Apply the Paper.js runtime patches when the viewer mounts, before any
+        // Paper.js/OpenSeadragon objects are created. Keeping this out of module
+        // scope lets consumers tree-shake unused components.
+        applyPaperJsPatches()
+        applyOsdPaperJsAnnotationPatches()
+
         if (!containerRef.current) return
         // Only check visibility for initial mount, don't re-initialize if visibility changes
         if (!isVisible && !isInitializedRef.current) {

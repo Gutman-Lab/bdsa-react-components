@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **SlideViewer** installs its Paper.js runtime patches when the viewer mounts instead of at module import time. This removes an import-time side effect that prevented bundlers from tree-shaking unused components.
+- `package.json` now declares `sideEffects: ["**/*.css"]` and exposes `./package.json`, and documents a Node.js `>=18` engine range.
+- `npm run test:coverage` works again (`@vitest/coverage-v8` was missing); the current baseline is ~18% statements, recorded so it can be raised deliberately.
+- README now lists the components that are actually exported; the removed `Card`/`AnnotationManager` sections are gone.
+
+### Added
+
+- CI workflow runs `npm ci`, tests, build, `check:exports`, and `check:consumer-types` on pull requests and pushes to `main`.
+
 ## [0.3.2] - 2026-11-03
 
 ### Changed
