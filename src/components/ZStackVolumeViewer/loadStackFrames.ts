@@ -8,10 +8,14 @@ import {
 } from './stackGeometry'
 
 export interface StackFrames {
+  /** Width of the loaded (possibly downsampled) volume. */
   width: number
   height: number
   depth: number
   channelCount: number
+  /** Width/height of the original tile source, for scaling annotation coordinates. */
+  sizeX: number
+  sizeY: number
   /** planes[channel][z] is row-major luminance, image Y down. */
   planes: Uint8Array[][]
 }
@@ -133,7 +137,15 @@ export async function loadStackFrames(args: LoadStackFramesArgs): Promise<StackF
     args.onProgress?.(loaded, jobs.length)
   })
 
-  const frames: StackFrames = { width, height, depth, channelCount: channels, planes }
+  const frames: StackFrames = {
+    width,
+    height,
+    depth,
+    channelCount: channels,
+    sizeX: tile.sizeX,
+    sizeY: tile.sizeY,
+    planes,
+  }
   remember(cacheKey, frames)
   return frames
 }

@@ -1,6 +1,6 @@
 {
     "name": "bdsa-react-components",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "description": "Reusable React components for the Digital Slide Archive project",
     "type": "module",
     "sideEffects": [

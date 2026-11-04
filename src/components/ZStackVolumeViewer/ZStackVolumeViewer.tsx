@@ -16,10 +16,41 @@ import type { VolumeBlend, VolumeCuts, VolumeInterpolation, VolumeLight, VolumeR
 import { loadStackFrames, type StackFrames } from './loadStackFrames'
 import './ZStackVolumeViewer.css'
 
+/** A closed polygon on one z plane, in slide base pixels. */
+export interface StackAnnotationPolygon {
+  points: Array<[number, number]>
+  /** 0-based z plane. */
+  z: number
+}
+
+/**
+ * Optional segmentation overlay, for example DSA annotation polygons. The
+ * component draws every polygon at its z plane and shows a checkbox so the
+ * overlay can be hidden without dropping the data.
+ */
+export interface StackAnnotationOverlay {
+  polygons: StackAnnotationPolygon[]
+  /** Outline and fill color, as `#rrggbb`. Default green. */
+  color?: string
+  /** Fill opacity, 0–1. Default 0.22; the outline stays opaque. */
+  opacity?: number
+  lineWidth?: number
+  /** Checkbox label. Default "Annotations". */
+  label?: string
+}
+
 export interface ZStackVolumeViewerProps extends UseDsaResolvedApiOptions {
   itemId: string
   className?: string
   style?: React.CSSProperties
+  annotationOverlay?: StackAnnotationOverlay | null
+}
+
+function hexToRgb(value: string | undefined): [number, number, number] {
+  const match = /^#?([0-9a-f]{6})$/i.exec(value?.trim() ?? '')
+  if (!match) return [0, 1, 0]
+  const integer = Number.parseInt(match[1], 16)
+  return [((integer >> 16) & 255) / 255, ((integer >> 8) & 255) / 255, (integer & 255) / 255]
 }
 
 const DEFAULT_COLORS = ['#0000ff', '#00ff00', '#ff0000', '#ffffff', '#ffff00', '#ff00ff']
@@ -104,6 +135,7 @@ export function ZStackVolumeViewer({
   authToken,
   className = '',
   style,
+  annotationOverlay = null,
 }: ZStackVolumeViewerProps) {
   const { apiBaseUrl: resolvedApi, apiHeaders: resolvedHeaders } = useDsaResolvedApi({
     apiBaseUrl,
@@ -125,6 +157,7 @@ export function ZStackVolumeViewer({
   const [contrast, setContrast] = useState(DEFAULT_CONTRAST)
   const [floor, setFloor] = useState(DEFAULT_FLOOR)
   const [normalize, setNormalize] = useState(false)
+  const [showAnnotations, setShowAnnotations] = useState(true)
   const channelSpans = useMemo<ChannelRange[]>(
     () => volumeHistograms.map((histogram) => histogramRange(histogram.counts, { floor })),
     [volumeHistograms, floor],
@@ -274,7 +307,15 @@ export function ZStackVolumeViewer({
       if (cancelled || !hostRef.current || !framesRef.current) return
       const latest = framesRef.current
       const rgba = compositeCurrent(latest)
-      const renderer = createVolumeRenderer(host, latest.width, latest.height, latest.depth, rgba)
+      const renderer = createVolumeRenderer(
+        host,
+        latest.width,
+        latest.height,
+        latest.depth,
+        rgba,
+        latest.sizeX,
+        latest.sizeY,
+      )
       renderer.setDepth(depthRef.current)
       renderer.setOpacity(opacityRef.current)
       renderer.setInterpolation(interpolationRef.current)
@@ -300,6 +341,16 @@ export function ZStackVolumeViewer({
       setVolumeReady(false)
     }
   }, [frames, channels.length])
+
+  useEffect(() => {
+    const renderer = rendererRef.current
+    if (!renderer) return
+    renderer.setOverlay(showAnnotations ? (annotationOverlay?.polygons ?? null) : null, {
+      color: hexToRgb(annotationOverlay?.color),
+      opacity: annotationOverlay?.opacity ?? 0.22,
+      lineWidth: annotationOverlay?.lineWidth ?? 1.5,
+    })
+  }, [annotationOverlay, showAnnotations, volumeReady])
 
   useEffect(() => {
     const current = framesRef.current
@@ -387,6 +438,17 @@ export function ZStackVolumeViewer({
           />
           One plane
         </label>
+        {annotationOverlay && annotationOverlay.polygons.length > 0 ? (
+          <label className="zstack-volume__check">
+            <input
+              type="checkbox"
+              checked={showAnnotations}
+              disabled={!frames}
+              onChange={(event) => setShowAnnotations(event.target.checked)}
+            />
+            {annotationOverlay.label ?? 'Annotations'} ({annotationOverlay.polygons.length})
+          </label>
+        ) : null}
         {isolate ? (
           <div className="zstack-volume__slider">
             <label htmlFor={planeId}>Plane {plane + 1}</label>
