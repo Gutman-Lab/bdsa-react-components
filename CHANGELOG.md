@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   apps that do not pass the prop render exactly as before. The new
   `StackAnnotationOverlay` and `StackAnnotationPolygon` types are exported.
   The overlay follows the `Spacing` slider and is on by default, with a toolbar
-  checkbox to hide it.
+  checkbox to hide it and a color picker to change the outline/fill color at
+  runtime.
 
 ### Changed
 

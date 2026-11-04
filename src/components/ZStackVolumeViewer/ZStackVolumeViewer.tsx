@@ -31,6 +31,8 @@ export interface StackAnnotationPolygon {
 export interface StackAnnotationOverlay {
   polygons: StackAnnotationPolygon[]
   /** Outline and fill color, as `#rrggbb`. Default green. */
+  /** Initial outline and fill color, as `#rrggbb`. Default green. The toolbar
+   * exposes a color picker so a viewer can change it at runtime. */
   color?: string
   /** Fill opacity, 0–1. Default 0.22; the outline stays opaque. */
   opacity?: number
@@ -158,6 +160,11 @@ export function ZStackVolumeViewer({
   const [floor, setFloor] = useState(DEFAULT_FLOOR)
   const [normalize, setNormalize] = useState(false)
   const [showAnnotations, setShowAnnotations] = useState(true)
+  const [overlayColor, setOverlayColor] = useState(annotationOverlay?.color ?? '#00ff00')
+
+  useEffect(() => {
+    setOverlayColor(annotationOverlay?.color ?? '#00ff00')
+  }, [annotationOverlay?.color])
   const channelSpans = useMemo<ChannelRange[]>(
     () => volumeHistograms.map((histogram) => histogramRange(histogram.counts, { floor })),
     [volumeHistograms, floor],
@@ -346,11 +353,11 @@ export function ZStackVolumeViewer({
     const renderer = rendererRef.current
     if (!renderer) return
     renderer.setOverlay(showAnnotations ? (annotationOverlay?.polygons ?? null) : null, {
-      color: hexToRgb(annotationOverlay?.color),
+      color: hexToRgb(overlayColor),
       opacity: annotationOverlay?.opacity ?? 0.22,
       lineWidth: annotationOverlay?.lineWidth ?? 1.5,
     })
-  }, [annotationOverlay, showAnnotations, volumeReady])
+  }, [annotationOverlay, overlayColor, showAnnotations, volumeReady])
 
   useEffect(() => {
     const current = framesRef.current
@@ -439,15 +446,27 @@ export function ZStackVolumeViewer({
           One plane
         </label>
         {annotationOverlay && annotationOverlay.polygons.length > 0 ? (
-          <label className="zstack-volume__check">
-            <input
-              type="checkbox"
-              checked={showAnnotations}
-              disabled={!frames}
-              onChange={(event) => setShowAnnotations(event.target.checked)}
-            />
-            {annotationOverlay.label ?? 'Annotations'} ({annotationOverlay.polygons.length})
-          </label>
+          <>
+            <label className="zstack-volume__check">
+              <input
+                type="checkbox"
+                checked={showAnnotations}
+                disabled={!frames}
+                onChange={(event) => setShowAnnotations(event.target.checked)}
+              />
+              {annotationOverlay.label ?? 'Annotations'} ({annotationOverlay.polygons.length})
+            </label>
+            <label className="zstack-volume__check" title="Color of the segmentation overlay">
+              <input
+                type="color"
+                value={overlayColor}
+                disabled={!frames || !showAnnotations}
+                aria-label="Segmentation overlay color"
+                onChange={(event) => setOverlayColor(event.target.value)}
+              />
+              Overlay color
+            </label>
+          </>
         ) : null}
         {isolate ? (
           <div className="zstack-volume__slider">
