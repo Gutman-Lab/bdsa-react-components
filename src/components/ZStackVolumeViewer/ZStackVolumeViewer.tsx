@@ -60,6 +60,7 @@ export const DEFAULT_DEPTH = 2
 const DEFAULT_OPACITY = 0.55
 export const DEFAULT_BRIGHTNESS = 0.75
 export const DEFAULT_CONTRAST = 0.75
+export const DEFAULT_GAMMA = 1
 const DEFAULT_FLOOR = 8
 const DEFAULT_LIGHT: VolumeLight = { shade: false, ambient: 0.2, diffuse: 0.7, specular: 0.2 }
 
@@ -157,6 +158,7 @@ export function ZStackVolumeViewer({
   const [opacity, setOpacity] = useState(DEFAULT_OPACITY)
   const [brightness, setBrightness] = useState(DEFAULT_BRIGHTNESS)
   const [contrast, setContrast] = useState(DEFAULT_CONTRAST)
+  const [gamma, setGamma] = useState(DEFAULT_GAMMA)
   const [floor, setFloor] = useState(DEFAULT_FLOOR)
   const [normalize, setNormalize] = useState(false)
   const [showAnnotations, setShowAnnotations] = useState(true)
@@ -193,6 +195,7 @@ export function ZStackVolumeViewer({
   const opacityRef = useRef(opacity)
   const brightnessRef = useRef(brightness)
   const contrastRef = useRef(contrast)
+  const gammaRef = useRef(gamma)
   const floorRef = useRef(floor)
   const normalizeRef = useRef(normalize)
   const spansRef = useRef(channelSpans)
@@ -217,6 +220,7 @@ export function ZStackVolumeViewer({
   opacityRef.current = opacity
   brightnessRef.current = brightness
   contrastRef.current = contrast
+  gammaRef.current = gamma
   floorRef.current = floor
   normalizeRef.current = normalize
   spansRef.current = channelSpans
@@ -243,12 +247,14 @@ export function ZStackVolumeViewer({
   const opacityId = useId()
   const brightnessId = useId()
   const contrastId = useId()
+  const gammaId = useId()
   const planeId = useId()
 
   function compositeCurrent(current: StackFrames) {
     return compositeVolume(current.planes, current.width, current.height, current.depth, channelsRef.current, {
       brightness: brightnessRef.current,
       contrast: contrastRef.current,
+      gamma: gammaRef.current,
       floor: floorRef.current,
       plane: isolateRef.current ? planeRef.current : undefined,
       normalize: normalizeRef.current ? spansRef.current : undefined,
@@ -364,7 +370,7 @@ export function ZStackVolumeViewer({
     const renderer = rendererRef.current
     if (!current || !renderer || channels.length !== current.channelCount) return
     renderer.updateScalars(compositeCurrent(current))
-  }, [channels, brightness, contrast, floor, normalize, channelSpans, isolate, plane])
+  }, [channels, brightness, contrast, gamma, floor, normalize, channelSpans, isolate, plane])
 
   useEffect(() => {
     rendererRef.current?.setDepth(depth)
@@ -508,8 +514,22 @@ export function ZStackVolumeViewer({
             step={0.02}
             value={brightness}
             disabled={!frames}
-            title="Gamma on the stain. Black stays black."
+            title="Lifts the stain. Black stays black."
             onChange={(event) => setBrightness(Number(event.target.value))}
+          />
+        </div>
+        <div className="zstack-volume__slider">
+          <label htmlFor={gammaId}>Gamma {gamma.toFixed(2)}</label>
+          <input
+            id={gammaId}
+            type="range"
+            min={0.25}
+            max={2.5}
+            step={0.05}
+            value={gamma}
+            disabled={!frames}
+            title="Midtone curve. Above 1 lifts dark stain without moving black or white; below 1 deepens the midtones."
+            onChange={(event) => setGamma(Number(event.target.value))}
           />
         </div>
         <div className="zstack-volume__slider">
@@ -753,6 +773,7 @@ export function ZStackVolumeViewer({
               onClick={() => {
                 setBrightness(DEFAULT_BRIGHTNESS)
                 setContrast(DEFAULT_CONTRAST)
+                setGamma(DEFAULT_GAMMA)
                 setFloor(DEFAULT_FLOOR)
               }}
             >

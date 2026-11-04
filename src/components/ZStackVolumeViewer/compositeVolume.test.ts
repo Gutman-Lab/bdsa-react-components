@@ -38,6 +38,20 @@ describe('compositeVolume', () => {
     expect(Array.from(rgba.slice(4, 8))).toEqual([100, 0, 0, 100])
   })
 
+  it('applies gamma as a midtone lift anchored at black and white', () => {
+    const rgba = compositeVolume([[new Uint8Array([0, 64, 255])]], 3, 1, 1, [
+      { index: 0, color: '#ff0000', visible: true },
+    ], { gamma: 2 })
+    expect(Array.from(rgba.slice(0, 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(rgba.slice(4, 8))).toEqual([128, 0, 0, 128])
+    expect(Array.from(rgba.slice(8, 12))).toEqual([255, 0, 0, 255])
+
+    const inverse = compositeVolume([[new Uint8Array([64])]], 1, 1, 1, [
+      { index: 0, color: '#ff0000', visible: true },
+    ], { gamma: 0.5 })
+    expect(Array.from(inverse.slice(0, 4))).toEqual([16, 0, 0, 16])
+  })
+
   it('can leave every plane but one empty', () => {
     const rgba = compositeVolume([[new Uint8Array([10]), new Uint8Array([40])]], 1, 1, 2, [
       { index: 0, color: '#ff0000', visible: true },

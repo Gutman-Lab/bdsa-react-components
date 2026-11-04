@@ -8,6 +8,11 @@ export interface VolumeChannel {
 export interface VolumeAdjust {
   brightness?: number
   contrast?: number
+  /**
+   * Display gamma. 1 leaves the pixels alone; values above 1 lift midtones
+   * without moving black or white. Applied after brightness and contrast.
+   */
+  gamma?: number
   /** Stored counts at or below this are empty background and are not written. */
   floor?: number
   /** When set, every other z plane is left empty so one slice can be checked on its own. */
@@ -156,16 +161,22 @@ function mapLinear(value: number, fromMin: number, fromMax: number, toMin: numbe
 
 /**
  * Brightness is a gamma curve so black stays black. Contrast matches the flat
- * viewer: negative maps to 0–1, positive maps to 1–5.
+ * viewer: negative maps to 0–1, positive maps to 1–5. The explicit gamma slider
+ * is a further midtone curve, also anchored at black and white.
  */
-function adjustmentTable(brightness: number, contrast: number): Uint8Array | null {
-  if (brightness === 0 && contrast === 0) return null
-  const gamma = brightness < 0 ? mapLinear(brightness, -1, 0, 2.5, 1) : mapLinear(brightness, 0, 1, 1, 0.45)
+function adjustmentTable(brightness: number, contrast: number, gamma = 1): Uint8Array | null {
+  const tuneGamma = Number.isFinite(gamma) && gamma > 0 ? gamma : 1
+  if (brightness === 0 && contrast === 0 && tuneGamma === 1) return null
+  const brightnessGamma =
+    brightness < 0 ? mapLinear(brightness, -1, 0, 2.5, 1) : mapLinear(brightness, 0, 1, 1, 0.45)
   const factor = contrast < 0 ? mapLinear(contrast, -1, 0, 0, 1) : mapLinear(contrast, 0, 1, 1, 5)
   const table = new Uint8Array(256)
   for (let value = 0; value < 256; value += 1) {
-    let adjusted = brightness === 0 ? value : 255 * Math.pow(value / 255, gamma)
+    let adjusted = brightness === 0 ? value : 255 * Math.pow(value / 255, brightnessGamma)
     if (contrast !== 0) adjusted *= factor
+    if (tuneGamma !== 1) {
+      adjusted = 255 * Math.pow(clampByte(adjusted) / 255, 1 / tuneGamma)
+    }
     table[value] = clampByte(adjusted)
   }
   return table
@@ -184,7 +195,7 @@ export function compositeVolume(
   channels: VolumeChannel[],
   adjust: VolumeAdjust = {},
 ): Uint8Array {
-  const table = adjustmentTable(adjust.brightness ?? 0, adjust.contrast ?? 0)
+  const table = adjustmentTable(adjust.brightness ?? 0, adjust.contrast ?? 0, adjust.gamma ?? 1)
   const floor = adjust.floor ?? 0
   const out = new Uint8Array(width * height * depth * 4)
   for (const channel of channels) {

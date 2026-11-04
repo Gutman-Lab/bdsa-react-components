@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-11-04
+
+### Added
+
+- **ZStackVolumeViewer** has a **Gamma** slider (`0.25`–`2.5`, default `1`).
+  It applies a midtone curve after brightness and contrast, anchored at black
+  and white, so dark stain can be lifted without washing out the background or
+  clipping the highlights. `Reset tone` restores it. The same control is
+  additive: a gamma of `1` renders exactly as before.
+
 ## [0.4.1] - 2026-11-04
 
 ### Added
