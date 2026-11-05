@@ -53,3 +53,10 @@ export type FolderBrowserRenderFolder = (
 
 /** Replace the default item row (including metadata-based icons). */
 export type FolderBrowserRenderItem = (item: Item, depth: number) => ReactNode
+
+/**
+ * Extra metadata shown in the default item row, next to the item type.
+ * Ignored when `renderItem` replaces the row. Returning `null` leaves the row
+ * unchanged, so async badges can render nothing until their data arrives.
+ */
+export type FolderBrowserRenderItemBadge = (item: Item) => ReactNode

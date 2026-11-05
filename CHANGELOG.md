@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-11-05
+
+### Added
+
+- **FolderBrowser** accepts `renderItemBadge`, an optional callback that appends
+  compact metadata to the default item row's type label (for example a z-slice
+  count). It is ignored when `renderItem` replaces the row.
+
+### Changed
+
+- **ZStackVolumeViewer** defaults the annotation overlay color to pink
+  (`#ff69b4`) instead of green, so segmentation outlines do not collide with the
+  common red/green/blue channel colors. The toolbar color picker still overrides
+  it.
+
+## [0.4.3] - 2026-11-04
+
+### Fixed
+
+- **ZStackVolumeViewer toolbar** no longer overlaps controls at narrow widths.
+  The toolbar now wraps onto additional rows instead of squeezing each slider
+  group below its content width, which had let the next group's label paint over
+  the previous group's range input.
+
+## [0.4.2] - 2026-11-04
+
+### Added
+
+- **ZStackVolumeViewer** has a **Gamma** slider (`0.25`–`2.5`, default `1`).
+  It applies a midtone curve after brightness and contrast, anchored at black
+  and white, so dark stain can be lifted without washing out the background or
+  clipping the highlights. `Reset tone` restores it. The same control is
+  additive: a gamma of `1` renders exactly as before.
+
+## [0.4.1] - 2026-11-04
+
+### Added
+
+- **ZStackVolumeViewer** accepts an optional `annotationOverlay` prop. Each
+  polygon is drawn as a translucent, unlit surface with an opaque outline at
+  its own z plane, so DSA annotation documents (for example per-slice DAPI
+  nuclei segmentation) can be shown in the orbitable volume. This is additive:
+  apps that do not pass the prop render exactly as before. The new
+  `StackAnnotationOverlay` and `StackAnnotationPolygon` types are exported.
+  The overlay follows the `Spacing` slider and is on by default, with a toolbar
+  checkbox to hide it and a color picker to change the outline/fill color at
+  runtime.
+
+### Changed
+
+- `StackFrames` now carries the original tile `sizeX`/`sizeY` so overlays in
+  slide pixels can be scaled to the downsampled volume. This is an internal
+  type used by `ZStackVolumeViewer`.
+
 ## [0.4.0] - 2026-11-04
 
 ### Changed

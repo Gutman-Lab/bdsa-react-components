@@ -104,7 +104,7 @@ These are the components exported from the package root:
 | `SlideViewer` | OpenSeadragon slide viewer with Paper.js annotation overlays. |
 | `AnnotationEditor` / `SingleBoxSlideEditor` | Protocol-driven annotation editing on top of `SlideViewer`. |
 | `AnnotationBrowser` | Annotation list/visibility panel for a slide. |
-| `ZStackVolumeViewer` | vtk.js multichannel z-stack volume viewer. |
+| `ZStackVolumeViewer` | vtk.js multichannel z-stack volume viewer; an optional `annotationOverlay` draws per-slice polygons (for example nuclei segmentation) in 3D. |
 | `ChannelHistograms` | Per-channel histogram chart, plus `fetchImageHistogram` helpers. |
 | `ProtocolManager` (`ProtocolsTab`) | Stain/region/block protocol editor with BDSA schema validation. |
 

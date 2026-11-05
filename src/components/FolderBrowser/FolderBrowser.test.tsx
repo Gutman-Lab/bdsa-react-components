@@ -54,6 +54,21 @@ describe('FolderBrowser', () => {
     expect(screen.getByText('notes.pdf')).toBeInTheDocument()
   })
 
+  it('appends a custom item badge to the default row', async () => {
+    const user = userEvent.setup()
+    render(
+      <FolderBrowser
+        syntheticData={SYNTHETIC_DATA}
+        renderItemBadge={(item) => (item.name === 'slide.svs' ? '18 z' : null)}
+      />,
+    )
+
+    await user.dblClick(screen.getByText('Histology Slides'))
+    await user.dblClick(screen.getByText('Case 001'))
+
+    expect(screen.getByText(/18 z/)).toBeInTheDocument()
+  })
+
   it('filters items by allowedExtensions', async () => {
     const user = userEvent.setup()
     render(<FolderBrowser syntheticData={SYNTHETIC_DATA} allowedExtensions={['svs', 'tif']} />)

@@ -8,6 +8,7 @@ import type {
   FolderBrowserRenderCollection,
   FolderBrowserRenderFolder,
   FolderBrowserRenderItem,
+  FolderBrowserRenderItemBadge,
   FolderBrowserResource,
   FolderBrowserVisualStyle,
   FolderItem,
@@ -101,6 +102,11 @@ export interface FolderBrowserProps {
   renderFolder?: FolderBrowserRenderFolder
   /** Custom item row, or omit to use default metadata-based icons (`largeImage` / AI model meta via `itemUtils`). */
   renderItem?: FolderBrowserRenderItem
+  /**
+   * Extra metadata appended to the default item row's type label, e.g. a
+   * z-slice count. Ignored when `renderItem` replaces the row.
+   */
+  renderItemBadge?: FolderBrowserRenderItemBadge
   /** Persist expanded node ids to `localStorage` so the tree stays open across refresh. */
   persistExpansion?: boolean
   /** Storage key for expansion (JSON array of Girder ids). */
@@ -147,6 +153,7 @@ export function FolderBrowser({
   renderCollection,
   renderFolder,
   renderItem,
+  renderItemBadge,
   persistExpansion = false,
   persistExpansionKey = DEFAULT_PERSIST_EXPANSION_KEY,
   persistSelection = false,
@@ -776,6 +783,7 @@ export function FolderBrowser({
                 visualStyle={effectiveVisualStyle}
                 renderFolder={renderFolder}
                 renderItem={renderItem}
+                renderItemBadge={renderItemBadge}
               />
             )}
           </div>
@@ -874,6 +882,7 @@ export function FolderBrowser({
                     visualStyle={effectiveVisualStyle}
                     renderFolder={renderFolder}
                     renderItem={renderItem}
+                    renderItemBadge={renderItemBadge}
                   />
                 )}
               </div>
