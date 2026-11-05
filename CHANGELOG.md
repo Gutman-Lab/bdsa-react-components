@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-11-05
+
+### Added
+
+- **FolderBrowser** accepts `renderItemBadge`, an optional callback that appends
+  compact metadata to the default item row's type label (for example a z-slice
+  count). It is ignored when `renderItem` replaces the row.
+
+### Changed
+
+- **ZStackVolumeViewer** defaults the annotation overlay color to pink
+  (`#ff69b4`) instead of green, so segmentation outlines do not collide with the
+  common red/green/blue channel colors. The toolbar color picker still overrides
+  it.
+
 ## [0.4.3] - 2026-11-04
 
 ### Fixed

@@ -30,8 +30,7 @@ export interface StackAnnotationPolygon {
  */
 export interface StackAnnotationOverlay {
   polygons: StackAnnotationPolygon[]
-  /** Outline and fill color, as `#rrggbb`. Default green. */
-  /** Initial outline and fill color, as `#rrggbb`. Default green. The toolbar
+  /** Initial outline and fill color, as `#rrggbb`. Default pink; the toolbar
    * exposes a color picker so a viewer can change it at runtime. */
   color?: string
   /** Fill opacity, 0–1. Default 0.22; the outline stays opaque. */
@@ -56,6 +55,8 @@ function hexToRgb(value: string | undefined): [number, number, number] {
 }
 
 const DEFAULT_COLORS = ['#0000ff', '#00ff00', '#ff0000', '#ffffff', '#ffff00', '#ff00ff']
+/** Pink is distinct from the usual red/green/blue channel colors. */
+export const DEFAULT_ANNOTATION_COLOR = '#ff69b4'
 export const DEFAULT_DEPTH = 2
 const DEFAULT_OPACITY = 0.55
 export const DEFAULT_BRIGHTNESS = 0.75
@@ -162,10 +163,10 @@ export function ZStackVolumeViewer({
   const [floor, setFloor] = useState(DEFAULT_FLOOR)
   const [normalize, setNormalize] = useState(false)
   const [showAnnotations, setShowAnnotations] = useState(true)
-  const [overlayColor, setOverlayColor] = useState(annotationOverlay?.color ?? '#00ff00')
+  const [overlayColor, setOverlayColor] = useState(annotationOverlay?.color ?? DEFAULT_ANNOTATION_COLOR)
 
   useEffect(() => {
-    setOverlayColor(annotationOverlay?.color ?? '#00ff00')
+    setOverlayColor(annotationOverlay?.color ?? DEFAULT_ANNOTATION_COLOR)
   }, [annotationOverlay?.color])
   const channelSpans = useMemo<ChannelRange[]>(
     () => volumeHistograms.map((histogram) => histogramRange(histogram.counts, { floor })),

@@ -13,6 +13,7 @@ export type {
   FolderBrowserRenderCollection,
   FolderBrowserRenderFolder,
   FolderBrowserRenderItem,
+  FolderBrowserRenderItemBadge,
   FolderBrowserResource,
   FolderBrowserVisualStyle,
 } from './components/FolderBrowser/types'

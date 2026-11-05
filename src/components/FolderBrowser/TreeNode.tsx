@@ -2,6 +2,7 @@ import { Folder, FolderLock, Play } from 'lucide-react'
 import type {
   FolderBrowserRenderFolder,
   FolderBrowserRenderItem,
+  FolderBrowserRenderItemBadge,
   FolderBrowserVisualStyle,
   FolderItem,
   Item,
@@ -30,6 +31,7 @@ interface TreeNodeProps {
   /** Custom folder row; expansion and children are still handled by the tree. */
   renderFolder?: FolderBrowserRenderFolder
   renderItem?: FolderBrowserRenderItem
+  renderItemBadge?: FolderBrowserRenderItemBadge
 }
 
 export function TreeNode({
@@ -48,6 +50,7 @@ export function TreeNode({
   visualStyle = 'modern',
   renderFolder,
   renderItem,
+  renderItemBadge,
 }: TreeNodeProps) {
   const indentStyle = { paddingLeft: `${depth * 1.25 + 0.75}rem` }
 
@@ -168,6 +171,7 @@ export function TreeNode({
                 visualStyle={visualStyle}
                 renderFolder={renderFolder}
                 renderItem={renderItem}
+                renderItemBadge={renderItemBadge}
               />
             )}
           </div>
@@ -182,6 +186,7 @@ export function TreeNode({
           onItemSelect={onItemSelect}
           style={indentStyle}
           renderItem={renderItem}
+          renderItemBadge={renderItemBadge}
         />
       ))}
     </>

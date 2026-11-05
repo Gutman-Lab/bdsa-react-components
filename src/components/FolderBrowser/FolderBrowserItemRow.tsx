@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { FolderBrowserRenderItem, Item } from './types'
+import type { FolderBrowserRenderItem, FolderBrowserRenderItemBadge, Item } from './types'
 import { hasLargeImage, isAIModel } from '../../utils/itemUtils'
 
 interface FolderBrowserItemRowProps {
@@ -9,6 +9,7 @@ interface FolderBrowserItemRowProps {
   onItemSelect?: (item: Item) => void
   style?: CSSProperties
   renderItem?: FolderBrowserRenderItem
+  renderItemBadge?: FolderBrowserRenderItemBadge
 }
 
 /**
@@ -22,6 +23,7 @@ export function FolderBrowserItemRow({
   onItemSelect,
   style,
   renderItem,
+  renderItemBadge,
 }: FolderBrowserItemRowProps) {
   if (renderItem) {
     return <>{renderItem(item, depth)}</>
@@ -39,6 +41,8 @@ export function FolderBrowserItemRow({
     label = 'Image'
   }
 
+  const badge = renderItemBadge?.(item)
+
   return (
     <div
       className={`folder-browser__item${item._id === selectedItemId ? ' folder-browser__item--selected' : ''}`}
@@ -51,6 +55,7 @@ export function FolderBrowserItemRow({
       </span>
       <span className="folder-browser__row-name">{item.name}</span>
       <span className="folder-browser__resource-type">{label}</span>
+      {badge ? <span className="folder-browser__item-badge">{badge}</span> : null}
     </div>
   )
 }
