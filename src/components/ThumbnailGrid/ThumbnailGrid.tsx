@@ -59,6 +59,10 @@ export interface ThumbnailGridProps {
     getDatasetType?: (itemId: string) => 'train' | 'val' | 'test' | null
     /** Callback when thumbnail is clicked */
     onThumbnailClick?: (item: Item) => void
+    /** Callback when the pointer enters a thumbnail */
+    onThumbnailHover?: (item: Item) => void
+    /** Callback when a thumbnail is double-clicked */
+    onThumbnailDoubleClick?: (item: Item) => void
 
     // Other
     /** 
@@ -129,6 +133,8 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
             onItemsLoaded,
             getDatasetType,
             onThumbnailClick,
+            onThumbnailHover,
+            onThumbnailDoubleClick,
             onApiError,
             debug = false,
             className = '',
@@ -580,6 +586,8 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
                                     className={`bdsa-thumbnail-grid__item ${datasetType ? `bdsa-thumbnail-grid__item--${datasetType}` : ''}`}
                                     style={{ width: thumbWidth, height: thumbWidth }}
                                     onClick={() => onThumbnailClick?.(item)}
+                                    onDoubleClick={() => onThumbnailDoubleClick?.(item)}
+                                    onMouseEnter={() => onThumbnailHover?.(item)}
                                 >
                                     {datasetType && (
                                         <div className={`bdsa-thumbnail-grid__dataset-badge bdsa-thumbnail-grid__dataset-badge--${datasetType}`}>

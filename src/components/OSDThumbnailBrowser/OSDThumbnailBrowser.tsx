@@ -6,6 +6,9 @@ import { createDebugLogger } from '../../utils/debugLog'
 import { handleApiError, type ApiErrorHandler, type ApiError } from '../../utils/apiErrorHandling'
 import './OSDThumbnailBrowser.css'
 
+/** Hard cap on simultaneous OpenSeadragon viewers before WebGL context loss (default page size). */
+export const OSD_WEBGL_SAFE_MAX_ITEMS = 10
+
 export interface OSDThumbnailBrowserProps {
     // Data Sources (mutually exclusive)
     /** DSA folder ID to fetch items from */

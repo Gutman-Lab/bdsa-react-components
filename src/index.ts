@@ -16,6 +16,11 @@ export { hasLargeImage, isAIModel, filterLargeImages, filterAIModels } from './u
 export type { Item, ItemWithMeta } from './utils/itemUtils'
 export { ThumbnailGrid } from './components/ThumbnailGrid/ThumbnailGrid'
 export type { ThumbnailGridProps } from './components/ThumbnailGrid/ThumbnailGrid'
+export { DsaThumbnailBrowser } from './components/DsaThumbnailBrowser/DsaThumbnailBrowser'
+export type {
+    DsaThumbnailBrowserProps,
+    DsaThumbnailViewerMode,
+} from './components/DsaThumbnailBrowser/DsaThumbnailBrowser'
 export { OSDThumbnailBrowser } from './components/OSDThumbnailBrowser/OSDThumbnailBrowser'
 export type { OSDThumbnailBrowserProps } from './components/OSDThumbnailBrowser/OSDThumbnailBrowser'
 /** @deprecated Use `OSDThumbnailBrowser` — name reflects OpenSeadragon-based tiles */
