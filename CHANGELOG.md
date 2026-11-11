@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-11-11
+
+### Changed
+
+- No functional changes from 0.4.2. This patch release validates npm trusted
+  publishing (GitHub Actions OIDC) so tag releases publish from CI with a
+  provenance attestation instead of from a maintainer laptop.
+
 ## [0.4.2] - 2026-11-11
 
 ### Fixed
