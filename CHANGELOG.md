@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-11-11
+
+### Fixed
+
+- **SlideViewer** now parses Girder/HistomicsTK rectangles stored as `center` + `width`/`height` (numeric or numeric-string coordinates) and normalizes them to a top-left bounding box. Legacy `x`/`y` rectangles still parse, rotated rectangles are skipped, and malformed geometry is ignored. This restores ArtSeg wall/lumen annotations that were silently dropped from the viewer.
+- **SlideViewer** no longer tears down and re-creates the OpenSeadragon viewer when a caller passes an inline `osdOptions` object. The options are read through a ref and object identity is no longer an initialization effect dependency, eliminating the repeated DZI request storm while annotations render.
+
 ## [0.4.3] - 2026-11-11
 
 ### Changed
