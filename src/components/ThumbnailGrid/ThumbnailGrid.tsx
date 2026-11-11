@@ -210,8 +210,20 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
 
                 const firstItem = gridNode.querySelector<HTMLElement>('.bdsa-thumbnail-grid__item')
                 const nominalSize = THUMBNAIL_SIZES[thumbnailSize]
-                const itemWidth = firstItem?.offsetWidth || nominalSize
-                const itemHeight = firstItem?.offsetHeight || nominalSize
+                // Read the inline target size rather than offsetWidth/offsetHeight:
+                // the tile has a short CSS transition, so a measurement taken right
+                // after an S/M/L/XL change can catch an intermediate size and lock in
+                // the wrong page count until the next container resize.
+                const inlineWidth = firstItem ? parseFloat(firstItem.style.width) : Number.NaN
+                const inlineHeight = firstItem ? parseFloat(firstItem.style.height) : Number.NaN
+                const itemWidth =
+                    Number.isFinite(inlineWidth) && inlineWidth > 0
+                        ? inlineWidth
+                        : firstItem?.offsetWidth || nominalSize
+                const itemHeight =
+                    Number.isFinite(inlineHeight) && inlineHeight > 0
+                        ? inlineHeight
+                        : firstItem?.offsetHeight || nominalSize
 
                 const nextItemsPerPage = computeThumbnailGridPageSize({
                     contentWidth,

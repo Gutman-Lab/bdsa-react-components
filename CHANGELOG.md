@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-11-11
+
+### Fixed
+
+- **ThumbnailGrid** keeps the correct page size when the S/M/L/XL control changes. Tile size now uses the component's inline target size instead of the animated `offsetWidth`/`offsetHeight`, and the tile transition no longer animates width/height. Previously a measurement taken during the 200ms transition could lock in an intermediate tile size, which overflowed the grid at L/XL or left dead cells at S.
+
 ## [0.4.1] - 2026-11-11
 
 ### Fixed
