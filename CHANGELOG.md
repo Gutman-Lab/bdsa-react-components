@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-11
+
+### Fixed
+
+- **ThumbnailGrid** now derives its page size from the live grid content box, rendered tile size, and computed gaps instead of the outer container plus hardcoded 32px/150px padding and header guesses. Container-only changes (dataset sidebar toggles, expanders, wrapped pagination) recompute through a `ResizeObserver`, so pages fill the available space without dead cells or overflow. The current page is clamped when a larger measured page size reduces the page count. No public props changed; all consumers inherit the corrected sizing.
+
 ## [0.4.0] - 2026-11-04
 
 ### Changed
