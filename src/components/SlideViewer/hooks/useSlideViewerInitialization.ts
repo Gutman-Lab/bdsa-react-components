@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type React from 'react'
 import type { PaperOverlay } from 'osd-paperjs-annotation'
 import { AnnotationToolkit } from 'osd-paperjs-annotation'
@@ -40,6 +40,12 @@ export function useSlideViewerInitialization(
     appendTokenToUrl: (url: string, token: string) => string,
     debugLog: DebugLogger
 ) {
+    // Callers commonly pass an inline options object (or the `{}` default), so
+    // its identity changes on every render. Read it through a ref so OSD
+    // initialization is not torn down and re-created while annotations render.
+    const osdOptionsRef = useRef(osdOptions)
+    osdOptionsRef.current = osdOptions
+
     useEffect(() => {
         // Apply the Paper.js runtime patches when the viewer mounts, before any
         // Paper.js/OpenSeadragon objects are created. Keeping this out of module
@@ -97,7 +103,7 @@ export function useSlideViewerInitialization(
                     // Add auth headers for tile requests if provided
                     ...(apiHeaders ? { ajaxHeaders: apiHeaders } : {}),
                     // User-provided options override defaults
-                    ...osdOptions,
+                    ...osdOptionsRef.current,
                 }
 
                 // Create viewer first (empty, like the working example)
@@ -249,6 +255,7 @@ export function useSlideViewerInitialization(
             // Don't clear React state here — can cause re-init loops if the effect runs again
         }
     }, [
+        containerRef,
         imageKey,
         processedDziUrl,
         imageInfo.imageId,
@@ -260,7 +267,6 @@ export function useSlideViewerInitialization(
         token,
         tokenQueryParam,
         apiHeaders,
-        osdOptions,
         isVisible,
         isMountedRef,
         isInitializedRef,

@@ -135,6 +135,36 @@ export function applyOpacity(color: string, opacity: number): string {
 }
 
 /**
+ * Coerce a numeric or numeric-string value to a finite number.
+ * Returns undefined for missing or non-numeric values.
+ */
+function toFiniteNumber(value: unknown): number | undefined {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : undefined
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value)
+        return Number.isFinite(parsed) ? parsed : undefined
+    }
+    return undefined
+}
+
+/**
+ * Rectangles with a non-zero rotation are not supported by the rectangle
+ * renderer, so they are skipped rather than drawn at the wrong position.
+ */
+function isRotated(rotation: unknown): boolean {
+    if (rotation === undefined || rotation === null) return false
+    if (typeof rotation === 'number') return rotation !== 0
+    if (typeof rotation === 'string') {
+        const parsed = Number(rotation)
+        return Number.isFinite(parsed) ? parsed !== 0 : true
+    }
+    // Matrices / other rotation representations are treated as rotated.
+    return true
+}
+
+/**
  * Parse annotation document into AnnotationFeature array
  */
 export interface ParseAnnotationResult {
@@ -190,31 +220,58 @@ export function parseAnnotationDocument(
                 types.add(el.type)
             }
 
-            if (el.type === 'rectangle' && el.x !== undefined && el.y !== undefined && el.width !== undefined && el.height !== undefined) {
-                // Rectangles have 4 vertices (corners)
-                const pointsInElement = 4
-                if (pointsInElement > maxPointsPerAnnotation) {
-                    filteredCount++
-                    filteredPoints += pointsInElement
-                    console.warn(
-                        `Skipping rectangle annotation ${el.group || parsed.length} in document ${annotationId}: ` +
-                        `has ${pointsInElement} points (exceeds limit of ${maxPointsPerAnnotation})`
-                    )
-                } else {
-                    totalPoints += pointsInElement
-                    parsed.push({
-                        id: el.group || parsed.length,
-                        left: el.x,
-                        top: el.y,
-                        width: el.width,
-                        height: el.height,
-                        color: el.lineColor || defaultAnnotationColor,
-                        group: el.group,
-                        label: el.label,
-                        annotationType: 'rectangle',
-                        element: el, // Store full element for rendering
-                        documentId: annotationId, // Store document ID for opacity lookup
-                    })
+            if (el.type === 'rectangle') {
+                // Girder/HistomicsTK store rectangles as center + width/height,
+                // while legacy documents use a top-left x/y origin. Normalize
+                // both to a top-left bounding box for the rectangle renderer.
+                const width = toFiniteNumber(el.width)
+                const height = toFiniteNumber(el.height)
+                let left: number | undefined
+                let top: number | undefined
+
+                if (!isRotated(el.rotation) && width !== undefined && height !== undefined && width > 0 && height > 0) {
+                    const x = toFiniteNumber(el.x)
+                    const y = toFiniteNumber(el.y)
+
+                    if (x !== undefined && y !== undefined) {
+                        left = x
+                        top = y
+                    } else if (Array.isArray(el.center) && el.center.length >= 2) {
+                        const centerX = toFiniteNumber(el.center[0])
+                        const centerY = toFiniteNumber(el.center[1])
+                        if (centerX !== undefined && centerY !== undefined) {
+                            left = centerX - width / 2
+                            top = centerY - height / 2
+                        }
+                    }
+                }
+
+                if (left !== undefined && top !== undefined && width !== undefined && height !== undefined) {
+                    // Rectangles have 4 vertices (corners)
+                    const pointsInElement = 4
+                    if (pointsInElement > maxPointsPerAnnotation) {
+                        filteredCount++
+                        filteredPoints += pointsInElement
+                        console.warn(
+                            `Skipping rectangle annotation ${el.group || parsed.length} in document ${annotationId}: ` +
+                            `has ${pointsInElement} points (exceeds limit of ${maxPointsPerAnnotation})`
+                        )
+                    } else {
+                        totalPoints += pointsInElement
+                        parsed.push({
+                            id: el.group || parsed.length,
+                            left,
+                            top,
+                            width,
+                            height,
+                            color: el.lineColor || defaultAnnotationColor,
+                            group: el.group,
+                            label: el.label,
+                            annotationType: 'rectangle',
+                            element: el, // Store full element for rendering
+                            documentId: annotationId, // Store document ID for opacity lookup
+                        })
+                    }
                 }
             } else if (el.type === 'polyline' && el.points && el.points.length >= 2) {
                 // For polylines, check point count before processing
