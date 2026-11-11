@@ -4,6 +4,7 @@ import { filterLargeImages, isAIModel, type Item } from '../../utils/itemUtils'
 import { createDebugLogger } from '../../utils/debugLog'
 import { handleApiError, type ApiErrorHandler, type ApiError } from '../../utils/apiErrorHandling'
 import { extractToken } from '../SlideViewer/SlideViewer.utils'
+import { computeThumbnailGridPageSize } from './thumbnailGridLayout'
 import './ThumbnailGrid.css'
 
 export interface ThumbnailGridProps {
@@ -140,8 +141,8 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
         const [error, setError] = useState<Error | null>(null)
         const [currentPage, setCurrentPage] = useState<number>(1)
         const [thumbnailSize, setThumbnailSize] = useState<'s' | 'm' | 'l' | 'xl'>(initialThumbnailSize)
-        const [containerWidth, setContainerWidth] = useState<number>(0)
-        const [containerHeight, setContainerHeight] = useState<number>(0)
+        const [itemsPerPage, setItemsPerPage] = useState<number>(Math.max(1, initialItemsPerPage))
+        const [gridNode, setGridNode] = useState<HTMLDivElement | null>(null)
         const containerRef = useRef<HTMLDivElement | null>(null)
         const gridRef = useRef<HTMLDivElement | null>(null)
 
@@ -179,43 +180,67 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
             localStorage.setItem('bdsa-thumbnail-grid-size', thumbnailSize)
         }, [thumbnailSize])
 
-        // Measure container dimensions
-        useEffect(() => {
-            if (!containerRef.current) return
-
-            const measureContainer = () => {
-                if (containerRef.current) {
-                    const rect = containerRef.current.getBoundingClientRect()
-                    setContainerWidth(rect.width)
-                    setContainerHeight(rect.height)
-                }
-            }
-
-            measureContainer()
-            window.addEventListener('resize', measureContainer)
-            const timeoutId = setTimeout(measureContainer, 100)
-
-            return () => {
-                window.removeEventListener('resize', measureContainer)
-                clearTimeout(timeoutId)
-            }
+        const assignGridRef = useCallback((node: HTMLDivElement | null) => {
+            gridRef.current = node
+            setGridNode(node)
         }, [])
 
-        // Calculate items per page based on container size
-        const calculatedItemsPerPage = useMemo(() => {
-            if (containerWidth === 0 || containerHeight === 0) {
-                return initialItemsPerPage
+        // Measure the live grid box and recompute the page size whenever the box
+        // or thumbnail size changes. A ResizeObserver catches container-only
+        // changes (sidebar toggles, expanders, wrapped pagination) that never
+        // fire a window resize event.
+        useEffect(() => {
+            if (!gridNode) return
+
+            const measure = () => {
+                const style = window.getComputedStyle(gridNode)
+                const paddingLeft = parseFloat(style.paddingLeft) || 0
+                const paddingRight = parseFloat(style.paddingRight) || 0
+                const paddingTop = parseFloat(style.paddingTop) || 0
+                const paddingBottom = parseFloat(style.paddingBottom) || 0
+                const borderLeft = parseFloat(style.borderLeftWidth) || 0
+                const borderRight = parseFloat(style.borderRightWidth) || 0
+                const columnGap = parseFloat(style.columnGap)
+                const rowGap = parseFloat(style.rowGap)
+
+                // offsetWidth includes a vertical scrollbar, so an over-full page
+                // cannot shrink its own column count and oscillate.
+                const contentWidth = gridNode.offsetWidth - borderLeft - borderRight - paddingLeft - paddingRight
+                const contentHeight = gridNode.clientHeight - paddingTop - paddingBottom
+
+                const firstItem = gridNode.querySelector<HTMLElement>('.bdsa-thumbnail-grid__item')
+                const nominalSize = THUMBNAIL_SIZES[thumbnailSize]
+                const itemWidth = firstItem?.offsetWidth || nominalSize
+                const itemHeight = firstItem?.offsetHeight || nominalSize
+
+                const nextItemsPerPage = computeThumbnailGridPageSize({
+                    contentWidth,
+                    contentHeight,
+                    itemWidth,
+                    itemHeight,
+                    columnGap,
+                    rowGap,
+                    fallbackItemsPerPage: initialItemsPerPage,
+                })
+                setItemsPerPage((previous) => (previous === nextItemsPerPage ? previous : nextItemsPerPage))
             }
 
-            const thumbWidth = THUMBNAIL_SIZES[thumbnailSize]
-            // Account for gap between items (12px gap)
-            const itemsPerRow = Math.max(1, Math.floor((containerWidth - 32) / (thumbWidth + 12))) // 32px padding, 12px gap
-            // Subtract header height (approx 100px) and pagination height (approx 50px)
-            const availableHeight = containerHeight - 150
-            const rowsPerPage = Math.max(1, Math.floor(availableHeight / (thumbWidth + 12))) // 12px gap between rows
-            const calculated = itemsPerRow * rowsPerPage
-            return Math.max(1, calculated)
-        }, [containerWidth, containerHeight, thumbnailSize, initialItemsPerPage])
+            measure()
+
+            let observer: ResizeObserver | null = null
+            if (typeof ResizeObserver !== 'undefined') {
+                observer = new ResizeObserver(measure)
+                observer.observe(gridNode)
+            }
+            window.addEventListener('resize', measure)
+            const timeoutId = window.setTimeout(measure, 100)
+
+            return () => {
+                observer?.disconnect()
+                window.removeEventListener('resize', measure)
+                window.clearTimeout(timeoutId)
+            }
+        }, [gridNode, thumbnailSize, initialItemsPerPage])
 
         // Fetch items from folder or imageIds
         const fetchItems = useCallback(async () => {
@@ -405,15 +430,20 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
         }, [fetchItems])
 
         // Pagination
-        const totalPages = Math.ceil(items.length / calculatedItemsPerPage)
-        const startIndex = (currentPage - 1) * calculatedItemsPerPage
-        const endIndex = startIndex + calculatedItemsPerPage
+        const totalPages = Math.max(1, Math.ceil(items.length / itemsPerPage))
+        const startIndex = (currentPage - 1) * itemsPerPage
+        const endIndex = startIndex + itemsPerPage
         const currentPageItems = items.slice(startIndex, endIndex)
 
         // Reset to page 1 when items change
         useEffect(() => {
             setCurrentPage(1)
         }, [items.length])
+
+        // Keep the current page in range when the measured page size changes
+        useEffect(() => {
+            setCurrentPage((page) => (page > totalPages ? totalPages : page))
+        }, [totalPages])
 
         // Build dataset type function
         const datasetTypeFn = useMemo(() => {
@@ -571,7 +601,7 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
                     </div>
                 )}
                 {!loading && !error && (
-                    <div ref={gridRef} className="bdsa-thumbnail-grid__grid">
+                    <div ref={assignGridRef} className="bdsa-thumbnail-grid__grid">
                         {currentPageItems.map((item) => {
                             const datasetType = datasetTypeFn ? datasetTypeFn(item._id) : null
                             return (
