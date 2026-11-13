@@ -97,6 +97,7 @@ export default defineConfig({
                 index: resolve(__dirname, 'src/index.ts'),
                 'components/DsaAuthManager/index': resolve(__dirname, 'src/entries/dsa-auth-manager.ts'),
                 'components/FolderBrowser/index': resolve(__dirname, 'src/entries/folder-browser.ts'),
+                'components/DsaThumbnailBrowser/index': resolve(__dirname, 'src/entries/dsa-thumbnail-browser.ts'),
                 'components/OSDThumbnailBrowser/index': resolve(__dirname, 'src/entries/osd-thumbnail-browser.ts'),
                 'components/ThumbnailGrid/index': resolve(__dirname, 'src/entries/thumbnail-grid.ts'),
                 'components/ThumbnailViewer/index': resolve(__dirname, 'src/entries/thumbnail-viewer.ts'),

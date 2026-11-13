@@ -40,8 +40,12 @@ export interface ThumbnailGridProps {
     itemsPerPage?: number
     /** Thumbnail size preset (default: 'l') */
     thumbnailSize?: 's' | 'm' | 'l' | 'xl'
-    /** Thumbnail image size in pixels (default: 512) - Note: Currently not used, DSA API handles size automatically */
+    /** Width requested from `/tiles/thumbnail` in pixels (defaults to the selected thumbnail size preset). */
     thumbnailImageSize?: number
+    /** Image source for static thumbnails: DSA tile thumbnails or the original download (default: 'tiles'). */
+    imageSource?: 'tiles' | 'download'
+    /** When false, keep items that do not advertise a largeImage flag (default: true). */
+    requireLargeImage?: boolean
 
     // Model Support
     /** Display name for model (if viewing model training images) */
@@ -60,6 +64,16 @@ export interface ThumbnailGridProps {
     getDatasetType?: (itemId: string) => 'train' | 'val' | 'test' | null
     /** Callback when thumbnail is clicked */
     onThumbnailClick?: (item: Item) => void
+    /** Callback when the pointer enters a thumbnail */
+    onThumbnailHover?: (item: Item) => void
+    /** Callback when a thumbnail is double-clicked */
+    onThumbnailDoubleClick?: (item: Item) => void
+
+    // Annotation filtering
+    /** Name of the currently selected annotation. Requires `annotationNameToIds`. */
+    selectedAnnotationName?: string
+    /** Map of item ID to annotation ID; when set with `selectedAnnotationName`, only annotated items are shown. */
+    annotationNameToIds?: Map<string, string> | Record<string, string>
 
     // Other
     /** 
@@ -125,11 +139,18 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
             fetchFn,
             itemsPerPage: initialItemsPerPage = 12,
             thumbnailSize: initialThumbnailSize = 'l',
+            thumbnailImageSize,
+            imageSource = 'tiles',
+            requireLargeImage = true,
             modelName,
             modelDatasetInfo,
             onItemsLoaded,
             getDatasetType,
             onThumbnailClick,
+            onThumbnailHover,
+            onThumbnailDoubleClick,
+            selectedAnnotationName,
+            annotationNameToIds,
             onApiError,
             debug = false,
             className = '',
@@ -419,8 +440,8 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
         // Process fetched items
         const processItems = useCallback(
             (data: Item[]) => {
-                // Filter to only items with largeImage flag
-                const imageItems = filterLargeImages(data)
+                // Only require the DSA largeImage flag when the caller asked for it.
+                const imageItems = requireLargeImage ? filterLargeImages(data) : data
 
                 // Exclude model items
                 const filteredItems = imageItems.filter((item) => !isAIModel(item))
@@ -433,7 +454,7 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
 
                 debugLog.log(`Processed ${filteredItems.length} items from ${data.length} total`)
             },
-            [onItemsLoaded, debugLog]
+            [onItemsLoaded, debugLog, requireLargeImage]
         )
 
         // Fetch items when dependencies change
@@ -441,16 +462,32 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
             fetchItems()
         }, [fetchItems])
 
+        // Annotation-name filtering mirrors OSDThumbnailBrowser: only show items
+        // that have an annotation id in the supplied map.
+        const visibleItems = useMemo(() => {
+            if (!selectedAnnotationName || !annotationNameToIds) {
+                return items
+            }
+
+            return items.filter((item) => {
+                const itemId = String(item._id)
+                if (annotationNameToIds instanceof Map) {
+                    return annotationNameToIds.has(itemId)
+                }
+                return itemId in annotationNameToIds
+            })
+        }, [items, selectedAnnotationName, annotationNameToIds])
+
         // Pagination
-        const totalPages = Math.max(1, Math.ceil(items.length / itemsPerPage))
+        const totalPages = Math.max(1, Math.ceil(visibleItems.length / itemsPerPage))
         const startIndex = (currentPage - 1) * itemsPerPage
         const endIndex = startIndex + itemsPerPage
-        const currentPageItems = items.slice(startIndex, endIndex)
+        const currentPageItems = visibleItems.slice(startIndex, endIndex)
 
-        // Reset to page 1 when items change
+        // Reset to page 1 when the visible set changes
         useEffect(() => {
             setCurrentPage(1)
-        }, [items.length])
+        }, [visibleItems.length])
 
         // Keep the current page in range when the measured page size changes
         useEffect(() => {
@@ -491,15 +528,19 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
         // Build thumbnail URL for an item
         const getThumbnailUrl = useCallback(
             (item: Item): string => {
-                // DSA API thumbnail endpoint: /api/v1/item/{id}/tiles/thumbnail
-                // apiBaseUrl already includes /api/v1
-                const thumbWidth = THUMBNAIL_SIZES[thumbnailSize]
-                let url = `${effectiveApiBaseUrl}/item/${item._id}/tiles/thumbnail?width=${thumbWidth}`
+                // apiBaseUrl already includes /api/v1.
+                let url: string
+                if (imageSource === 'download') {
+                    url = `${effectiveApiBaseUrl}/item/${item._id}/download?contentDisposition=inline`
+                } else {
+                    const thumbWidth = thumbnailImageSize ?? THUMBNAIL_SIZES[thumbnailSize]
+                    url = `${effectiveApiBaseUrl}/item/${item._id}/tiles/thumbnail?width=${thumbWidth}`
+                }
                 // Append token as query parameter if enabled
                 url = appendTokenToUrl(url, token)
                 return url
             },
-            [effectiveApiBaseUrl, thumbnailSize, token, appendTokenToUrl]
+            [effectiveApiBaseUrl, thumbnailSize, thumbnailImageSize, imageSource, token, appendTokenToUrl]
         )
 
         // Pagination controls
@@ -582,7 +623,7 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
                     <div className="bdsa-thumbnail-grid__header-left">
                         <h3 className="bdsa-thumbnail-grid__title">{modelName || 'Thumbnail Grid'}</h3>
                         <span className="bdsa-thumbnail-grid__count">
-                            {items.length} item{items.length !== 1 ? 's' : ''}
+                            {visibleItems.length} item{visibleItems.length !== 1 ? 's' : ''}
                         </span>
                     </div>
                     <div className="bdsa-thumbnail-grid__header-right">
@@ -622,6 +663,8 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
                                     className={`bdsa-thumbnail-grid__item ${datasetType ? `bdsa-thumbnail-grid__item--${datasetType}` : ''}`}
                                     style={{ width: thumbWidth, height: thumbWidth }}
                                     onClick={() => onThumbnailClick?.(item)}
+                                    onDoubleClick={() => onThumbnailDoubleClick?.(item)}
+                                    onMouseEnter={() => onThumbnailHover?.(item)}
                                 >
                                     {datasetType && (
                                         <div className={`bdsa-thumbnail-grid__dataset-badge bdsa-thumbnail-grid__dataset-badge--${datasetType}`}>
@@ -660,7 +703,7 @@ export const ThumbnailGrid = React.forwardRef<HTMLDivElement, ThumbnailGridProps
                         })}
                     </div>
                 )}
-                {!loading && !error && items.length === 0 && (
+                {!loading && !error && visibleItems.length === 0 && (
                     <div className="bdsa-thumbnail-grid__empty">
                         <p>No items to display</p>
                     </div>

@@ -12,6 +12,7 @@ import {
     AnnotationEditor,
     AnnotationEditorPolygons,
     DsaAuthManager,
+    DsaThumbnailBrowser,
     FolderBrowser,
     ManifestBrowser,
     OSDThumbnailBrowser,
@@ -29,6 +30,8 @@ import type {
     AutoSaveSettings,
     Collection,
     DsaAuthManagerProps,
+    DsaThumbnailBrowserProps,
+    DsaThumbnailViewerMode,
     FolderBrowserItem,
     FolderBrowserProps,
     FolderItem,
@@ -97,6 +100,14 @@ const annotationEditorProps: AnnotationEditorProps = {
     autoSave,
 }
 const thumbnailGridProps: ThumbnailGridProps = { items: [itemWithMeta] }
+const dsaViewerMode: DsaThumbnailViewerMode = 'static'
+const dsaThumbnailBrowserProps: DsaThumbnailBrowserProps = {
+    viewerMode: dsaViewerMode,
+    imageSource: 'tiles',
+    requireLargeImage: false,
+    thumbnailImageSize: 256,
+    items: [itemWithMeta],
+}
 const osdThumbnailBrowserProps: OSDThumbnailBrowserProps = { items: [itemWithMeta] }
 const thumbnailViewerProps: ThumbnailViewerProps = { item: itemWithMeta, viewerWidth: 200 }
 const singleBoxSlideEditorProps: SingleBoxSlideEditorProps = {
@@ -119,6 +130,7 @@ export const consumerFixture = (
         <AnnotationEditor {...annotationEditorProps} />
         <AnnotationEditorPolygons {...annotationEditorProps} />
         <ThumbnailGrid {...thumbnailGridProps} />
+        <DsaThumbnailBrowser {...dsaThumbnailBrowserProps} />
         <OSDThumbnailBrowser {...osdThumbnailBrowserProps} />
         <ThumbnailViewer {...thumbnailViewerProps} />
         <SingleBoxSlideEditor {...singleBoxSlideEditorProps} />
@@ -128,6 +140,7 @@ export const consumerFixture = (
 
 void polygon
 void box
+void dsaViewerMode
 void protocolCardProps
 
 // Subpath entry points must expose the same public types as the root barrel.
