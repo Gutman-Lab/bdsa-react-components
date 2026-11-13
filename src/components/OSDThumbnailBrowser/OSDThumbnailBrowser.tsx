@@ -37,6 +37,8 @@ export interface OSDThumbnailBrowserProps {
     itemsPerPage?: number
     /** Thumbnail size preset (default: 'l') */
     viewerSize?: 's' | 'm' | 'l' | 'xl'
+    /** When false, keep items that do not advertise a largeImage flag (default: true). */
+    requireLargeImage?: boolean
 
     // Annotation Configuration
     /** Name of currently selected annotation to display */
@@ -129,6 +131,7 @@ export const OSDThumbnailBrowser = React.forwardRef<HTMLDivElement, OSDThumbnail
             fetchFn,
             itemsPerPage: initialItemsPerPage = 12,
             viewerSize: initialViewerSize = 'l',
+            requireLargeImage = true,
             selectedAnnotationName,
             annotationNameToIds,
             annotationOpacity = 0.7,
@@ -421,8 +424,8 @@ export const OSDThumbnailBrowser = React.forwardRef<HTMLDivElement, OSDThumbnail
         // Process fetched items
         const processItems = useCallback(
             (data: Item[]) => {
-                // Filter to only items with largeImage flag
-                const imageItems = filterLargeImages(data)
+                // Only require the DSA largeImage flag when the caller asked for it.
+                const imageItems = requireLargeImage ? filterLargeImages(data) : data
 
                 // Exclude model items
                 const filteredItems = imageItems.filter((item) => !isAIModel(item))
@@ -435,7 +438,7 @@ export const OSDThumbnailBrowser = React.forwardRef<HTMLDivElement, OSDThumbnail
 
                 debugLog.log(`Processed ${filteredItems.length} items from ${data.length} total`)
             },
-            [onItemsLoaded, debugLog]
+            [onItemsLoaded, debugLog, requireLargeImage]
         )
 
         // Fetch items when dependencies change

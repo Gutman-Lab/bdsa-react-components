@@ -1,6 +1,6 @@
 {
     "name": "bdsa-react-components",
-    "version": "0.4.4",
+    "version": "0.5.0",
     "description": "Reusable React components for the Digital Slide Archive project",
     "type": "module",
     "sideEffects": [
@@ -31,6 +31,11 @@
             "types": "./dist/entries/folder-browser.d.ts",
             "import": "./dist/components/FolderBrowser/index.js",
             "require": "./dist/components/FolderBrowser/index.cjs"
+        },
+        "./components/DsaThumbnailBrowser": {
+            "types": "./dist/entries/dsa-thumbnail-browser.d.ts",
+            "import": "./dist/components/DsaThumbnailBrowser/index.js",
+            "require": "./dist/components/DsaThumbnailBrowser/index.cjs"
         },
         "./components/OSDThumbnailBrowser": {
             "types": "./dist/entries/osd-thumbnail-browser.d.ts",

@@ -59,6 +59,7 @@ while a subpath import pulls only that component and its dependencies.
 
 ```tsx
 import { DsaAuthManager } from 'bdsa-react-components/components/DsaAuthManager'
+import { DsaThumbnailBrowser } from 'bdsa-react-components/components/DsaThumbnailBrowser'
 import { FolderBrowser } from 'bdsa-react-components/components/FolderBrowser'
 import { ZStackVolumeViewer } from 'bdsa-react-components/components/ZStackVolumeViewer'
 import { ChannelHistograms, fetchImageHistogram } from 'bdsa-react-components/components/ChannelHistograms'
@@ -97,6 +98,7 @@ These are the components exported from the package root:
 | --- | --- |
 | `DsaAuthManager` | Login/logout UI and DSA auth status; `dsaAuthStore`/`useDsaAuth` expose the session to other components. |
 | `FolderBrowser` | Collection/folder/item tree with deep links, persistence, and render props. |
+| `DsaThumbnailBrowser` | Switches between `ThumbnailGrid` (`static`) and `OSDThumbnailBrowser` (`openseadragon`) for a DSA folder or item list. |
 | `OSDThumbnailBrowser` | OpenSeadragon thumbnail grid for folders (`FolderThumbnailBrowser` is a deprecated alias). |
 | `ThumbnailGrid` | Simpler image thumbnail grid with pagination and sizing. |
 | `ThumbnailViewer` | Large thumbnail preview with adjustable annotation opacity. |

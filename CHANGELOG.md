@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-13
+
+### Added
+
+- **DsaThumbnailBrowser** switches between the lightweight `ThumbnailGrid`
+  (`viewerMode="static"`) and the OpenSeadragon `OSDThumbnailBrowser`
+  (`viewerMode="openseadragon"`) through one prop surface. It is exported from
+  the package root and from `bdsa-react-components/components/DsaThumbnailBrowser`,
+  along with the `DsaThumbnailBrowserProps`, `DsaThumbnailBrowserItem`, and
+  `DsaThumbnailViewerMode` types. This restores the API that
+  `dgutman/bdsa-pub-data` imports, so a clean portal clone builds from committed
+  state instead of relying on an untracked deploy-host checkout.
+- **ThumbnailGrid** now honours `thumbnailImageSize` and adds `imageSource`
+  (`tiles` or `download`), `requireLargeImage`, `selectedAnnotationName` /
+  `annotationNameToIds`, `onThumbnailHover`, and `onThumbnailDoubleClick`.
+  All new props are optional and default to the previous behaviour.
+- **OSDThumbnailBrowser** adds an optional `requireLargeImage` prop (default
+  `true`) so callers can show items without a largeImage flag. Existing callers
+  are unaffected.
+
+### Fixed
+
+- `DsaThumbnailBrowser` keeps the static `ThumbnailGrid` ResizeObserver page
+  sizing: it forwards the caller's page-size estimate but lets the measured
+  grid box determine how many thumbnails fit.
+
 ## [0.4.4] - 2026-11-11
 
 ### Fixed
