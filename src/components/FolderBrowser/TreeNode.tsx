@@ -51,7 +51,7 @@ export function TreeNode({
 }: TreeNodeProps) {
   const indentStyle = { paddingLeft: `${depth * 1.25 + 0.75}rem` }
 
-  if (loadingIds.has(parentId)) {
+  if (loadingIds.has(parentId) && !childrenMap.has(parentId)) {
     return (
       <div className="folder-browser__node-loading" style={indentStyle}>
         Loading...
