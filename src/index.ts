@@ -26,7 +26,10 @@ export type {
     DsaThumbnailBrowserProps,
     DsaThumbnailViewerMode,
 } from './components/DsaThumbnailBrowser/DsaThumbnailBrowser'
-export { OSDThumbnailBrowser } from './components/OSDThumbnailBrowser/OSDThumbnailBrowser'
+export {
+    OSDThumbnailBrowser,
+    OSD_WEBGL_SAFE_MAX_ITEMS,
+} from './components/OSDThumbnailBrowser/OSDThumbnailBrowser'
 export type { OSDThumbnailBrowserProps } from './components/OSDThumbnailBrowser/OSDThumbnailBrowser'
 /** @deprecated Use `OSDThumbnailBrowser` — name reflects OpenSeadragon-based tiles */
 export { OSDThumbnailBrowser as FolderThumbnailBrowser } from './components/OSDThumbnailBrowser/OSDThumbnailBrowser'

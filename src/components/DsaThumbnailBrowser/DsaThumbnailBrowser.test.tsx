@@ -219,3 +219,32 @@ describe('DsaThumbnailBrowser static page size', () => {
         expect(screen.getByText('Three')).toBeInTheDocument()
     })
 })
+
+describe('DsaThumbnailBrowser static pointer callbacks', () => {
+    it('forwards hover and double-click events to the thumbnail card', async () => {
+        const onHover = vi.fn()
+        const onDoubleClick = vi.fn()
+
+        render(
+            <DsaThumbnailBrowser
+                {...requiredProps}
+                viewerMode="static"
+                items={[item('13', 'Delta')]}
+                onThumbnailHover={onHover}
+                onThumbnailDoubleClick={onDoubleClick}
+            />
+        )
+
+        await waitFor(() => expect(screen.getByText('Delta')).toBeInTheDocument())
+        const card = screen.getByText('Delta').closest('.bdsa-thumbnail-grid__item')
+        expect(card).not.toBeNull()
+
+        fireEvent.mouseOver(card as Element)
+        expect(onHover).toHaveBeenCalledTimes(1)
+        expect(onHover).toHaveBeenCalledWith(expect.objectContaining({ _id: '13' }))
+
+        fireEvent.doubleClick(card as Element)
+        expect(onDoubleClick).toHaveBeenCalledTimes(1)
+        expect(onDoubleClick).toHaveBeenCalledWith(expect.objectContaining({ _id: '13' }))
+    })
+})

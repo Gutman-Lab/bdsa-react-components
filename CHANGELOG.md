@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-11-23
+
+### Added
+
+- Export `OSD_WEBGL_SAFE_MAX_ITEMS` from the package root and from
+  `bdsa-react-components/components/OSDThumbnailBrowser`. This restores the
+  public constant that `DsaThumbnailBrowser` uses as its default OpenSeadragon
+  page size, matching the deploy snapshot API.
+- Regression coverage for the `ThumbnailGrid` `onThumbnailHover` and
+  `onThumbnailDoubleClick` props through `DsaThumbnailBrowser` static mode.
+
 ## [0.5.0] - 2026-11-13
 
 ### Added
