@@ -9,6 +9,8 @@ const meta: Meta<typeof DsaThumbnailBrowser> = {
     tags: ['autodocs'],
     args: {
         onThumbnailClick: fn(),
+        onThumbnailHover: fn(),
+        onThumbnailDoubleClick: fn(),
         onItemsLoaded: fn(),
         onApiError: fn(),
     },

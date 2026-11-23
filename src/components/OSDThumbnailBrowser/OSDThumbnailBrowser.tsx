@@ -6,6 +6,15 @@ import { createDebugLogger } from '../../utils/debugLog'
 import { handleApiError, type ApiErrorHandler, type ApiError } from '../../utils/apiErrorHandling'
 import './OSDThumbnailBrowser.css'
 
+/**
+ * Hard cap on simultaneously mounted OpenSeadragon viewers.
+ *
+ * Each tile holds a WebGL context, and browsers drop the oldest context once
+ * the per-page limit is exceeded. `DsaThumbnailBrowser` uses this as its
+ * default OpenSeadragon page size.
+ */
+export const OSD_WEBGL_SAFE_MAX_ITEMS = 10
+
 export interface OSDThumbnailBrowserProps {
     // Data Sources (mutually exclusive)
     /** DSA folder ID to fetch items from */

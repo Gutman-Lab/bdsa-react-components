@@ -1,4 +1,7 @@
-import { OSDThumbnailBrowser } from '../OSDThumbnailBrowser/OSDThumbnailBrowser'
+import {
+    OSDThumbnailBrowser,
+    OSD_WEBGL_SAFE_MAX_ITEMS,
+} from '../OSDThumbnailBrowser/OSDThumbnailBrowser'
 import type { OSDThumbnailBrowserProps } from '../OSDThumbnailBrowser/OSDThumbnailBrowser'
 import { ThumbnailGrid } from '../ThumbnailGrid/ThumbnailGrid'
 import type { ThumbnailGridProps } from '../ThumbnailGrid/ThumbnailGrid'
@@ -11,9 +14,6 @@ export interface DsaThumbnailBrowserItem {
 
 /** Which thumbnail UI to use for a DSA folder or item list. */
 export type DsaThumbnailViewerMode = 'static' | 'openseadragon'
-
-/** OpenSeadragon needs one WebGL context per tile; keep a safe default page size. */
-const OSD_WEBGL_SAFE_MAX_ITEMS = 10
 
 type SharedBrowseProps = {
     folderId?: string
